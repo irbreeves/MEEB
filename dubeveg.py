@@ -148,7 +148,7 @@ beachcount = 1
 vegcount = 1
 
 # __________________________________________________________________________________________________________________________________
-# MODEL OUPUTS
+# MODEL OUPUT CONFIGURATION
 """Select matrices to be calculated during the simulation. CAUTION WITH THE SIZE OF YOUR OUTPUT, YOU MAY GET AN OUT-OF-MEMORY ERROR."""
 
 # MANDATORY
@@ -182,3 +182,44 @@ stabilityb_sum = np.zeros([longshore, crossshore])  # Sum of all stabilityb maps
 windtransp_slabs = np.zeros([len(timeits)])
 landward_transport = np.zeros([len(timeits)])
 avalanches = np.zeros([len(timeits)])
+
+# __________________________________________________________________________________________________________________________________
+# MAIN ITERATION LOOP
+
+for it in range(iterations):
+    year = math.ceil(it / iterations_per_cycle)
+
+    if eqtopo_initial.ndim == 3:
+        eqtopo = np.squeeze(eqtopo_initial[:, :, it]) / slabheight_m
+
+    # --------------------------------------
+    # SAND TRANSPORT
+
+    before = topo
+    gw = eqtopo * groundwater_depth
+    sandmap = topo > MHT  # Boolean array, Returns True (1) for sandy cells
+
+    if direction[it] == 1:  # Goes through the series of directions and picks the one of this iteration
+        shadowmap = routine.shaowzones2(topo, slabheight, shadowangle, longshore, crossshore)
+        # shadowmap = routine.shadowzones2(topo, slabheight, shadowangle, longshore, crossshore)  # Returns True (1) for in shadow
+    # elif direction[it] == 2:
+    #     shadowmap = shadowzones2_north(topo, slabheight, shadowangle)  # Returns True (1) for in shadow
+    # elif direction[it] == 3:
+    #     shadowmap = shadowzones2_west(topo, slabheight, shadowangle)  # Returns True (1) for in shadow
+    # else:
+    #     shadowmap = shadowzones2_south(topo, slabheight, shadowangle)  # Returns True (1) for in shadow
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
