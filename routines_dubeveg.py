@@ -38,7 +38,6 @@ def shaowzones2(topof, sh, lee, longshore, crossshore):
         tempinshade = step < -math.floor(steplimit * i)  # Identify cells with too great a stepheight
         tempinshade[:, 0:i] = 0  # Part that is circshifted back into beginning of space is ignored
         inshade[tempinshade is True] = True  # Merge with previous inshade zones
-        print()
 
 
 
