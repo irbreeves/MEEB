@@ -12,12 +12,10 @@ ________________________________________________________________________________
 
 import routines_dubeveg as routine
 import numpy as np
-from numpy import matlib
 import scipy.io
 import math
 import random
 import matplotlib.pyplot as plt
-
 
 # __________________________________________________________________________________________________________________________________
 # USER INPUTS
@@ -38,7 +36,7 @@ outputloc = "Output/"  # Output file directory
 
 # AEOLIAN
 groundwater_depth = 0.8  # Proportion of the equilibrium profile used to set groundwater profile.
-direction = np.random.choice(matlib.repmat([1, 1, 1, 1, 1], 1, 2000)[0, :], 10000, replace=False)  # Direction (from) of the slab movement . 1 = west, 2 = north, 3 = east and 4 = south
+direction = np.random.choice(np.tile([1, 1, 1, 1, 1], (1, 2000))[0, :], 10000, replace=False)  # Direction (from) of the slab movement . 1 = west, 2 = north, 3 = east and 4 = south
 p_dep_sand = 0.1  # [0-1] Probability of deposition of sandy cells
 p_dep_bare = 0.1  # [0-1] Probability of deposition of base cells
 p_ero_bare = 0.5  # [0-1] Probability of erosion of bare/sandy cells
@@ -94,7 +92,6 @@ wl_timeseries = scipy.io.loadmat(inputloc + "wl_max_texel.mat")["wl_max_texel"] 
 spec1 = scipy.io.loadmat(inputloc + "spec1.mat")["vegf"]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
 spec2 = scipy.io.loadmat(inputloc + "spec2.mat")["vegf"]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
 
-
 # __________________________________________________________________________________________________________________________________
 # SET INITIAL CONDITIONS
 
@@ -113,9 +110,9 @@ else:
     eqtopo = np.round(eqtopo_initial / slabheight_m)  # [slabs] Transform from m into number of slabs
 
 eqtopo_i = eqtopo
-longhore, crossshore = topo0.shape * cellsize  # [m] Cross-shore/alongshore size of topography
-x = np.linspace(0, crossshore - 1, num=crossshore)  # Shore normal axis for plotting
-y = np.linspace(0, longhore - 1, num=longhore)  # Shore parallel axis for plotting
+longshore, crossshore = topo0.shape * cellsize  # [m] Cross-shore/alongshore size of topography
+x = np.linspace(1, crossshore, num=crossshore)  # Shore normal axis for plotting
+y = np.linspace(1, longshore, num=longshore)  # Shore parallel axis for plotting
 
 gw = np.round(eqtopo_i * groundwater_depth)  # GW lies under beach with less steep angle
 gw[gw >= topo] = topo[gw >= topo]
@@ -144,23 +141,44 @@ balance = topo * 0  # Initialise the sedimentation balance map [slabs]
 stability = topo * 0  # Initialise the stability map [slabs]
 sp1_peak_at0 = sp1_peak  # Store initial peak growth of sp. 1
 sp2_peak_at0 = sp2_peak  # Store initial peak growth of sp. 2
-inundated = np.zeros([longhore, crossshore])  # Initial area of wave/current action
-inundatedcum = np.zeros([longhore, crossshore])  # Initial area of sea action
-pbeachupdatecum = np.zeros([longhore, crossshore])  # Matrix for cumulative effect of hydrodynamics
+inundated = np.zeros([longshore, crossshore])  # Initial area of wave/current action
+inundatedcum = np.zeros([longshore, crossshore])  # Initial area of sea action
+pbeachupdatecum = np.zeros([longshore, crossshore])  # Matrix for cumulative effect of hydrodynamics
 beachcount = 1
 vegcount = 1
 
-
 # __________________________________________________________________________________________________________________________________
 # MODEL OUPUTS
+"""Select matrices to be calculated during the simulation. CAUTION WITH THE SIZE OF YOUR OUTPUT, YOU MAY GET AN OUT-OF-MEMORY ERROR."""
 
 # MANDATORY
+iterations = iterations_per_cycle * simulation_time_y  # Number of iterations
+timeits = np.linspace(1, iterations, iterations)  # Time vector for budget calculations
+seainput_slabs = np.zeros([longshore, crossshore])  # Inititalise vector for sea-transported slab
 
+# OPTIONAL
+# flux_contour = np.zeros([len(timeits), n_contour + 1])  # Inititalise vector for sea-transported slabs
+# seainput_tot = np.empty([longshore, crossshore, len(timeits)])  # 3-D seainput matrices
+# diss_tot = np.empty([longshore, crossshore, len(timeits)])  # 3-D dissipation matrices
+# cumdiss_tot = np.empty([longshore, crossshore, len(timeits)])  # 3-D cummulative dissipation matrices
+# pwave_tot = np.empty([longshore, crossshore, len(timeits)])  # 3-D pwave matrices
+# pbeachupdate_tot = np.empty([longshore, crossshore, len(timeits)])  # 3-D pbeachupdate matrices
+# balancea_tot = np.empty([longshore, crossshore, len(timeits)])  # 3-D balancea matrices
+# balanceb_tot = np.empty([longshore, crossshore, len(timeits)])  # 3-D balanceb matrices
+# stabilitya_tot = np.empty([longshore, crossshore, len(timeits)])  # 3-D stabilitya matrices
+# stabilityb_tot = np.empty([longshore, crossshore, len(timeits)])  # 3-D stabilityb matrices
+# erosmap_tot = np.empty([longshore, crossshore, len(timeits)])  # 3-D erosmap matrices
+# deposmap_tot = np.empty([longshore, crossshore, len(timeits)])  # 3-D deposmap matrices
+# shadowmap_tot = np.zeros([longshore, crossshore])  # 3-D shadowmap matrice
+erosmap_sum = np.zeros([longshore, crossshore])  # Sum of all erosmaps
+deposmap_sum = np.zeros([longshore, crossshore])  # Sum of all deposmaps
+seainput_sum = np.zeros([longshore, crossshore])  # Sum of all seainput maps
+balancea_sum = np.zeros([longshore, crossshore])  # Sum of all balancea maps
+balanceb_sum = np.zeros([longshore, crossshore])  # Sum of all balanceb maps
+stabilitya_sum = np.zeros([longshore, crossshore])  # Sum of all stabilitya maps
+stabilityb_sum = np.zeros([longshore, crossshore])  # Sum of all stabilityb maps
 
-
-
-
-
-
-
-
+# Inititalise vectors for transport activity
+windtransp_slabs = np.zeros([len(timeits)])
+landward_transport = np.zeros([len(timeits)])
+avalanches = np.zeros([len(timeits)])
