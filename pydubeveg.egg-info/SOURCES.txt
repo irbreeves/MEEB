@@ -1,0 +1,7 @@
+README.md
+setup.py
+pydubeveg.egg-info/PKG-INFO
+pydubeveg.egg-info/SOURCES.txt
+pydubeveg.egg-info/dependency_links.txt
+pydubeveg.egg-info/requires.txt
+pydubeveg.egg-info/top_level.txt

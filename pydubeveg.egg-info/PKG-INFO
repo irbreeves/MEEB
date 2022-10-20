@@ -1,0 +1,22 @@
+Metadata-Version: 2.1
+Name: pydubeveg
+Version: 0.0.1.dev0
+Summary: DUne, BEach, and VEGetation Model (Python version)
+Home-page: https://github.com/irbreeves/BarrierBMFT
+Author: Ian Reeves
+Author-email: ireeves@whoi.edu
+License: UNKNOWN
+Description: # PyDUBEVEG
+        Python version of the DUBEVEG (DUne, BEach, and VEGetation) model from Keijsers et al. (2016) and Galiforni Silva et al. (2018, 2019)
+        
+Keywords: dune,coastal,aeolian,vegetation,earth science
+Platform: UNKNOWN
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: GPLv3 License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Topic :: Scientific/Engineering :: Physics
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
