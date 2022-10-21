@@ -189,6 +189,9 @@ avalanches = np.zeros([len(timeits)])
 for it in range(iterations):
     year = math.ceil(it / iterations_per_cycle)
 
+    # Print time step to screen
+    print("\r", "Time Step: ", (it / iterations_per_cycle), end="")
+
     if eqtopo_initial.ndim == 3:
         eqtopo = np.squeeze(eqtopo_initial[:, :, it]) / slabheight_m
 
@@ -220,14 +223,27 @@ for it in range(iterations):
         shadowmap_tot[:, :, it] = shadowmap
 
     if direction[it] == 1 or direction[it] == 3:  # East or west wind direction
-        contour = np.linspace(0, round(crossshore) - 1, n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This produces slightly different results than Matlab version
+        contour = np.linspace(0, round(crossshore) - 1, n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This might produce slightly different results than Matlab version
         changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, jumplength, contour, longshore, crossshore, direction=direction[it])  # Returns map of height changes
     else:  # North or south wind direction
         contour = np.linspace(0, round(longshore) - 1, n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This produces slightly different results than Matlab version
         changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, jumplength, contour, longshore, crossshore, direction=direction[it])  # Returns map of height changes
 
     topo = topo + changemap  # Changes applied to the topography
+    topo, aval = routine.enforceslopes3(topo, veg, slabheight, repose_bare, repose_veg, repose_threshold)  # Enforce angles of repose: avalanching
+    balance = balance + (topo - before)  # Update the sedimentation balance map
+    stability = stability + abs(topo - before)
 
+
+
+# Temp Plot
+
+plt.matshow(topo * slabheight,
+            cmap='terrain',
+            )
+plt.title("Elev TMAX")
+
+plt.show()
 
 
 
