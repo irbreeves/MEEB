@@ -199,16 +199,34 @@ for it in range(iterations):
     gw = eqtopo * groundwater_depth
     sandmap = topo > MHT  # Boolean array, Returns True (1) for sandy cells
 
-    if direction[it] == 1:  # Goes through the series of directions and picks the one of this iteration
-        shadowmap = routine.shaowzones2(topo, slabheight, shadowangle, longshore, crossshore)
-        # shadowmap = routine.shadowzones2(topo, slabheight, shadowangle, longshore, crossshore)  # Returns True (1) for in shadow
-    # elif direction[it] == 2:
-    #     shadowmap = shadowzones2_north(topo, slabheight, shadowangle)  # Returns True (1) for in shadow
-    # elif direction[it] == 3:
-    #     shadowmap = shadowzones2_west(topo, slabheight, shadowangle)  # Returns True (1) for in shadow
-    # else:
-    #     shadowmap = shadowzones2_south(topo, slabheight, shadowangle)  # Returns True (1) for in shadow
+    shadowmap = routine.shadowzones2(topo, slabheight, shadowangle, longshore, crossshore, direction=direction[it])  # Returns map of True (1) for in shadow, False (2) not in shadow
 
+    erosmap = routine.erosprobs2(veg, shadowmap, sandmap, topo, gw, p_ero_bare)  # Returns map of erosion probabilities
+    deposmap = routine.depprobs(veg, shadowmap, sandmap, p_dep_bare, p_dep_sand)  # Returns map of deposition probabilities
+
+    if 'erosmap_sum' in locals():
+        erosmap_sum = erosmap_sum + erosmap
+
+    if 'deposmap_sum' in locals():
+        deposmap_sum = deposmap_sum + deposmap
+
+    if 'erosmap_tot' in locals():
+        erosmap_tot[:, :, it] = erosmap
+
+    if 'deposmap_tot' in locals():
+        deposmap_tot[:, :, it] = deposmap
+
+    if 'shadowmap_tot' in locals():
+        shadowmap_tot[:, :, it] = shadowmap
+
+    if direction[it] == 1 or direction[it] == 3:  # East or west wind direction
+        contour = np.linspace(0, round(crossshore) - 1, n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This produces slightly different results than Matlab version
+        changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, jumplength, contour, longshore, crossshore, direction=direction[it])  # Returns map of height changes
+    else:  # North or south wind direction
+        contour = np.linspace(0, round(longshore) - 1, n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This produces slightly different results than Matlab version
+        changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, jumplength, contour, longshore, crossshore, direction=direction[it])  # Returns map of height changes
+
+    topo = topo + changemap  # Changes applied to the topography
 
 
 
