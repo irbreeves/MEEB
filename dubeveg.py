@@ -122,7 +122,7 @@ offbeachslabs = eqtopo_i[0, 0] - beachslopeslabs * cellsize  # [slabs] Offset fo
 
 # HYDRODYNAMIC
 if no_timeseries == 0:
-    waterlevels = wl_timeseries
+    waterlevels = wl_timeseries[:, 0]
 else:
     raise ValueError('No water level time-series has been loaded. Functionality to automatically build a WL time-series from cumulative probabilities has not yet been incorporated into this model version.')
 
@@ -234,7 +234,31 @@ for it in range(iterations):
     balance = balance + (topo - before)  # Update the sedimentation balance map
     stability = stability + abs(topo - before)
 
+    # --------------------------------------
+    # BEACH UPDATE
 
+    if it % beachreset == 0:  # Update the inundated part of the beach
+
+        inundatedold = inundated  # Make a copy for later use
+        before1 = topo  # Copy of topo before it is changed
+
+        topo, inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes3_diss3e(
+            waterlevels[beachcount - 1],
+            MHTrise,
+            slabheight_m,
+            cellsize,
+            topo,
+            eqtopo,
+            veg,
+            m26,
+            wave_energy,
+            m28f,
+            pwavemaxf,
+            pwaveminf,
+            depth_limit,
+            shelterf,
+            pcurr,
+        )
 
 # Temp Plot
 
@@ -244,16 +268,3 @@ plt.matshow(topo * slabheight,
 plt.title("Elev TMAX")
 
 plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-

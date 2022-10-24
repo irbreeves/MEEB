@@ -239,3 +239,152 @@ def enforceslopes3(topof, vegf, sh, anglesand, angleveg, th):
     return topof, total
 
 
+def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, pcurr):
+    """Calculates the effects of high tide levels on the beach and foredune (with stochastic element)
+    % Beachupdate in cellular automata fashion
+    % Sets back a certain length of the profile to the equilibrium;
+    % if waterlevel exceeds dunefoot, this lead to dune erosion;
+    % otherwise, only the beach is reset.
+    %
+    % tide          : height of storm surge [slabs]
+    % slabheight    : slabheight in m [slabheightm] [m]
+    % cellsizef     : interpreted cell size [cellsize] [m]
+    % topof         : topography map [topo] [slabs]
+    % eqtopof       : equilibrium beach topography map [eqtopo] [slabs]
+    % vegf          : map of combined vegetation effectiveness [veg] [0-1]
+    % m26f          : parameter for dissipation strength ~[0.01 - 0.02]
+    % m27af         : wave energy factor
+    % m28f          : resistance of vegetation: 1 = full, 0 = none.
+    % pwavemaxf     : maximum erosive strenght of waves (if >1: overrules vegetation)
+    % pwaveminf     : in area with waves always potential for action
+    % depthlimitf   : no erosive strength in very shallow water
+    % shelterf      : exposure of sheltered cells: 1 = full shelter, 0 = no shelter.
+    % phydro         : probability of erosion due to any other hydrodynamic process rather than waves"""
+
+    # # Activate this to test standalone
+    # [topo, veg] = read_profile_from_netcdf(3, 20000, 1997,0);
+    # [topo, eqtopo, veg1, veg2] = create_topographies(topo, veg);
+    # slabheight   = 0.1;
+    # depthlimitf  = 0.4;     % strongly controls the retreat distance
+    # cellsizef    = 1;
+    # topof        = topo./slabheight;
+    # old_topof    = topof;
+    # eqtopof      = eqtopo./slabheight;
+    # vegf         = veg1+veg2;
+    # test         = 1;
+    # m26f         = 0.013;   % dissipation strength
+    # m27af        = 1;       % wave energy factor (redundant?)
+    # m28f         = 0.0;     % resistance of vegetation (1 = full)
+    # pwavemaxf    = 1;
+    # pwaveminf    = 1;       % if 1: always erosion if inundated; if 0: no erosion if all energy has been dissipated
+    # shelterf     = 1.0;     % exposure to waves in sheltered cells (1 = full shelter, 0 = no shelter)
+    # total_tide   = 45; % offshore tide level [slabs]
+    # msl          = 0;
+
+    # --------------------------------------
+    # WAVE RUNUP
+    # Offshore measured tide (sealevf) has to be converted to effective tide
+    # level at the shoreline. The vertical limit of wave runup (R) is a function of
+    # tide, slope and wave conditions. Since wave conditions are correlated
+    # with tide level (higher waves associated with higher storms, we use a
+    # simplified expression where R = f(tide, slope).
+    #
+    # Original expression of wave runup height controlled by foreshore slope
+    # (Stockdon et al, 2006):
+    #   Irribarren number = b/sqrt(H/L)
+    #   for dissipative beaches (Irribarren number < 0.3):
+    #       runup_m = 0.043 * sqrt(H*L);
+    #   for intermediate or reflective beaches (Irribarren number >= 0.3):
+    #       runup = 1.1*(.35*tan(b)*sqrt(H*L) + sqrt(H*L*(0.563*tan(b^2)+0.004))/2);
+
+    # Derive gradient of eqtopo as an approximation of foreshore slope
+    loc_upper_slope = np.argwhere(eqtopof[0, :] > 15)
+    loc_lower_slope = np.argwhere(eqtopof[0, :] > -15)
+
+    if len(loc_upper_slope) == 0 or len(loc_lower_slope) == 0:
+        b = 0.01
+    else:
+        b = np.nanmean(np.gradient(eqtopof[0, loc_lower_slope[0]: loc_upper_slope[0]] * slabheight))
+
+    # Tidal elevation above MSL
+    tide = total_tide - msl
+    tide_m = tide * slabheight
+    msl_m = msl * slabheight
+
+    H = max(0, -2.637 + 2.931 * tide_m)
+    L = max(0, -30.59 + 46.74 * tide_m)
+
+    # Runup as a function of wave conditions (H, L) and foreshore slope (b)
+    if b / math.sqrt(H / L) < 0.3:
+        runup_m = 0.043 * math.sqrt(H * L)
+    else:
+        runup_m = 1.1 * (0.35 * math.tan(b) * math.sqrt(H * L) + math.sqrt(H * L * (0.563 * math.tan(b**2) + 0.004)) / 2)
+
+    # Add runup to tide to arrive at total water level (=tide + runup + msl)
+    totalwater_m = tide_m + runup_m + msl_m
+    totalwater = totalwater_m / slabheight
+
+    # --------------------------------------
+    # IDENTIFY CELLS EXPOSED TO WAVES
+    # by dunes and embryodunes, analogous to shadowzones but no angle
+
+    toolow = topof < totalwater  # [0 1] Give matrix with cells that are potentially under water
+    pexposed = np.ones(topof.shape)  # Initialise matrix
+    for m20 in range(len(topof[:, 0])):  # Run along all the rows
+        m21 = np.argwhere(topof[m20, :] >= totalwater)[0][0]
+        pexposed[m20, m21: -1] = 1 - shelterf
+
+    # --------------------------------------
+    # FILL TOPOGRAPHY TO EQUILIBRIUM
+
+    inundatedf = pexposed  # Inundated is the area that really receives sea water
+
+    # --------------------------------------
+    # WAVES
+
+    waterdepth = (totalwater - topof) * pexposed * slabheight  # [m] Exposed is used to avoid negative waterdepths
+    waterdepth[waterdepth <= depthlimitf] = depthlimitf  # This limits high dissipitation when depths are limited; remainder of energy is transferred landward
+
+    # Initialise dissiptation matrices
+    diss = np.zeros(topof.shape)
+    cumdiss = np.zeros(topof.shape)
+
+    # Calculate dissipation
+    loc = np.argwhere(topof[0, :] > -10)  # Find location to start dissipation
+
+    if len(loc) == 0:
+        loc[0] = 1
+    elif loc[0] == 0:
+        loc[0] = 1
+
+    for m25 in range(int(loc[0]), topof.shape[1]):  # Do for all columns
+        diss[:, m25] = (cellsizef / waterdepth[:, m25]) - (cellsizef / waterdepth[:, loc[0]][:, 0])  # Dissipation corrected for cellsize
+        cumdiss[:, m25] = diss[:, m25 - 1] + cumdiss[:, m25 - 1]  # Cumulative dissipation from the shore, excluding the current cell
+
+    # --------------------------------------
+    # CALCULATING PROBABILITY OF HYDRODYNAMIC EROSION (phydro = pwave - pinun)
+
+
+
+    print()
+
+
+
+
+
+    return 0, 0, 0, 0, 0, 0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
