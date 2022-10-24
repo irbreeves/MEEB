@@ -364,15 +364,61 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
     # --------------------------------------
     # CALCULATING PROBABILITY OF HYDRODYNAMIC EROSION (phydro = pwave - pinun)
 
+    # Dissipation of wave strength across the topography (wave strength times dissiptation)
+    pwave = (m27af * pwavemaxf - m26f * cumdiss)
+    pwave_ero = pwave  # Wave used for dune attack    # IRBR 24Oct22: Does this case pwave to change too below?
 
+    # Normalize and remove negatives
+    pwave_ero[pwave_ero < 0] = 0  # Set negative values to 0
+    pwave_ero = pwave_ero / np.max(pwave_ero)  # Set max between 1 and 0
+    pwave[pwave < 0] = 0  # Set negative values to 0
+    pwave = pwave / np.max(pwave)  # Set max between 1 and 0
 
-    print()
+    pwave[(pwave < pwaveminf) & (topof < totalwater) & (pexposed > 0)] = pwaveminf  # In area with waves always potential for action
 
+    pcurr = toolow * pcurr
 
+    # Local reduction of erosive strength due to vegetation
+    pbare = 1 - m28f * vegf  # If vegf = 1, still some chance for being eroded
 
+    # Ssumming up erosion probabilities
+    phydro = pwave
+    phydro_ero = pwave_ero + pcurr
 
+    # --------------------------------------
+    # UPDATING THE TOPOGRAPHY
 
-    return 0, 0, 0, 0, 0, 0
+    pbeachupdate = pbare * phydro * (topof < totalwater)  # * pexposed  # Probability for beachupdate, also indication of strength of process (it does not do anything random)
+    pbeachupdate[pbeachupdate < 0] = 0  # Keep probabilities to 0 - 1 range
+    pbeachupdate[pbeachupdate > 1] = 1
+
+    pbeachupdate_ero = pbare * phydro_ero * (topof > totalwater)
+    pbeachupdate_ero[pbeachupdate_ero < 0] = 0  # Keep probabilities to 0 - 1 range
+    pbeachupdate_ero[pbeachupdate_ero > 1] = 1
+
+    # Stochastic element
+    width, length = pbeachupdate.shape
+    dbeachupdate = np.random.rand(width, length) < pbeachupdate  # Do beachupdate only for random cells
+    dbeachupdate_ero = np.random.rand(width, length) < pbeachupdate_ero  # Do beachupdate only for random cells
+
+    topof = topof - ((topof - eqtopof) * dbeachupdate)  # Adjusting the topography
+
+    topof[topof < -10] = eqtopof[topof < -10]  # Update those that migrated to the ocean by the open boundary
+
+    # # Changed after revision (JK 21/01/2015)
+    # # Limit filling up of topography to the maximum water level, so added (accreted) cells cannot be above the maximum water level
+    # eqtopof[(eqtopof > sealevf)] = sealevf
+    #
+    # topof = topof - (topof - eqtopof) * dbeachupdate  # Adjusting the topography
+    # topof[(topof > totalwater) & (dbeachupdate > 0)] = totalwater
+    #
+    # # Changed after revision (FGS)
+    # # Above proposed change has the counterpart of a lot of filling when beach width is short, since it starts to build-up dunes instead of eroding it
+
+    if np.isnan(np.sum(dbeachupdate_ero)):
+        topof[(topof >= totalwater) & (dbeachupdate_ero > 0)] = topof[(topof >= totalwater) & (dbeachupdate_ero > 0)] - (topof[(topof >= totalwater) & (dbeachupdate_ero > 0)] - eqtopof[(topof >= totalwater) & (dbeachupdate_ero > 0)])
+
+    return topof, inundatedf, pbeachupdate, diss, cumdiss, pwave
 
 
 

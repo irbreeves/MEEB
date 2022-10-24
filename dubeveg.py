@@ -260,6 +260,16 @@ for it in range(iterations):
             pcurr,
         )
 
+
+
+
+
+
+
+
+
+
+
 # Temp Plot
 
 plt.matshow(topo * slabheight,
