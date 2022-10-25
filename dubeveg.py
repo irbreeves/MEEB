@@ -16,6 +16,7 @@ import scipy.io
 import math
 import random
 import matplotlib.pyplot as plt
+import time
 
 # __________________________________________________________________________________________________________________________________
 # USER INPUTS
@@ -183,14 +184,18 @@ windtransp_slabs = np.zeros([len(timeits)])
 landward_transport = np.zeros([len(timeits)])
 avalanches = np.zeros([len(timeits)])
 
+start_time = time.time()  # Record time at start of simulation to track duration
+
+
 # __________________________________________________________________________________________________________________________________
 # MAIN ITERATION LOOP
 
 for it in range(iterations):
-    year = math.ceil(it / iterations_per_cycle)
 
     # Print time step to screen
-    print("\r", "Time Step: ", (it / iterations_per_cycle), end="")
+    print("\r", "Time Step: ", (it / iterations_per_cycle), "yrs", end="")
+
+    year = math.ceil(it / iterations_per_cycle)
 
     if eqtopo_initial.ndim == 3:
         eqtopo = np.squeeze(eqtopo_initial[:, :, it]) / slabheight_m
@@ -234,6 +239,11 @@ for it in range(iterations):
     balance = balance + (topo - before)  # Update the sedimentation balance map
     stability = stability + abs(topo - before)
 
+
+    # ADD ADDITIONAL DATA SAVING
+
+
+
     # --------------------------------------
     # BEACH UPDATE
 
@@ -260,6 +270,63 @@ for it in range(iterations):
             pcurr,
         )
 
+        seainput = topo - before1  # Sand added to the beach by the sea
+        # seainput_slabs[it] = np.nansum(seainput)  # IRBR 24OCt22: Bug here. Why is this even needed?
+
+        if 'seainput_total' in locals():
+            seainput_total[:, :, it] = seainput
+
+        if 'diss_total' in locals():
+            diss_total[:, :, it] = diss
+
+        if 'cumdiss_total' in locals():
+            cumdiss_total[:, :, it] = cumdiss
+
+        if 'pwave_total' in locals():
+            pwave_total[:, :, it] = pwave
+
+        if 'pbeachupdate_total' in locals():
+            pbeachupdate_total[:, :, it] = pbeachupdate
+
+        if 'seainput_sum' in locals():
+            seainput_sum = seainput_sum + seainput
+
+        inundated = np.logical_or(inundated, inundatedold)  # Combine updated area from individual loops
+        pbeachupdatecum = pbeachupdate + pbeachupdatecum  # Cumulative beachupdate probabilities
+        topo = routine.enforceslopes3(topo, veg, slabheight, repose_bare, repose_veg, repose_threshold)[0]  # Enforce angles of repose again
+        balance = balance + (topo - before1)
+        stability = stability + abs(topo - before1)
+
+        if 'balanceb_sum' in locals():
+            balanceb_sum = balanceb_sum + balance
+
+        if 'balanceb_tot' in locals():
+            balanceb_tot[:, :, it] = balance
+
+        if 'stabilityb_sum' in locals():
+            stabilityb_sum = stabilityb_sum + stability
+
+        if 'stabilityb' in locals():
+            stabilityb[:, :, it] = balance
+
+        beachcount += 1  # Update counter
+
+
+    # --------------------------------------
+    # VEGETATION
+
+    if it % iterations_per_cycle == 0 and it > 0:  # Update the vegetation
+
+        veg_multiplier = (1 + growth_reduction_timeseries[vegcount])  # For the long term reduction.
+        sp1_peak = sp1_peak_at0 * veg_multiplier
+        sp2_peak = sp2_peak_at0 * veg_multiplier
+        spec1_old = spec1
+        spec2_old = spec2
+        spec1 = routine.growthfunction1_sens(spec1, balance * slabheight_m, sp1_a, sp1_b, sp1_c, sp1_d, sp1_e, sp1_peak)
+        spec2 = routine.growthfunction2_sens(spec2, balance * slabheight_m, sp2_a, sp2_b, sp2_d, sp1_e, sp2_peak)
+
+        # Lateral Expansion
+        lateral1 = routine.lateral_expansion(spec1_old, 1, lateral_probability * veg_multiplier)  # Species 1
 
 
 
@@ -268,13 +335,27 @@ for it in range(iterations):
 
 
 
+    # --------------------------------------
+    # RESET DOMAINS
+    balance_copy = balance
+    balance[:] = 0  # Reset the balance map
+    inundated[:] = 0  # Reset part of beach with wave/current action
+    pbeachupdatecum[:] = 0
+    stability[:] = 0  # Reset the balance map
 
+
+# __________________________________________________________________________________________________________________________________
+# SIMULATION END
+
+# Print elapsed time of simulation
+print()
+SimDuration = time.time() - start_time
+print()
+print("Elapsed Time: ", SimDuration, "sec")
 
 # Temp Plot
-
 plt.matshow(topo * slabheight,
             cmap='terrain',
             )
 plt.title("Elev TMAX")
-
 plt.show()

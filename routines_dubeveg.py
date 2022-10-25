@@ -315,7 +315,9 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
     L = max(0, -30.59 + 46.74 * tide_m)
 
     # Runup as a function of wave conditions (H, L) and foreshore slope (b)
-    if b / math.sqrt(H / L) < 0.3:
+    if L == 0 and H > 0:
+        runup_m = 0.043 * math.sqrt(H * L)
+    elif (L > 0 and H > 0) and b / math.sqrt(H / L) < 0.3:
         runup_m = 0.043 * math.sqrt(H * L)
     else:
         runup_m = 1.1 * (0.35 * math.tan(b) * math.sqrt(H * L) + math.sqrt(H * L * (0.563 * math.tan(b**2) + 0.004)) / 2)
@@ -331,8 +333,10 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
     toolow = topof < totalwater  # [0 1] Give matrix with cells that are potentially under water
     pexposed = np.ones(topof.shape)  # Initialise matrix
     for m20 in range(len(topof[:, 0])):  # Run along all the rows
-        m21 = np.argwhere(topof[m20, :] >= totalwater)[0][0]
-        pexposed[m20, m21: -1] = 1 - shelterf
+        twlloc = np.argwhere(topof[m20, :] >= totalwater)
+        if len(twlloc) > 0:  # If there are any sheltered cells
+            m21 = twlloc[0][0]  # Finds for every row the first instance where the topography exceeds the sea level
+            pexposed[m20, m21: -1] = 1 - shelterf  # Subtract shelter from exposedness: sheltered cells are less exposed
 
     # --------------------------------------
     # FILL TOPOGRAPHY TO EQUILIBRIUM
@@ -421,14 +425,94 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
     return topof, inundatedf, pbeachupdate, diss, cumdiss, pwave
 
 
+def growthfunction1_sens(spec, sed, A1, B1, C1, D1, E1, P1):
+    """Input is the vegetation map, and the sedimentation balance in units of cell dimension (!), i.e. already adjusted by the slabheight
+    Output is the change in vegetation effectiveness
+    Ammophilia-like vegetation"""
+
+    # Physiological range (needs to be specified)
+    minimum = 0.0
+    maximum = 1.0
+
+    # Vertices (these need to be specified)
+    x1 = A1  # was x1 = -1.4
+    x2 = B1  # was x2 = 0.1
+    x3 = C1  # was x3 = 0.45
+    x4 = D1  # was x4 = 0.85
+    x5 = E1  # was x5 = 1.4
+    y1 = -1.0  # y1 = -1.0; y1 = -1.0
+    y2 = 0.0  # y2 = 0.0; y2 = 0.0
+    y3 = P1  # y3 = 0.4; y3 = P1;
+    y4 = 0.0  # y4 = 0.0; y4 = 0.0
+    y5 = -1.0  # y5 = -1.0; y5 = -1.0
+
+    # Slopes between vertices (calculated from vertices)
+    s12 = (y2 - y1) / (x2 - x1)
+    s23 = (y3 - y2) / (x3 - x2)
+    s34 = (y4 - y3) / (x4 - x3)
+    s45 = (y5 - y4) / (x5 - x4)
+
+    leftextension = (sed < x1) * -1
+    firstleg = (sed >= x1) * (sed < x2) * ((sed - x1) * s12 + y1)
+    secondleg = (sed >= x2) * (sed < x3) * ((sed - x2) * s23 + y2)
+    thirdleg = (sed >= x3) * (sed < x4) * ((sed - x3) * s34 + y3)
+    fourthleg = (sed >= x4) * (sed < x5) * ((sed - x4) * s45 + y4)
+    rightextension = (sed >= x5) * -1
+
+    spec = spec + leftextension + firstleg + secondleg + thirdleg + fourthleg + rightextension
+
+    spec[spec < minimum] = minimum
+    spec[spec > maximum] = maximum
+
+    return spec
 
 
+def growthfunction2_sens(spec, sed, A2, B2, D2, E2, P2):
+    """Input is the vegetation map, and the sedimentation balance in units of cell dimension (!), i.e. already adjusted by the slabheight
+    Output is the change in vegetation effectiveness
+    Buckthorn-type vegetation"""
+
+    # Physiological range (needs to be specified)
+    minimum = 0.0  # was -0.5
+    maximum = 1.0  # was 1.5
+
+    # Vertices (these need to be specified)
+    x1 = A2  # was x1 = -1.3
+    x2 = B2  # was x2 = -0.65
+    x3 = 0  # was x3 = 0
+    x4 = D2  # was x4 = 0.2
+    x5 = E2  # was x5 = 2.2
+    y1 = -1.0  # y1 = -1.0
+    y2 = 0.0  # y2 = 0.0
+    y3 = P2  # y3 = 0.1
+    y4 = 0.0  # y4 = 0.0
+    y5 = -1.0  # y5 = -1.0
+
+    # Slopes between vertices (calculated from vertices)
+    s12 = (y2 - y1) / (x2 - x1)
+    s23 = (y3 - y2) / (x3 - x2)
+    s34 = (y4 - y3) / (x4 - x3)
+    s45 = (y5 - y4) / (x5 - x4)
+
+    leftextension = (sed < x1) * -1
+    firstleg = (sed >= x1) * (sed < x2) * ((sed - x1) * s12 + y1)
+    secondleg = (sed >= x2) * (sed < x3) * ((sed - x2) * s23 + y2)
+    thirdleg = (sed >= x3) * (sed < x4) * ((sed - x3) * s34 + y3)
+    fourthleg = (sed >= x4) * (sed < x5) * ((sed - x4) * s45 + y4)
+    rightextension = (sed >= x5) * -1
+
+    spec = spec + leftextension + firstleg + secondleg + thirdleg + fourthleg + rightextension
+
+    spec[spec < minimum] = minimum
+    spec[spec > maximum] = maximum
+
+    return spec
 
 
-
-
-
-
+def lateral_expansion(veg, dist, prob):
+    """LATERAL_EXPANSION implements lateral expansion of existing vegetation patches
+    1) mark cells that lie within <dist> of existing patches: probability for new vegetated cells = 1
+    2) cells not adjacent to existing patches get probability depending on elevation: pioneer most likely to establish between 3 and 5 m + sea level"""
 
 
 
