@@ -514,6 +514,72 @@ def lateral_expansion(veg, dist, prob):
     1) mark cells that lie within <dist> of existing patches: probability for new vegetated cells = 1
     2) cells not adjacent to existing patches get probability depending on elevation: pioneer most likely to establish between 3 and 5 m + sea level"""
 
+    # Pad vegetation matrix with zeros for rolling
+    veg = veg > 0
+    vegpad = np.zeros(np.add(veg.shape, (2, 2)))
+    vegpad[1: -1, 1: -1] = veg
+    veg3 = vegpad
+
+    # Add shifted matrices to initial matrix to include boundaries
+    for i in [-dist, 0, dist]:
+        for j in [-dist, 0, dist]:
+            # Only 4 neighbouring cells (Von Neumann neighbourhood)
+            # if i*3+5+j % 2 == 0:
+            veg2 = np.roll(vegpad, (i, j), axis=(0, 1))
+            veg3 = veg3 + veg2
+
+    veg3[veg3 > 1] = 1
+    lateral_expansion_possible = veg3[1: -1, 1: -1]
+
+    # Lateral expansion only takes place in a fraction <prob> of the possible cells
+    width, length = veg.shape
+    lateral_expansion_allowed = np.random.rand(width, length) < lateral_expansion_possible * prob
+    # Include existing vegetation to incorporate growth or decay of existing patches
+    lateral_expansion_allowed = lateral_expansion_allowed + veg
+    lateral_expansion_allowed = lateral_expansion_allowed > 0
+
+    return lateral_expansion_allowed
+
+
+def establish_new_vegetation(topof, mht, prob):
+    """"""
+    # Convert topography to height above current sea level
+    topof = topof - mht
+
+    # Vertices (these need to be specified)
+    x1 = 0.0
+    x2 = 2.0
+    x3 = 3.0
+    x4 = 4.5
+    x5 = 20.0
+    y1 = prob
+    y2 = prob
+    y3 = prob
+    y4 = prob
+    y5 = prob
+
+    # Slopes between vertices (calculated from vertices)
+    s12 = (y2 - y1) / (x2 - x1)
+    s23 = (y3 - y2) / (x3 - x2)
+    s34 = (y4 - y3) / (x4 - x3)
+    s45 = (y5 - y4) / (x5 - x4)
+
+    leftextension = (topof < x1) * 0
+    firstleg = (topof >= x1) * (topof < x2) * ((topof - x1) * s12 + y1)
+    secondleg = (topof >= x2) * (topof < x3) * ((topof - x2) * s23 + y2)
+    thirdleg = (topof >= x3) * (topof < x4) * ((topof - x3) * s34 + y3)
+    fourthleg = (topof >= x4) * (topof < x5) * ((topof - x4) * s45 + y4)
+    rightextension = (topof >= x5) * 0
+
+    pioneer_establish_prob = leftextension + firstleg + secondleg + thirdleg + fourthleg + rightextension
+    width, length = topof.shape
+    pioneer_established = np.random.rand(width, length) < pioneer_establish_prob
+
+    return pioneer_established
+
+
+
+
 
 
 

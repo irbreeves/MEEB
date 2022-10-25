@@ -325,11 +325,11 @@ for it in range(iterations):
         spec1 = routine.growthfunction1_sens(spec1, balance * slabheight_m, sp1_a, sp1_b, sp1_c, sp1_d, sp1_e, sp1_peak)
         spec2 = routine.growthfunction2_sens(spec2, balance * slabheight_m, sp2_a, sp2_b, sp2_d, sp1_e, sp2_peak)
 
-        # Lateral Expansion
+        # Lateral Expansion & Veg Establishment
         lateral1 = routine.lateral_expansion(spec1_old, 1, lateral_probability * veg_multiplier)  # Species 1
-
-
-
+        lateral2 = routine.lateral_expansion(spec2_old, 1, lateral_probability * veg_multiplier)  # Species 1
+        pioneer1 = routine.establish_new_vegetation(topo * slabheight_m, MHT, pioneer_probability * veg_multiplier) * (spec1_old <= 0)
+        pioneer2 = routine.establish_new_vegetation(topo * slabheight_m, MHT, pioneer_probability * veg_multiplier) * (spec2_old <= 0) * (stability == 0)
 
 
 
