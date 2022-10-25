@@ -6,7 +6,7 @@ Python version of the DUne, BEach, and VEGetation (DUBEVEG) model from Keijsers 
 
 Translated from Matlab by IRB Reeves
 
-Last update: 20 October 2022
+Last update: 25 October 2022
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -31,26 +31,26 @@ def shadowzones2(topof, sh, lee, longshore, crossshore, direction):
     # range = min(crossshore, max(topof) / steplimit)
     search_range = int(math.floor(np.max(topof) / steplimit))  # Identifies highest elevation and uses that to determine what the largest search distance needs to be
 
-    inshade = np.zeros([longshore, crossshore])  # Define the zeroed logical map
+    inshade = np.zeros([longshore, crossshore]).astype(bool)  # Define the zeroed logical map
 
     for i in range(1, search_range + 1):
         if direction == 1:
-            step = topof - np.roll(topof, [0, i])  # Shift across columns (2nd dimension; along a row)
+            step = topof - np.roll(topof, i, axis=1)  # Shift across columns (2nd dimension; along a row)
             tempinshade = step < -math.floor(steplimit * i)  # Identify cells with too great a stepheight
             tempinshade[:, 0:i] = 0  # Part that is circshifted back into beginning of space is ignored
         elif direction == 2:
-            step = topof - np.roll(topof, [i, 0])  # Shift across columns (2nd dimension; along a row)
+            step = topof - np.roll(topof, i, axis=0)  # Shift across columns (2nd dimension; along a row)
             tempinshade = step < -math.floor(steplimit * i)  # Identify cells with too great a stepheight
             tempinshade[0:i, :] = 0  # Part that is circshifted back into beginning of space is ignored
         elif direction == 3:
-            step = topof - np.roll(topof, [0, -i])  # Shift across columns (2nd dimension; along a row)
+            step = topof - np.roll(topof, -i, axis=1)  # Shift across columns (2nd dimension; along a row)
             tempinshade = step < -math.floor(steplimit * i)  # Identify cells with too great a stepheight
             tempinshade[:, -1 - i:-1] = 0  # Part that is circshifted back into beginning of space is ignored
         elif direction == 4:
-            step = topof - np.roll(topof, [-i, 0])  # Shift across columns (2nd dimension; along a row)
+            step = topof - np.roll(topof, -i, axis=0)  # Shift across columns (2nd dimension; along a row)
             tempinshade = step < -math.floor(steplimit * i)  # Identify cells with too great a stepheight
             tempinshade[-1 - i:-1, :] = 0  # Part that is circshifted back into beginning of space is ignored
-        inshade[tempinshade is True] = True  # Merge with previous inshade zones
+        inshade = np.bitwise_or(inshade, tempinshade)  # Merge with previous inshade zones
 
     return inshade
 
@@ -110,7 +110,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
     while np.sum(inmotion) > 0:  # While still any slabs moving
         transportdist += 1  # Every time in the loop the slaps are transported one length further to the right
         if direction == 1:
-            inmotion = np.roll(inmotion, [0, hop])  # Shift the moving slabs one hop length to the right
+            inmotion = np.roll(inmotion, hop, axis=1)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
             depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
@@ -118,7 +118,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[:, 0: hop] = 0  # Remove  all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 2:
-            inmotion = np.roll(inmotion, [hop, 0])  # Shift the moving slabs one hop length to the right
+            inmotion = np.roll(inmotion, hop, axis=0)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
             depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
@@ -134,7 +134,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             # deposited = inmotion * depocells  # True where a slab is available and should be deposited
             # deposited[0: hop, :] = 0  # Remove  all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 3:
-            inmotion = np.roll(inmotion, [0, -hop])  # Shift the moving slabs one hop length to the right
+            inmotion = np.roll(inmotion, -hop, axis=1)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
             depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
@@ -142,7 +142,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[:, -1 - hop: -1] = 0  # Remove  all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 4:
-            inmotion = np.roll(inmotion, [-hop, 0])  # Shift the moving slabs one hop length to the right
+            inmotion = np.roll(inmotion, -hop, axis=0)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[contour.astype(np.int64), :], axis=1)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
             depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
