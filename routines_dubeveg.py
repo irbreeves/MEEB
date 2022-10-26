@@ -116,7 +116,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
             # depocells[:, -1 - hop: -1] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
-            deposited[:, 0: hop] = 0  # Remove  all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
+            deposited[:, 0: hop] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 2:
             inmotion = np.roll(inmotion, hop, axis=0)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
@@ -124,7 +124,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
             # depocells[0 : hop, :] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
-            deposited[0: hop, :] = 0  # Remove  all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
+            deposited[0: hop, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 3:
             inmotion = np.roll(inmotion, -hop, axis=1)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
@@ -132,7 +132,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
             # depocells[:, -1 - hop: -1] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
-            deposited[:, -1 - hop: -1] = 0  # Remove  all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
+            deposited[:, -1 - hop: -1] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 4:
             inmotion = np.roll(inmotion, -hop, axis=0)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[contour.astype(np.int64), :], axis=1)  # Account ammount of slabs that are in motion in specific contours
@@ -140,7 +140,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
             # depocells[0 : hop + 1, :] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
-            deposited[-1 - hop: -1, :] = 0  # Remove  all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
+            deposited[-1 - hop: -1, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
 
         inmotion[deposited] = False  # Left over in transport after this round of deposition
         numshifted = numshifted + np.sum(deposited) * transportdist  # Number of slabs deposited, weighted for transport distance
@@ -151,7 +151,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
     return diff, numshifted, sum_contour
 
 
-def enforceslopes3(topof, vegf, sh, anglesand, angleveg, th):
+def enforceslopes2(topof, vegf, sh, anglesand, angleveg, th):
     """Function to enforce the angle of repose; open boundaries (18 oct 2010). Returns an updated topography.
     - topof         : topography map [topo]
     - vegf          : map of combined vegetation effectiveness [veg] [0,1]

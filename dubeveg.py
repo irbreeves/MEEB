@@ -14,7 +14,7 @@ import routines_dubeveg as routine
 import numpy as np
 import scipy.io
 import math
-import random
+import dill
 import matplotlib.pyplot as plt
 import time
 
@@ -22,18 +22,19 @@ import time
 # USER INPUTS
 
 # GENERAL
-simnum = 2  # Reference number of the simulation. Used for personal reference.
+simnum = 1  # Reference number of the simulation. Used for personal reference.
 MHT = 0  # [m] Sea-level reference
 MHTrise = 0  # [m/yr] Sea-level rise rate
 qpotseries = 2  # Number reference to calculate how many iterations represent one year. 4 is standard year of 100 iterations, corresponds to qpot (#1 = 25 it, #2 = 50 it, #3 = 75 it, #4 = 100 it, #5 = 125 it) (*25 = qpot)
 writeyear = 1  # Write results to disc every n years
-simulation_time_y = 30  # [yr] Length of the simulation time
+simulation_time_y = 15  # [yr] Length of the simulation time
 cellsize = 1  # [m] Interpreted cell size
 slabheight = 0.1  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
 slabheight_m = cellsize * slabheight  # [m] Slab height
 repl = 1  # Number of replicates
 inputloc = "Input/"  # Input file directory
 outputloc = "Output/"  # Output file directory
+save_data = False
 
 # AEOLIAN
 groundwater_depth = 0.8  # Proportion of the equilibrium profile used to set groundwater profile.
@@ -94,10 +95,6 @@ spec1 = scipy.io.loadmat(inputloc + "spec1.mat")["vegf"]  # [0-1] 2D-matrix of v
 spec2 = scipy.io.loadmat(inputloc + "spec2.mat")["vegf"]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
 
 start_time = time.time()  # Record time at start of simulation to track duration
-
-
-# __________________________________________________________________________________________________________________________________
-# RUN DUBEVEG
 
 
 # __________________________________________________________________________________________________________________________________
@@ -164,6 +161,12 @@ vegcount = 0
 iterations = iterations_per_cycle * simulation_time_y  # Number of iterations
 timeits = np.linspace(1, iterations, iterations)  # Time vector for budget calculations
 seainput_slabs = np.zeros([longshore, crossshore])  # Inititalise vector for sea-transported slab
+topo_TS = np.empty([longshore, crossshore, simulation_time_y + 1])  # Array for saving each topo map for each simulation year
+topo_TS[:, :, 0] = topo
+spec1_TS = np.empty([longshore, crossshore, simulation_time_y + 1])  # Array for saving each spec1 map for each simulation year
+spec1_TS[:, :, 0] = spec1
+spec2_TS = np.empty([longshore, crossshore, simulation_time_y + 1])  # Array for saving each spec2 map for each simulation year
+spec2_TS[:, :, 0] = spec2
 
 # OPTIONAL
 # flux_contour = np.zeros([len(timeits), n_contour + 1])  # Inititalise vector for sea-transported slabs
@@ -218,21 +221,6 @@ for it in range(iterations):
     erosmap = routine.erosprobs2(veg, shadowmap, sandmap, topo, gw, p_ero_bare)  # Returns map of erosion probabilities
     deposmap = routine.depprobs(veg, shadowmap, sandmap, p_dep_bare, p_dep_sand)  # Returns map of deposition probabilities
 
-    if 'erosmap_sum' in locals():
-        erosmap_sum = erosmap_sum + erosmap
-
-    if 'deposmap_sum' in locals():
-        deposmap_sum = deposmap_sum + deposmap
-
-    if 'erosmap_tot' in locals():
-        erosmap_tot[:, :, it] = erosmap
-
-    if 'deposmap_tot' in locals():
-        deposmap_tot[:, :, it] = deposmap
-
-    if 'shadowmap_tot' in locals():
-        shadowmap_tot[:, :, it] = shadowmap
-
     if direction[it] == 1 or direction[it] == 3:  # East or west wind direction
         contour = np.linspace(0, round(crossshore) - 1, n_contour + 1)  # Contours to account for transport
         changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, jumplength, contour, longshore, crossshore, direction=direction[it])  # Returns map of height changes
@@ -241,14 +229,11 @@ for it in range(iterations):
         changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, jumplength, contour, longshore, crossshore, direction=direction[it])  # Returns map of height changes
 
     topo = topo + changemap  # Changes applied to the topography
-    topo, aval = routine.enforceslopes3(topo, veg, slabheight, repose_bare, repose_veg, repose_threshold)  # Enforce angles of repose: avalanching
+    topo, aval = routine.enforceslopes2(topo, veg, slabheight, repose_bare, repose_veg, repose_threshold)  # Enforce angles of repose: avalanching
     balance = balance + (topo - before)  # Update the sedimentation balance map
+    balance_init = balance + (topo - before)
     stability = stability + abs(topo - before)
-
-
-    # ADD ADDITIONAL DATA SAVING
-
-
+    stability_init = stability + abs(topo - before)
 
     # --------------------------------------
     # BEACH UPDATE
@@ -279,44 +264,13 @@ for it in range(iterations):
         seainput = topo - before1  # Sand added to the beach by the sea
         # seainput_slabs[it] = np.nansum(seainput)  # IRBR 24OCt22: Bug here. Why is this even needed?
 
-        if 'seainput_total' in locals():
-            seainput_total[:, :, it] = seainput
-
-        if 'diss_total' in locals():
-            diss_total[:, :, it] = diss
-
-        if 'cumdiss_total' in locals():
-            cumdiss_total[:, :, it] = cumdiss
-
-        if 'pwave_total' in locals():
-            pwave_total[:, :, it] = pwave
-
-        if 'pbeachupdate_total' in locals():
-            pbeachupdate_total[:, :, it] = pbeachupdate
-
-        if 'seainput_sum' in locals():
-            seainput_sum = seainput_sum + seainput
-
         inundated = np.logical_or(inundated, inundatedold)  # Combine updated area from individual loops
         pbeachupdatecum = pbeachupdate + pbeachupdatecum  # Cumulative beachupdate probabilities
-        topo = routine.enforceslopes3(topo, veg, slabheight, repose_bare, repose_veg, repose_threshold)[0]  # Enforce angles of repose again
+        topo = routine.enforceslopes2(topo, veg, slabheight, repose_bare, repose_veg, repose_threshold)[0]  # Enforce angles of repose again
         balance = balance + (topo - before1)
         stability = stability + abs(topo - before1)
 
-        if 'balanceb_sum' in locals():
-            balanceb_sum = balanceb_sum + balance
-
-        if 'balanceb_tot' in locals():
-            balanceb_tot[:, :, it] = balance
-
-        if 'stabilityb_sum' in locals():
-            stabilityb_sum = stabilityb_sum + stability
-
-        if 'stabilityb' in locals():
-            stabilityb[:, :, it] = balance
-
         beachcount += 1  # Update counter
-
 
     # --------------------------------------
     # VEGETATION
@@ -368,17 +322,89 @@ for it in range(iterations):
 
         vegcount = vegcount + 1  # Update counter
 
+    # --------------------------------------
+    # RECORD VARIABLES ANNUALLY
+
+    if it % (writeyear * iterations_per_cycle) == 0:
+        moment = int(it / iterations_per_cycle) + 1
+        topo_TS[:, :, moment] = topo
+        spec1_TS[:, :, moment] = spec1
+        spec2_TS[:, :, moment] = spec2
+
+    if 'erosmap_sum' in locals():
+        erosmap_sum = erosmap_sum + erosmap
+
+    if 'deposmap_sum' in locals():
+        deposmap_sum = deposmap_sum + deposmap
+
+    if 'erosmap_tot' in locals():
+        erosmap_tot[:, :, it] = erosmap
+
+    if 'deposmap_tot' in locals():
+        deposmap_tot[:, :, it] = deposmap
+
+    if 'shadowmap_tot' in locals():
+        shadowmap_tot[:, :, it] = shadowmap
+
+    if 'balancea_sum' in locals():
+        balancea_sum = balancea_sum + balance_init
+
+    if 'balancea_tot' in locals():
+        balancea_tot[:, :, it] = balance_init
+
+    if 'stabilitya_sum' in locals():
+        stabilitya_sum = stabilitya_sum + stability_init
+
+    if 'stabilitya_tot' in locals():
+        stabilitya_tot[:, :, it] = stabilitya
+
+    if 'windtransp_slabs' in locals():
+        windtransp_slabs[it] = (slabtransp * slabheight_m * cellsize**2) / longshore
+
+    if 'avalanches' in locals():
+        avalanches[it] = aval
+
+    if 'flux_contour' in locals():
+        flux_contour[it, :] = (sum_contour * slabheight_m * cellsize**2)
+
+    if 'seainput_total' in locals():
+        seainput_total[:, :, it] = seainput
+
+    if 'diss_total' in locals():
+        diss_total[:, :, it] = diss
+
+    if 'cumdiss_total' in locals():
+        cumdiss_total[:, :, it] = cumdiss
+
+    if 'pwave_total' in locals():
+        pwave_total[:, :, it] = pwave
+
+    if 'pbeachupdate_total' in locals():
+        pbeachupdate_total[:, :, it] = pbeachupdate
+
+    if 'seainput_sum' in locals():
+        seainput_sum = seainput_sum + seainput
+
+    if 'balanceb_sum' in locals():
+        balanceb_sum = balanceb_sum + balance
+
+    if 'balanceb_tot' in locals():
+        balanceb_tot[:, :, it] = balance
+
+    if 'stabilityb_sum' in locals():
+        stabilityb_sum = stabilityb_sum + stability
+
+    if 'stabilityb' in locals():
+        stabilityb[:, :, it] = balance
 
     # --------------------------------------
     # RESET DOMAINS
+
     balance_copy = balance
     balance[:] = 0  # Reset the balance map
     inundated[:] = 0  # Reset part of beach with wave/current action
     pbeachupdatecum[:] = 0
     stability[:] = 0  # Reset the balance map
-
-    # IRBR 25Oct22: In Matlab version, topo is reset to initial after each replicate, but veg (i.e., spec1 & spec2) is not reset, meaning veg
-    # cover picks up where the previous replicate left off (but on top of initial topo). Not sure why; clearly not a "replicate." Removed.
 
 
 # __________________________________________________________________________________________________________________________________
@@ -389,6 +415,11 @@ print()
 SimDuration = time.time() - start_time
 print()
 print("Elapsed Time: ", SimDuration, "sec")
+
+# Save Results
+if save_data:
+    filename = outputloc + "Sim_" + str(simnum)
+    dill.dump_module(filename)  # To re-load data: dill.load_session(filename)
 
 # Temp Plot
 plt.matshow(topo * slabheight,
