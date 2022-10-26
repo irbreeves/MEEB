@@ -125,14 +125,6 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             # depocells[0 : hop, :] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[0: hop, :] = 0  # Remove  all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
-            # # IRBR 21Oct22: Should the above actually be like below?
-            # inmotion = np.roll(inmotion, [hop, 0])  # Shift the moving slabs one hop length to the right
-            # transp_contour = np.nansum(inmotion[contour.astype(np.int64), :], axis=1)  # Account ammount of slabs that are in motion in specific contours
-            # sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            # depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
-            # # depocells[0 : hop, :] = 1  # All slabs are deposited if they are transported over the landward edge
-            # deposited = inmotion * depocells  # True where a slab is available and should be deposited
-            # deposited[0: hop, :] = 0  # Remove  all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 3:
             inmotion = np.roll(inmotion, -hop, axis=1)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
@@ -261,26 +253,6 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
     % shelterf      : exposure of sheltered cells: 1 = full shelter, 0 = no shelter.
     % phydro         : probability of erosion due to any other hydrodynamic process rather than waves"""
 
-    # # Activate this to test standalone
-    # [topo, veg] = read_profile_from_netcdf(3, 20000, 1997,0);
-    # [topo, eqtopo, veg1, veg2] = create_topographies(topo, veg);
-    # slabheight   = 0.1;
-    # depthlimitf  = 0.4;     % strongly controls the retreat distance
-    # cellsizef    = 1;
-    # topof        = topo./slabheight;
-    # old_topof    = topof;
-    # eqtopof      = eqtopo./slabheight;
-    # vegf         = veg1+veg2;
-    # test         = 1;
-    # m26f         = 0.013;   % dissipation strength
-    # m27af        = 1;       % wave energy factor (redundant?)
-    # m28f         = 0.0;     % resistance of vegetation (1 = full)
-    # pwavemaxf    = 1;
-    # pwaveminf    = 1;       % if 1: always erosion if inundated; if 0: no erosion if all energy has been dissipated
-    # shelterf     = 1.0;     % exposure to waves in sheltered cells (1 = full shelter, 0 = no shelter)
-    # total_tide   = 45; % offshore tide level [slabs]
-    # msl          = 0;
-
     # --------------------------------------
     # WAVE RUNUP
     # Offshore measured tide (sealevf) has to be converted to effective tide
@@ -370,7 +342,7 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
 
     # Dissipation of wave strength across the topography (wave strength times dissiptation)
     pwave = (m27af * pwavemaxf - m26f * cumdiss)
-    pwave_ero = pwave  # Wave used for dune attack    # IRBR 24Oct22: Does this case pwave to change too below?
+    pwave_ero = (m27af * pwavemaxf - m26f * cumdiss)  # Wave used for dune attack
 
     # Normalize and remove negatives
     pwave_ero[pwave_ero < 0] = 0  # Set negative values to 0
@@ -378,7 +350,7 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
     pwave[pwave < 0] = 0  # Set negative values to 0
     pwave = pwave / np.max(pwave)  # Set max between 1 and 0
 
-    pwave[np.logical_and(pwave < pwaveminf, topof < totalwater, pexposed > 0)] = pwaveminf  # In area with waves always potential for action
+    pwave[np.logical_and.reduce((pwave < pwaveminf, topof < totalwater, pexposed > 0))] = pwaveminf  # In area with waves always potential for action
 
     pcurr = toolow * pcurr
 
@@ -510,9 +482,10 @@ def growthfunction2_sens(spec, sed, A2, B2, D2, E2, P2):
 
 
 def lateral_expansion(veg, dist, prob):
-    """LATERAL_EXPANSION implements lateral expansion of existing vegetation patches
+    """LATERAL_EXPANSION implements lateral expansion of existing vegetation patches.
     1) mark cells that lie within <dist> of existing patches: probability for new vegetated cells = 1
-    2) cells not adjacent to existing patches get probability depending on elevation: pioneer most likely to establish between 3 and 5 m + sea level"""
+    2) cells not adjacent to existing patches get probability depending on elevation: pioneer most likely to establish between 3 and 5 m + sea level.
+    Returns logical array of which cells veg has successfully expanded into."""
 
     # Pad vegetation matrix with zeros for rolling
     veg = veg > 0
@@ -542,7 +515,10 @@ def lateral_expansion(veg, dist, prob):
 
 
 def establish_new_vegetation(topof, mht, prob):
-    """"""
+    """Establishment of pioneer veg in previously bare cells.
+    Represents the germination and development of veg from seeds or rhizome fragments distributed by the sea or wind.
+    Returns logical array of which cells new veg has successfully established in."""
+
     # Convert topography to height above current sea level
     topof = topof - mht
 
@@ -576,11 +552,3 @@ def establish_new_vegetation(topof, mht, prob):
     pioneer_established = np.random.rand(width, length) < pioneer_establish_prob
 
     return pioneer_established
-
-
-
-
-
-
-
-
