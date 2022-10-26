@@ -378,7 +378,7 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
     pwave[pwave < 0] = 0  # Set negative values to 0
     pwave = pwave / np.max(pwave)  # Set max between 1 and 0
 
-    pwave[(pwave < pwaveminf) & (topof < totalwater) & (pexposed > 0)] = pwaveminf  # In area with waves always potential for action
+    pwave[np.logical_and(pwave < pwaveminf, topof < totalwater, pexposed > 0)] = pwaveminf  # In area with waves always potential for action
 
     pcurr = toolow * pcurr
 
@@ -419,8 +419,8 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
     # # Changed after revision (FGS)
     # # Above proposed change has the counterpart of a lot of filling when beach width is short, since it starts to build-up dunes instead of eroding it
 
-    if np.isnan(np.sum(dbeachupdate_ero)):
-        topof[(topof >= totalwater) & (dbeachupdate_ero > 0)] = topof[(topof >= totalwater) & (dbeachupdate_ero > 0)] - (topof[(topof >= totalwater) & (dbeachupdate_ero > 0)] - eqtopof[(topof >= totalwater) & (dbeachupdate_ero > 0)])
+    if np.isnan(np.sum(dbeachupdate_ero)) is False:
+        topof[np.logical_and(topof >= totalwater, dbeachupdate_ero > 0)] = topof[np.logical_and(topof >= totalwater, dbeachupdate_ero > 0)] - (topof[np.logical_and(topof >= totalwater, dbeachupdate_ero > 0)] - eqtopof[np.logical_and(topof >= totalwater, dbeachupdate_ero > 0)])
 
     return topof, inundatedf, pbeachupdate, diss, cumdiss, pwave
 
@@ -533,7 +533,7 @@ def lateral_expansion(veg, dist, prob):
 
     # Lateral expansion only takes place in a fraction <prob> of the possible cells
     width, length = veg.shape
-    lateral_expansion_allowed = np.random.rand(width, length) < lateral_expansion_possible * prob
+    lateral_expansion_allowed = np.random.rand(width, length) < (lateral_expansion_possible * prob)
     # Include existing vegetation to incorporate growth or decay of existing patches
     lateral_expansion_allowed = lateral_expansion_allowed + veg
     lateral_expansion_allowed = lateral_expansion_allowed > 0

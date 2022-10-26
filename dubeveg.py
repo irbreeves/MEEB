@@ -31,7 +31,7 @@ simulation_time_y = 15  # [yr] Length of the simulation time
 cellsize = 1  # [m] Interpreted cell size
 slabheight = 0.1  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
 slabheight_m = cellsize * slabheight  # [m] Slab height
-repl = 3  # Number of replicates
+repl = 1  # Number of replicates
 inputloc = "Input/"  # Input file directory
 outputloc = "Output/"  # Output file directory
 
@@ -153,8 +153,8 @@ for repl_cont in range(repl):  # Start replicate loop
     inundated = np.zeros([longshore, crossshore])  # Initial area of wave/current action
     inundatedcum = np.zeros([longshore, crossshore])  # Initial area of sea action
     pbeachupdatecum = np.zeros([longshore, crossshore])  # Matrix for cumulative effect of hydrodynamics
-    beachcount = 1
-    vegcount = 1
+    beachcount = 0
+    vegcount = 0
 
     # __________________________________________________________________________________________________________________________________
     # MODEL OUPUT CONFIGURATION
@@ -237,7 +237,7 @@ for repl_cont in range(repl):  # Start replicate loop
             contour = np.linspace(0, round(crossshore) - 1, n_contour + 1)  # Contours to account for transport
             changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, jumplength, contour, longshore, crossshore, direction=direction[it])  # Returns map of height changes
         else:  # North or south wind direction
-            contour = np.linspace(0, round(longshore) - 1, n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This produces slightly different results than Matlab version
+            contour = np.linspace(0, round(longshore) - 1, n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This may produce slightly different results than Matlab version - need to verify
             changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, jumplength, contour, longshore, crossshore, direction=direction[it])  # Returns map of height changes
 
         topo = topo + changemap  # Changes applied to the topography
@@ -259,7 +259,7 @@ for repl_cont in range(repl):  # Start replicate loop
             before1 = topo  # Copy of topo before it is changed
 
             topo, inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes3_diss3e(
-                waterlevels[beachcount - 1],
+                waterlevels[beachcount],
                 MHTrise,
                 slabheight_m,
                 cellsize,
@@ -344,8 +344,8 @@ for repl_cont in range(repl):  # Start replicate loop
             spec2_growth = spec2_diff * (spec2_diff > 0)
             spec2_loss = spec2_diff * (spec2_diff < 0)
 
-            spec1_change_allowed = np.minimum(1 - veg, spec1_growth) * (lateral1 | pioneer1)  # Only allow growth in adjacent or pioneer cells
-            spec2_change_allowed = np.minimum(1 - veg, spec2_growth) * (lateral2 | pioneer2)  # Only allow growth in adjacent or pioneer cells
+            spec1_change_allowed = np.minimum(1 - veg, spec1_growth) * np.logical_or(lateral1, pioneer1)  # Only allow growth in adjacent or pioneer cells
+            spec2_change_allowed = np.minimum(1 - veg, spec2_growth) * np.logical_or(lateral2, pioneer2)  # Only allow growth in adjacent or pioneer cells
             spec1 = spec1_old + spec1_change_allowed + spec1_loss  # Re-assemble gain and loss and add to original vegetation cover
             spec2 = spec2_old + spec2_change_allowed + spec2_loss  # Re-assemble gain and loss and add to original vegetation cover
 
