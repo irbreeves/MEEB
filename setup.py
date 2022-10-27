@@ -8,7 +8,7 @@ setup(
     long_description_content_type="text/markdown",
     author="Ian Reeves",
     author_email="ireeves@whoi.edu",
-    url="https://github.com/irbreeves/BarrierBMFT",
+    url="https://github.com/irbreeves/PyDUBEVEG",
     classifiers=[
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: GPLv3 License",

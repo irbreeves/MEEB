@@ -383,11 +383,10 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
 
     # # Changed after revision (JK 21/01/2015)
     # # Limit filling up of topography to the maximum water level, so added (accreted) cells cannot be above the maximum water level
-    # eqtopof[(eqtopof > sealevf)] = sealevf
+    # eqtopof[(eqtopof > totalwater)] = totalwater
     #
     # topof = topof - (topof - eqtopof) * dbeachupdate  # Adjusting the topography
-    # topof[(topof > totalwater) & (dbeachupdate > 0)] = totalwater
-    #
+    topof[(topof > totalwater) & (dbeachupdate > 0)] = totalwater
     # # Changed after revision (FGS)
     # # Above proposed change has the counterpart of a lot of filling when beach width is short, since it starts to build-up dunes instead of eroding it
 
