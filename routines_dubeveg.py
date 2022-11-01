@@ -858,7 +858,7 @@ def establish_new_vegetation(topof, mht, prob):
 def shoreline_change(
         topof,
         longshore,
-        Dshoreface,
+        d_sf,
         k_sf,
         s_sf_eq,
         RSLR,
@@ -874,7 +874,7 @@ def shoreline_change(
 
     topof [m]: Present elevation domain
     longshore [m]: Alongshore length of domain
-    Dshoreface [m]: Shoreface depth
+    d_sf [m]: Shoreface depth
     k_sf []: Shoreface flux constant
     s_sf_eq: Shoreface equilibrium slope
     RSLR [m/ts]: Relative sea-level rise rate
@@ -898,7 +898,6 @@ def shoreline_change(
         Qow = 0  # Assumes all sediment deposited on barrier interior came from the dunes and therefore nothing came from shoreface/beach; excess DuneLoss assumed lost offshore/downshore
 
     # DefineParams
-    d_sf = Dshoreface
     h_b = np.average(topof[topof >= SL])  # [m] Average height of barrier
 
     # Shoreface Flux

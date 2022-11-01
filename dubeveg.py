@@ -71,6 +71,13 @@ class DUBEVEG:
             pwaveminf=0.1,  # In area with waves always potential for action (this can never be 0, otherwise the beachupdate is shut down)
             shelterf=1,  # Exposure of sheltered cells: 0 = no shelter, 1 = full shelter
 
+            # SHOREFACE & SHORELINE CHANGE
+            shoreface_flux_rate=5000,  # [m3/m/yr] Shoreface flux rate coefficient
+            shoreface_equilibrium_slope=0.02,  # Equilibrium slope of the shoreface
+            shoreface_depth=10,  # [m] Depth to shoreface toe (i.e. depth of ‘closure’)
+            shoreface_length_init=500,  # [m] Initial length of shoreface
+            shoreface_toe_init=0,  # [m] [m] Start location of shoreface toe
+
             # VEGETATION
             sp1_a=-1.4,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
             sp1_b=0.2,  # Vertice b, spec1. vegetation growth based on Nield and Baas (2008)
@@ -129,6 +136,12 @@ class DUBEVEG:
         self._pwavemaxf = pwavemaxf
         self._pwaveminf = pwaveminf
         self._shelterf = shelterf
+        self._k_sf = shoreface_flux_rate
+        self._s_sf_eq = shoreface_equilibrium_slope
+        self._DShoreface = shoreface_depth
+        self._LShoreface = shoreface_length_init
+        self._x_t = shoreface_toe_init
+        self._x_s = self._x_t + self._LShoreface  # [m] Start location of shoreline
         self._no_timeseries = no_timeseries
         self._sp1_a = sp1_a
         self._sp1_b = sp1_b
@@ -201,6 +214,8 @@ class DUBEVEG:
         self._slabheight = round(self._slabheight_m * 100) / 100
         self._balance = self._topo * 0  # Initialise the sedimentation balance map [slabs]
         self._stability = self._topo * 0  # Initialise the stability map [slabs]
+        self._x_s_TS = []  # Initialize storage array for shoreline position
+        self._x_t_TS = []  # Initialize storage array for shoreface toe position
         self._sp1_peak_at0 = self._sp1_peak  # Store initial peak growth of sp. 1
         self._sp2_peak_at0 = self._sp2_peak  # Store initial peak growth of sp. 2
         self._inundated = np.zeros([self._longshore, self._crossshore])  # Initial area of wave/current action
@@ -392,6 +407,37 @@ class DUBEVEG:
 
             self._vegcount = self._vegcount + 1  # Update counter
 
+
+        # --------------------------------------
+        # SHORELINE CHANGE & EQUILIBRIUM BEACH PROFILE
+
+        # Temp
+        Qat = 0
+        OWflux = 0
+        DuneLoss = 0
+        Qbd = 0
+
+        self._x_s, self._x_t = routine.shoreline_change(
+            self.topo,
+            self._longshore,
+            self._DShoreface,
+            self._k_sf,
+            self._s_sf_eq,
+            self._MHTrise,
+            Qat,
+            Qbd,
+            OWflux,
+            DuneLoss,
+            self._x_s,
+            self._x_t,
+            self._MHT,
+        )
+
+        print("  x_s: =", self._x_s)
+        self._x_s_TS.append(self._x_s)
+        self._x_t_TS.append(self._x_t)
+
+
         # --------------------------------------
         # RECORD VARIABLES ANNUALLY
 
@@ -523,7 +569,7 @@ start_time = time.time()  # Record time at start of simulation
 dubeveg = DUBEVEG(
     name="30 yr, SLR 0, marine_processes, * pexposed",
     simulation_time_y=30,
-    MHTrise=0.00,
+    MHTrise=0.01,
     save_data=False,
 )
 
