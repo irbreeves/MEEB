@@ -25,6 +25,7 @@ class DUBEVEG:
             self,
 
             # GENERAL
+            name="default",
             simnum=1,  # Reference number of the simulation. Used for personal reference.
             MHT=0,  # [m] Sea-level reference
             MHTrise=0.000,  # [m/yr] Sea-level rise rate
@@ -74,12 +75,12 @@ class DUBEVEG:
             sp1_a=-1.4,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
             sp1_b=0.2,  # Vertice b, spec1. vegetation growth based on Nield and Baas (2008)
             sp1_c=0.6,  # Vertice c, spec1. vegetation growth based on Nield and Baas (2008)
-            sp1_d=2,  # Vertice d, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_d=2.0,  # Vertice d, spec1. vegetation growth based on Nield and Baas (2008)
             sp1_e=2.2,  # Vertice e, spec1. vegetation growth based on Nield and Baas (2008)
 
             sp2_a=-1.4,  # Vertice a, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_b=-0.65,  # Vertice b, spec2. vegetation growth based on Nield and Baas (2008)
-            sp2_c=0,  # Vertice c, spec2. vegetation growth based on Nield and Baas (2008)
+            sp2_c=0.0,  # Vertice c, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_d=0.2,  # Vertice d, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_e=2.8,  # Vertice e, spec2. vegetation growth based on Nield and Baas (2008)
 
@@ -95,6 +96,7 @@ class DUBEVEG:
     ):
         """Python version of the DUne, BEach, and VEGetation model"""
 
+        self._name = name
         self._simnum = simnum
         self._MHT = MHT
         self._MHTrise = MHTrise
@@ -294,7 +296,25 @@ class DUBEVEG:
             inundatedold = self._inundated  # Make a copy for later use
             before1 = self._topo  # Copy of topo before it is changed
 
-            self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes3_diss3e(
+            # self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes3_diss3e(
+            #     self._waterlevels[self._beachcount],
+            #     self._MHTrise,
+            #     self._slabheight_m,
+            #     self._cellsize,
+            #     self._topo,
+            #     self._eqtopo,
+            #     self._veg,
+            #     self._m26,
+            #     self._wave_energy,
+            #     self._m28f,
+            #     self._pwavemaxf,
+            #     self._pwaveminf,
+            #     self._depth_limit,
+            #     self._shelterf,
+            #     self._pcurr,
+            # )
+
+            self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes(
                 self._waterlevels[self._beachcount],
                 self._MHTrise,
                 self._slabheight_m,
@@ -309,7 +329,6 @@ class DUBEVEG:
                 self._pwaveminf,
                 self._depth_limit,
                 self._shelterf,
-                self._pcurr,
             )
 
             seainput = self._topo - before1  # Sand added to the beach by the sea
@@ -459,6 +478,10 @@ class DUBEVEG:
 
 
     @property
+    def name(self):
+        return self._name
+
+    @property
     def iterations(self):
         return self._iterations
 
@@ -498,9 +521,13 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 dubeveg = DUBEVEG(
-    simulation_time_y=15,
-    MHTrise=0.01,
+    name="30 yr, SLR 0, marine_processes, * pexposed",
+    simulation_time_y=30,
+    MHTrise=0.00,
+    save_data=False,
 )
+
+print(dubeveg.name)
 
 # Loop through time
 for time_step in range(int(dubeveg.iterations)):
@@ -526,11 +553,13 @@ if dubeveg.save_data:
 # Temp Plot
 plt.matshow(dubeveg.topo * dubeveg.slabheight,
             cmap='terrain',
+            vmin=0,
+            vmax=4.5
             )
-plt.title("Elev TMAX")
+plt.title("Elev TMAX, " + dubeveg.name)
 
 plt.matshow(dubeveg.veg,
             cmap='YlGn',
             )
-plt.title("Veg TMAX")
+plt.title("Veg TMAX, " + dubeveg.name)
 plt.show()
