@@ -12,18 +12,32 @@ ________________________________________________________________________________
 
 import numpy as np
 import math
+import copy
 
 
 def shadowzones2(topof, sh, lee, longshore, crossshore, direction):
-    """Returns a logical map with all shadowzones identified as ones
-    Wind from left to right, along the +2 dimension
-    - topof: topography map [topo]
-    - sh: slab height [slabheight]
-    - lee: shadow angle [shadowangle]
-    - longshore:
-    - crossshore:
-    - direction: wind direction (1 east, 2 north, 3, west, 4 south)
-    Returns a logical map of shaded cells, now with open boundaries"""
+    """Returns a logical map with all shadowzones identified as ones. Wind from left to right, along the +2 dimension.
+
+    Parameters
+    ----------
+    topof : ndarray
+        Topography map.
+    sh : float
+        Slab height.
+    lee : float
+        Shadow angle.
+    longshore : int
+        Alongshore length of domain
+    crossshore : int
+        Cross-shore width of domain
+    direction : int
+        Wind direction (1 east, 2 north, 3, west, 4 south).
+
+    Returns
+    -------
+    inshade : ndarray
+        Logical map of shaded cells, now with open boundaries
+    """
 
     # steplimit = math.floor(math.tan(lee * math.pi / 180) / sh)  # The maximum step difference allowed given the slabheight and shadowangle
     steplimit = math.tan(lee * math.pi / 180) / sh  # The maximum step difference allowed given the slabheight and shadowangle, not rounded yet
@@ -56,7 +70,7 @@ def shadowzones2(topof, sh, lee, longshore, crossshore, direction):
 
 
 def erosprobs2(vegf, shade, sand, topof, groundw, p_er):
-    """% Returns a map with erosion probabilities
+    """ Returns a map with erosion probabilities
     - vegf: map of combined vegetation effectiveness [veg] [0,1]
     - shade: logical map of shadowzones [shadowmap]
     - sand: logical map of sandy cells [sandmap]
@@ -314,7 +328,7 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
     # --------------------------------------
     # FILL TOPOGRAPHY TO EQUILIBRIUM
 
-    inundatedf = pexposed  # Bool matrix of cells that exposed to sea water
+    inundatedf = copy.deepcopy(pexposed)  # Bool matrix of cells that exposed to sea water
 
     # --------------------------------------
     # WAVES
@@ -359,7 +373,7 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
     pbare = 1 - m28f * vegf  # If vegf = 1, still some chance for being eroded
 
     # Ssumming up erosion probabilities
-    phydro = pwave
+    phydro = copy.deepcopy(pwave)
     phydro_ero = pwave_ero + pcurr
 
     # --------------------------------------
@@ -483,7 +497,7 @@ def marine_processes3_IRBRtest(total_tide, msl, slabheight, cellsizef, topof, eq
     # --------------------------------------
     # FILL TOPOGRAPHY TO EQUILIBRIUM
 
-    inundatedf = pexposed  # Bool matrix of cells that exposed to sea water
+    inundatedf = copy.deepcopy(pexposed)  # Bool matrix of cells that exposed to sea water
 
     # --------------------------------------
     # WAVES
@@ -529,7 +543,7 @@ def marine_processes3_IRBRtest(total_tide, msl, slabheight, cellsizef, topof, eq
     pbare = 1 - m28f * vegf  # If vegf = 1, still some chance for being eroded
 
     # Ssumming up erosion probabilities
-    phydro = pwave
+    phydro = copy.deepcopy(pwave)
     phydro_ero = pwave_ero + pcurr
 
     # --------------------------------------
@@ -654,7 +668,7 @@ def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, veg
     # --------------------------------------
     # FILL TOPOGRAPHY TO EQUILIBRIUM
 
-    inundatedf = pexposed  # Inundated is the area that really receives sea water
+    inundatedf = copy.deepcopy(pexposed)  # Inundated is the area that really receives sea water
 
     # --------------------------------------
     # WAVES
@@ -685,7 +699,7 @@ def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, veg
     pbare = 1 - m28f * vegf  # If vegf = 1, still some chance for being eroded
 
     # Updating the topography
-    pbeachupdate = pbare * pwave * pexposed  # Probability for beachupdate, also indication of strength of process (it does not do anything random)
+    pbeachupdate = pbare * pwave * pexposed  # Probability for beachupdate, also indication of strength of process (it does not do anything random)  IRBR 1Nov22: Un-commented *pexposed
     pbeachupdate[pbeachupdate < 0] = 0  # Keep probabilities to 0 - 1 range
     pbeachupdate[pbeachupdate > 1] = 1
 
@@ -863,33 +877,61 @@ def shoreline_change(
         s_sf_eq,
         RSLR,
         Qat,
-        Qbd,
+        Qbe,
         OWflux,
         DuneLoss,
         x_s,
         x_t,
         SL,
+        cellsize,
+        slabheight,
 ):
     """Finds shoreline change for modeled time step following Lorenzo-Trueba and Ashton (2014).
 
-    topof [m]: Present elevation domain
-    longshore [m]: Alongshore length of domain
-    d_sf [m]: Shoreface depth
-    k_sf []: Shoreface flux constant
-    s_sf_eq: Shoreface equilibrium slope
-    RSLR [m/ts]: Relative sea-level rise rate
-    Qat [m^3/m/ts]: Volume of sediment removed from (or added to) the upper shoreface by alongshore transport
-    Qbd [m^3/m/ts]: Volume of sediment removed from (or added to) the upper shoreface by fairweather beach and dune morphologic change
-    OWflux [m^3/ts]: Volume of sediment removed from (or added to) the upper shoreface by overwash (not yet normalized alongshore)
-    DuneLoss [m^3/m/ts]: Dune volume lost from storm erosion
-    x_s [m]: Cross-shore shoreline position relative to start of simulation
-    x_t [m]: Cross-shore shoreface toe position relative to start of simulation
-    SL [m]: Present sea level
+    Parameters
+    ----------
+    topof : ndarray
+        [m] Present elevation domain
+    longshore : flaot
+        [m] Alongshore length of domain
+    d_sf : float
+        [m] Shoreface depth
+    k_sf : flaot
+        [] Shoreface flux constant
+    s_sf_eq : flaot
+        Shoreface equilibrium slope
+    RSLR :  float
+        [m/ts] Relative sea-level rise rate
+    Qat : float
+        [m^3/m/ts] Volume of sediment removed from (or added to) the upper shoreface by alongshore transport
+    Qbe : float
+        [m^3/m/ts] Volume of sediment removed from (or added to) the upper shoreface by fairweather beach change
+    OWflux : float
+        [m^3/ts] Volume of sediment removed from (or added to) the upper shoreface by overwash (not yet normalized alongshore)
+    DuneLoss : float
+        [m^3/m/ts] Dune volume lost from storm erosion
+    x_s : float
+        [m] Cross-shore shoreline position relative to start of simulation
+    x_t : float
+        [m] Cross-shore shoreface toe position relative to start of simulation
+    SL : float
+        [m] Present sea level
+    cellsize : float
+        [m] Horizontal dimension of model grid cells
+    slabheight : float
+        [m] Vertical dimension of model grid cells
     *ts = time step
+
+    Returns
+    ----------
+    x_s : float
+        [m] New cross-shore shoreline position relative to start of simulation
+    x_t : float
+        [m] New cross-shore shoreface toe position relative to start of simulation
     """
 
     # Find volume of shoreface/beach/dune sand deposited in island interior and back-barrier
-    Qow = OWflux / longshore  # [m^3/m/ts] Volume of sediment lost from shoreface/beach by overwash
+    Qow = OWflux * cellsize * slabheight / longshore  # [m^3/m/ts] Volume of sediment lost from shoreface/beach by overwash
     if Qow < 0:
         Qow = 0
     if DuneLoss < Qow:
@@ -898,18 +940,28 @@ def shoreline_change(
         Qow = 0  # Assumes all sediment deposited on barrier interior came from the dunes and therefore nothing came from shoreface/beach; excess DuneLoss assumed lost offshore/downshore
 
     # DefineParams
-    h_b = np.average(topof[topof >= SL])  # [m] Average height of barrier
+    h_b = np.average(topof[topof >= SL]) * slabheight  # [m] Average height of barrier
 
     # Shoreface Flux
     s_sf = d_sf / (x_s - x_t)
-    Qsf = (k_sf) * (s_sf_eq - s_sf)  # [m^3/m/ts]
+    Qsf = k_sf * (s_sf_eq - s_sf)  # [m^3/m/ts]
 
     # Toe, Shoreline, and island base elevation changes
     x_t_dt = (4 * Qsf * (h_b + d_sf) / (d_sf * (2 * h_b + d_sf))) + (2 * RSLR / s_sf)
-    x_s_dt = 2 * (Qow + Qbd + Qat) / ((2 * h_b) + d_sf) - (4 * Qsf * (h_b + d_sf) / (((2 * h_b) + d_sf) ** 2))  # Dune growth and alongshore transport added to LTA14 formulation
+    x_s_dt = 2 * (Qow + Qbe + Qat) / ((2 * h_b) + d_sf) - (4 * Qsf * (h_b + d_sf) / (((2 * h_b) + d_sf) ** 2))  # Dune growth and alongshore transport added to LTA14 formulation
 
     # Record changes
     x_t = x_t + x_t_dt
     x_s = x_s + x_s_dt
 
-    return x_s, x_t
+    return x_s, x_t  # [m]
+
+
+def foredune_crest(topo):
+    """Finds and returns the location of the foredune crest for each grid column alongshore."""
+
+    elev_max = np.argmax(topo, axis=1)
+
+    crestline = elev_max  # IRBR 1Nov22: Temporary. Need better algorithm to find actual foredune, since there can be gaps in dune line and cells behind foredune could potentially be taller.
+
+    return crestline
