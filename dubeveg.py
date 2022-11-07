@@ -20,6 +20,7 @@ import imageio
 import os
 import copy
 
+import routines_dubeveg
 import routines_dubeveg as routine
 
 
@@ -30,8 +31,8 @@ class DUBEVEG:
             # GENERAL
             name="default",
             simnum=1,  # Reference number of the simulation. Used for personal reference.
-            MHT=0,  # [m] Sea-level reference
-            MHTrise=0.000,  # [m/yr] Sea-level rise rate
+            MHT=0,  # [m] Mean high tide
+            RSLR=0.000,  # [m/yr] Relative sea-level rise rate
             qpotseries=2,  # Number reference to calculate how many iterations represent one year. 4 is standard year of 100 iterations, corresponds to qpot (#1 = 25 it, #2 = 50 it, #3 = 75 it, #4 = 100 it, #5 = 125 it) (*25 = qpot)
             writeyear=1,  # Write results to disc every n years
             simulation_time_y=15,  # [yr] Length of the simulation time
@@ -39,8 +40,8 @@ class DUBEVEG:
             slabheight=0.1,  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
             inputloc="Input/",  # Input file directory
             outputloc="Output/",  # Output file directory
-            topo_filename="topo_west.mat",
-            eqtopo_filename="eqtopo_west.mat",
+            topo_filename="topo_west.npy",
+            eqtopo_filename="eqtopo_west.npy",
             waterlevel_filename="wl_max_texel.mat",
             veg_spec1_filename="spec1.mat",
             veg_spec2_filename="spec2.mat",
@@ -103,13 +104,17 @@ class DUBEVEG:
 
             maxvegeff=1.0,  # [0-1] Value of maximum vegetation effectiveness allowed
             no_timeseries=0,
+
+            # STORM OVERWASH AND DUNE EROSION
+            storm_list_filename="VCRStormList.npy",
+
     ):
         """Python version of the DUne, BEach, and VEGetation model"""
 
         self._name = name
         self._simnum = simnum
         self._MHT = MHT
-        self._MHTrise = MHTrise
+        self._RSLR = RSLR
         self._qpotseries = qpotseries
         self._writeyear = writeyear
         self._simulation_time_y = simulation_time_y
@@ -172,8 +177,10 @@ class DUBEVEG:
         self._beachreset = round(self._qpotseries * 1)
 
         # TOPOGRAPHY
-        self._topo_initial = scipy.io.loadmat(inputloc + topo_filename)["topo_final"]  # [m] 2D-matrix with initial topography
-        self._eqtopo_initial = scipy.io.loadmat(inputloc + eqtopo_filename)["topo_final"]  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
+        # self._topo_initial = scipy.io.loadmat(inputloc + topo_filename)["topo_final"]  # [m] 2D-matrix with initial topography
+        # self._eqtopo_initial = scipy.io.loadmat(inputloc + eqtopo_filename)["topo_final"]  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
+        self._topo_initial = np.load(inputloc + topo_filename)  # [m] 2D-matrix with initial topography
+        self._eqtopo_initial = np.load(inputloc + eqtopo_filename)  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
 
         topo0 = self._topo_initial / self._slabheight_m  # [slabs] Transform from m into number of slabs
         self._topo = np.round(topo0)  # [slabs] Initialise the topography map
@@ -223,9 +230,12 @@ class DUBEVEG:
 
         self._growth_reduction_timeseries = np.linspace(0, self._VGR / 100, self._simulation_time_y)
 
+        # STORMS
+        self._StormList = np.load(inputloc + storm_list_filename)
+
         # MODEL PARAMETERS
         self._timewaterlev = np.linspace(self._beachreset / self._iterations_per_cycle, len(self._waterlevels) * self._beachreset / self._iterations_per_cycle, num=len(self._waterlevels))
-        self._waterlevels = ((self._timewaterlev * self._MHTrise) + (self._waterlevels + self._MHT)) / self._slabheight_m  # [slabs]
+        self._waterlevels = ((self._timewaterlev * self._RSLR) + (self._waterlevels + self._MHT)) / self._slabheight_m  # [slabs]
         self._slabheight = round(self._slabheight_m * 100) / 100
         self._balance = self._topo * 0  # Initialise the sedimentation balance map [slabs]
         self._stability = self._topo * 0  # Initialise the stability map [slabs]
@@ -239,6 +249,9 @@ class DUBEVEG:
         self._beachcount = 0
         self._vegcount = 0
         self._shoreline_change_aggregate = 0
+        self._Qat = 0  # Need to convert from slabs to m
+        self._OWflux = 0  # Need to convert from slabs to m
+        self._DuneLoss = 0  # Need to convert from slabs to m
 
         # __________________________________________________________________________________________________________________________________
         # MODEL OUPUT CONFIGURATION
@@ -291,7 +304,7 @@ class DUBEVEG:
         year = math.ceil(it / self._iterations_per_cycle)
 
         # Update sea level
-        self._MHT += self._MHTrise / self._iterations_per_cycle
+        self._MHT += self._RSLR / self._iterations_per_cycle
 
         if self._eqtopo_initial.ndim == 3:
             self._eqtopo = np.squeeze(self._eqtopo_initial[:, :, it]) / self._slabheight_m
@@ -350,7 +363,7 @@ class DUBEVEG:
 
             self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes(
                 self._waterlevels[self._beachcount],
-                self._MHTrise,
+                self._RSLR,
                 self._slabheight_m,
                 self._cellsize,
                 self._topo,
@@ -380,14 +393,9 @@ class DUBEVEG:
             # --------------------------------------
             # SHORELINE CHANGE & EQUILIBRIUM BEACH PROFILE
 
-            # Temp
-            Qat = 0  # Need to convert from slabs to m
-            OWflux = 0  # Need to convert from slabs to m
-            DuneLoss = 0  # Need to convert from slabs to m
-
             # Calculate net volume change of beach/dune from marine processes
             crestline = routine.foredune_crest(self._topo)
-            Qbe = 0  # np.sum(balance_ts[:, crestline.astype(int)]) * self._slabheight_m / (self._longshore * self._cellsize)  # [m^3/m/ts] Volume of sediment removed from (+) or added to (-) the upper shoreface by fairweather beach change
+            Qbe = 0  # [m^3/m/ts] Volume of sediment removed from (+) or added to (-) the upper shoreface by fairweather beach change
             for ls in range(self._longshore):
                 Qbe += np.sum(balance_ts[:, int(crestline[ls])])
             Qbe = (Qbe * self._slabheight_m) / (self._longshore * self._cellsize)
@@ -398,11 +406,11 @@ class DUBEVEG:
                 self._DShoreface,
                 self._k_sf,
                 self._s_sf_eq,
-                self._MHTrise,
-                Qat,
+                self._RSLR,
+                self._Qat,
                 Qbe,
-                OWflux,
-                DuneLoss,
+                self._OWflux,
+                self._DuneLoss,
                 self._x_s,
                 self._x_t,
                 self._MHT,
@@ -428,7 +436,7 @@ class DUBEVEG:
             # print("  x_s:", self._x_s, ", sc:", shoreline_change, ", Qbe:", Qbe)
 
             # Adjust equilibrium beach profile upward (downward) acording to sea-level rise (fall), and landward (seaward) and according to net loss (gain) of sediment at the upper shoreface
-            self._eqtopo += self._MHTrise * self._beachreset / self._iterations_per_cycle / self._slabheight_m  # [slabs] Raise vertically by amount of SLR over this substep
+            self._eqtopo += self._RSLR * self._beachreset / self._iterations_per_cycle / self._slabheight_m  # [slabs] Raise vertically by amount of SLR over this substep
             self._eqtopo = np.roll(self._eqtopo, shoreline_change, 1)  # Shift laterally
             if shoreline_change >= 0:
                 shoreface = np.ones([self._longshore, shoreline_change]) * (np.linspace(-shoreline_change, 0, shoreline_change) * self._s_sf_eq + self._eqtopo[0, shoreline_change])
@@ -622,9 +630,9 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 dubeveg = DUBEVEG(
-    name="60 yr, SLR 4, marine_processes, LTA shoreline change",
-    simulation_time_y=60,
-    MHTrise=0.004,
+    name="30 yr, SLR 0",
+    simulation_time_y=30,
+    RSLR=0.00,
     save_data=False,
 )
 
@@ -683,7 +691,7 @@ frames = []
 for filenum in range(0, dubeveg.simulation_time_y + 1):
     filename = "Output/SimFrames/dubeveg_elev_" + str(filenum) + ".png"
     frames.append(imageio.imread(filename))
-imageio.mimsave("Output/SimFrames/dubeveg_elev_60_SLR4.gif", frames, "GIF-FI")
+imageio.mimsave("Output/SimFrames/dubeveg_elev.gif", frames, "GIF-FI")
 print()
 print("[ * GIF successfully generated * ]")
 

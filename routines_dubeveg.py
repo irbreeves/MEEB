@@ -116,7 +116,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
     # pickedup[:, -1 - hop: -1] = 0  # Do not pick any slab that are on the ladward boundary -- east only?
 
     totaldeposit = np.zeros([longshore, crossshore])
-    inmotion = pickedup  # Make copy of original erosion map
+    inmotion = copy.deepcopy(pickedup)  # Make copy of original erosion map
     numshifted = 0  # [slabs] Number of shifted cells weighted for transport distance
     transportdist = 0  # Transport distance [slab lengths] or [hop length]
     sum_contour = np.zeros([len(contour)])
@@ -806,7 +806,7 @@ def lateral_expansion(veg, dist, prob):
     veg = veg > 0
     vegpad = np.zeros(np.add(veg.shape, (2, 2)))
     vegpad[1: -1, 1: -1] = veg
-    veg3 = vegpad
+    veg3 = copy.deepcopy(vegpad)
 
     # Add shifted matrices to initial matrix to include boundaries
     for i in [-dist, 0, dist]:
@@ -965,3 +965,61 @@ def foredune_crest(topo):
     crestline = elev_max  # IRBR 1Nov22: Temporary. Need better algorithm to find actual foredune, since there can be gaps in dune line and cells behind foredune could potentially be taller.
 
     return crestline
+
+
+def stochastic_storm(p_storm, iteration, storm_list, beach_slope):
+    """Stochastically determines whether a storm occurs for this timestep, and, if so, stochastically determines the relevant characteristics of the storm (i.e., water levels, duration).
+
+    Parameters
+    ----------
+    p_storm : ndarray
+        Empirical probability of storm occuring for each iteration of the year
+    iteration : int
+        Present iteration for the year
+    storm_list : ndarray
+        List of synthetic storms (rows), with wave and tide statistics (columns) desccribing each storm
+    beach_slope : float
+        Beach slope from MHW to dune toe
+
+    Returns
+    ----------
+    storm : bool
+        True: storm occurs this time step, False: storm does not occur
+    Rhigh : float
+        [m MHW] Highest elevation of the landward margin of runup (i.e. total water level)
+    Rlow : float
+        [m MHW] Lowest elevation of the landward margin of runup
+    Dur : int
+        [hrs] Duration of storm
+    """
+
+    # Determine if storm will occur this iteration
+    storm = np.random.rand() < p_storm[iteration]
+
+    if storm:
+        # Randomly select storm from list of synthetic storms
+        n = np.random.randint(0, len(storm_list))  # Randomly selected storm
+        Hs = storm_list[n, 0]  # Significant wave height
+        Dur = storm_list[n, 1]  # Duration
+        NTR = storm_list[n, 3]  # Non-tidal residual
+        Tp = storm_list[n, 4]  # Wave period
+        AT = storm_list[n, 5]  # Tidal amplitude
+
+        # Calculate simulated R2% and add to SL to get the simulated TWL
+        L0 = (9.8 * Tp ** 2) / (2 * math.pi)  # Wavelength
+        Setup = 0.35 * beach_slope * math.sqrt(Hs * L0)
+        Sin = 0.75 * beach_slope * math.sqrt(Hs * L0)  # Incident band swash
+        Sig = 0.06 * math.sqrt(Hs * L0)  # Infragravity band swash
+        Swash = math.sqrt((Sin ** 2) + (Sig ** 2))  # Total swash
+        R2 = 1.1 * (Setup + (Swash / 2))  # R2%
+
+        # Calculate storm water levels
+        Rhigh = NTR + R2 + AT
+        Rlow = (Rhigh - (Swash / 2))
+
+    else:
+        Rhigh = 0
+        Rlow = 0
+        Dur = 0
+
+    return storm, Rhigh, Rlow, Dur
