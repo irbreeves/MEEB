@@ -148,8 +148,6 @@ class DUBEVEG:
         self._s_sf_eq = shoreface_equilibrium_slope
         self._DShoreface = shoreface_depth
         self._LShoreface = shoreface_length_init
-        self._x_t = shoreface_toe_init
-        self._x_s = self._x_t + self._LShoreface  # [m] Start location of shoreline
         self._no_timeseries = no_timeseries
         self._sp1_a = sp1_a
         self._sp1_b = sp1_b
@@ -175,6 +173,7 @@ class DUBEVEG:
         self._vegetationupdate = round(self._qpotseries * 25)
         self._iterations_per_cycle = round(self._qpotseries * 25)  # Number of iterations that is regarded as 1 year (was 50) [iterations/year]
         self._beachreset = round(self._qpotseries * 1)
+        self._iterations = self._iterations_per_cycle * self._simulation_time_y  # Number of iterations
 
         # TOPOGRAPHY
         # self._topo_initial = scipy.io.loadmat(inputloc + topo_filename)["topo_final"]  # [m] 2D-matrix with initial topography
@@ -211,6 +210,9 @@ class DUBEVEG:
         self._beachslopeslabs = (eqtopo_i[0, -1] - eqtopo_i[0, 0]) / self._crossshore  # [slabs/m] Slope of equilibrium beach
         self._offbeachslabs = eqtopo_i[0, 0] - self._beachslopeslabs * self._cellsize  # [slabs] Offset for calculating moving equilibirum beach
 
+        self._x_t = shoreface_toe_init * np.ones([self._longshore])  # Start locations of shoreface toe
+        self._x_s = (self._x_t + self._LShoreface) * np.ones([self._longshore]) # [m] Start locations of shoreline
+
         # HYDRODYNAMIC
         self._wl_timeseries = scipy.io.loadmat(inputloc + waterlevel_filename)["wl_max_texel"]  # [m] Only when "no_timeseries" = 0. Waterlevel time-series. Length and frequency in relation to "simulation_time_y" and "qpotseries"
         # self._wl_probcum                  = scipy.io.loadmat('prob_wl.mat')  # Only when "no_timeseries" = 1. Waterlevel probabilities values. To be used only when no_timeseries = 1
@@ -232,6 +234,10 @@ class DUBEVEG:
 
         # STORMS
         self._StormList = np.load(inputloc + storm_list_filename)
+        self._pstorm = [0.393939393939394, 0.212121212121212, 0.181818181818182, 0.181818181818182, 0.212121212121212, 0.242424242424242, 0.212121212121212, 0.333333333333333, 0.363636363636364, 0.272727272727273, 0.303030303030303, 0.303030303030303, 0.181818181818182, 0.151515151515152,
+                        0.212121212121212, 0.151515151515152, 0.212121212121212, 0.0606060606060606, 0.0909090909090909, 0.0303030303030303, 0.0303030303030303, 0.121212121212121, 0.0606060606060606, 0, 0.0909090909090909, 0.0303030303030303, 0, 0, 0, 0.0303030303030303, 0.0303030303030303,
+                        0.0909090909090909, 0.0909090909090909, 0.303030303030303, 0.151515151515152, 0.121212121212121, 0.303030303030303, 0.121212121212121, 0.151515151515152, 0.272727272727273, 0.242424242424242, 0.303030303030303, 0.181818181818182, 0.242424242424242, 0.0909090909090909,
+                        0.181818181818182, 0.333333333333333, 0.151515151515152, 0.212121212121212, 0.272727272727273]  # Empirical probability of storm occurance for each 1/50th (~weekly) iteration of the year, from 1980-2013 VCR storm record
 
         # MODEL PARAMETERS
         self._timewaterlev = np.linspace(self._beachreset / self._iterations_per_cycle, len(self._waterlevels) * self._beachreset / self._iterations_per_cycle, num=len(self._waterlevels))
@@ -248,17 +254,16 @@ class DUBEVEG:
         self._pbeachupdatecum = np.zeros([self._longshore, self._crossshore])  # Matrix for cumulative effect of hydrodynamics
         self._beachcount = 0
         self._vegcount = 0
-        self._shoreline_change_aggregate = 0
-        self._Qat = 0  # Need to convert from slabs to m
-        self._OWflux = 0  # Need to convert from slabs to m
-        self._DuneLoss = 0  # Need to convert from slabs to m
+        self._shoreline_change_aggregate = np.zeros([self._longshore])
+        self._Qat = np.zeros([self._longshore])  # Need to convert from slabs to m
+        self._OWflux = np.zeros([self._longshore])  # Need to convert from slabs to m
+        self._DuneLoss = np.zeros([self._longshore])  # Need to convert from slabs to m
 
         # __________________________________________________________________________________________________________________________________
         # MODEL OUPUT CONFIGURATION
         """Select matrices to be calculated during the simulation. CAUTION WITH THE SIZE OF YOUR OUTPUT, YOU MAY GET AN OUT-OF-MEMORY ERROR."""
 
         # MANDATORY
-        self._iterations = self._iterations_per_cycle * self._simulation_time_y  # Number of iterations
         self._timeits = np.linspace(1, self._iterations, self._iterations)  # Time vector for budget calculations
         self._seainput_slabs = np.zeros([self._longshore, self._crossshore])  # Inititalise vector for sea-transported slab
         self._topo_TS = np.empty([self._longshore, self._crossshore, self._simulation_time_y + 1])  # Array for saving each topo map for each simulation year
@@ -393,14 +398,17 @@ class DUBEVEG:
             # --------------------------------------
             # SHORELINE CHANGE & EQUILIBRIUM BEACH PROFILE
 
+            tempQat = np.ones([self._longshore]) * (np.linspace(1, self._longshore, self._longshore) - self._longshore / 2)
+            self._Qat = tempQat/120
+
             # Calculate net volume change of beach/dune from marine processes
             crestline = routine.foredune_crest(self._topo)
-            Qbe = 0  # [m^3/m/ts] Volume of sediment removed from (+) or added to (-) the upper shoreface by fairweather beach change
+            Qbe = np.zeros([self._longshore])  # [m^3/m/ts] Volume of sediment removed from (+) or added to (-) the upper shoreface by fairweather beach change
             for ls in range(self._longshore):
-                Qbe += np.sum(balance_ts[:, int(crestline[ls])])
-            Qbe = (Qbe * self._slabheight_m) / (self._longshore * self._cellsize)
+                Qbe[ls] = np.sum(balance_ts[ls, :int(crestline[ls])])
+            Qbe = Qbe * self._slabheight_m / self._cellsize
 
-            self._x_s, self._x_t = routine.shoreline_change(
+            self._x_s, self._x_t = routine.shoreline_change2(
                 self.topo,
                 self._longshore,
                 self._DShoreface,
@@ -418,31 +426,34 @@ class DUBEVEG:
                 self._slabheight_m,
             )
 
-            # LTA14
+            # LTA14 Row-by-Row
             shoreline_change = (self._x_s - self._x_s_TS[-1]) * self._cellsize  # [cellsize] Shoreline change from last time step
+
             self._shoreline_change_aggregate += shoreline_change
-            if self._shoreline_change_aggregate >= 1:
-                shoreline_change = int(math.floor(self._shoreline_change_aggregate))
-                self._shoreline_change_aggregate -= shoreline_change
-            elif self._shoreline_change_aggregate <= -1:
-                shoreline_change = int(math.ceil(self._shoreline_change_aggregate))
-                self._shoreline_change_aggregate -= shoreline_change
-            else:
-                shoreline_change = 0
 
-            self._x_s_TS.append(self._x_s)  # Store
-            self._x_t_TS.append(self._x_t)  # Store
+            shoreline_change[self._shoreline_change_aggregate >= 1] = np.floor(self._shoreline_change_aggregate[self._shoreline_change_aggregate >= 1]).astype(int)
+            self._shoreline_change_aggregate[self._shoreline_change_aggregate >= 1] -= shoreline_change[self._shoreline_change_aggregate >= 1]
 
-            # print("  x_s:", self._x_s, ", sc:", shoreline_change, ", Qbe:", Qbe)
+            shoreline_change[self._shoreline_change_aggregate <= -1] = np.ceil(self._shoreline_change_aggregate[self._shoreline_change_aggregate <= -1]).astype(int)
+            self._shoreline_change_aggregate[self._shoreline_change_aggregate <= -1] -= shoreline_change[self._shoreline_change_aggregate <= -1]
+
+            shoreline_change[np.logical_and(-1 < shoreline_change, shoreline_change < 1)] = 0
+
+            self._x_s_TS = np.vstack((self._x_s_TS, self._x_s))  # Store
+            self._x_t_TS = np.vstack((self._x_t_TS, self._x_t))  # Store
 
             # Adjust equilibrium beach profile upward (downward) acording to sea-level rise (fall), and landward (seaward) and according to net loss (gain) of sediment at the upper shoreface
             self._eqtopo += self._RSLR * self._beachreset / self._iterations_per_cycle / self._slabheight_m  # [slabs] Raise vertically by amount of SLR over this substep
-            self._eqtopo = np.roll(self._eqtopo, shoreline_change, 1)  # Shift laterally
-            if shoreline_change >= 0:
-                shoreface = np.ones([self._longshore, shoreline_change]) * (np.linspace(-shoreline_change, 0, shoreline_change) * self._s_sf_eq + self._eqtopo[0, shoreline_change])
-                self._eqtopo[:, :shoreline_change] = shoreface
-            else:
-                self._eqtopo[:, shoreline_change:] = self._eqtopo[:, shoreline_change * 2: shoreline_change]
+            for ls in range(self._longshore):
+                sc_ls = int(shoreline_change[ls])
+                self._eqtopo[ls, :] = np.roll(self._eqtopo[ls, :], sc_ls)  # Shift laterally
+                if sc_ls >= 0:
+                    # if sc_ls > 0:
+                    #     print()
+                    shoreface = np.ones([sc_ls]) * (np.linspace(-sc_ls, 0, sc_ls) * self._s_sf_eq + self._eqtopo[0, sc_ls])
+                    self._eqtopo[ls, :sc_ls] = shoreface
+                else:
+                    self._eqtopo[ls, sc_ls:] = self._eqtopo[ls, sc_ls * 2: sc_ls]
 
         # --------------------------------------
         # VEGETATION
@@ -630,8 +641,8 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 dubeveg = DUBEVEG(
-    name="30 yr, SLR 0",
-    simulation_time_y=30,
+    name="15 yr, SLR 0 mm/yr",
+    simulation_time_y=15,
     RSLR=0.00,
     save_data=False,
 )

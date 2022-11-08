@@ -957,6 +957,91 @@ def shoreline_change(
     return x_s, x_t  # [m]
 
 
+def shoreline_change2(
+        topof,
+        longshore,
+        d_sf,
+        k_sf,
+        s_sf_eq,
+        RSLR,
+        Qat,
+        Qbe,
+        OWflux,
+        DuneLoss,
+        x_s,
+        x_t,
+        SL,
+        cellsize,
+        slabheight,
+):
+    """Finds shoreline change for modeled time step following Lorenzo-Trueba and Ashton (2014).
+
+    Parameters
+    ----------
+    topof : ndarray
+        [m] Present elevation domain
+    longshore : flaot
+        [m] Alongshore length of domain
+    d_sf : float
+        [m] Shoreface depth
+    k_sf : flaot
+        [] Shoreface flux constant
+    s_sf_eq : flaot
+        Shoreface equilibrium slope
+    RSLR :  float
+        [m/ts] Relative sea-level rise rate
+    Qat : ndarray
+        [m^3/m/ts] Volume of sediment removed from (or added to) the upper shoreface by alongshore transport
+    Qbe : ndarray
+        [m^3/m/ts] Volume of sediment removed from (or added to) the upper shoreface by fairweather beach change
+    OWflux : ndarray
+        [m^3/ts] Volume of sediment removed from (or added to) the upper shoreface by overwash (not yet normalized alongshore)
+    DuneLoss : ndarray
+        [m^3/m/ts] Dune volume lost from storm erosion
+    x_s : ndarray
+        [m] Cross-shore shoreline position relative to start of simulation
+    x_t : ndarray
+        [m] Cross-shore shoreface toe position relative to start of simulation
+    SL : float
+        [m] Present sea level
+    cellsize : float
+        [m] Horizontal dimension of model grid cells
+    slabheight : float
+        [m] Vertical dimension of model grid cells
+    *ts = time step
+
+    Returns
+    ----------
+    x_s : ndarray
+        [m] New cross-shore shoreline position relative to start of simulation
+    x_t : ndarray
+        [m] New cross-shore shoreface toe position relative to start of simulation
+    """
+
+    # Find volume of shoreface/beach/dune sand deposited in island interior and back-barrier
+    Qow = OWflux * cellsize * slabheight  # [m^3/m/ts] Volume of sediment lost from shoreface/beach by overwash
+    Qow[Qow < 0] = 0
+    DuneLoss[DuneLoss < Qow] = Qow[DuneLoss < Qow] - DuneLoss[DuneLoss < Qow]  # Account for dune contribution to overwash volume; dune loss volume subtracted from Qow because this volume is not coming from the shoreface/beach and therefor does not contribute to shoreline/shoreface change
+    DuneLoss[DuneLoss >= Qow] = 0  # Assumes all sediment deposited on barrier interior came from the dunes and therefore nothing came from shoreface/beach; excess DuneLoss assumed lost offshore/downshore
+
+    # DefineParams
+    h_b = np.average(topof[topof >= SL], axis=0) * slabheight  # [m] Average height of barrier
+
+    # Shoreface Flux
+    s_sf = d_sf / (x_s - x_t)
+    Qsf = k_sf * (s_sf_eq - s_sf)  # [m^3/m/ts]
+
+    # Toe, Shoreline, and island base elevation changes
+    x_t_dt = (4 * Qsf * (h_b + d_sf) / (d_sf * (2 * h_b + d_sf))) + (2 * RSLR / s_sf)
+    x_s_dt = 2 * (Qow + Qbe + Qat) / ((2 * h_b) + d_sf) - (4 * Qsf * (h_b + d_sf) / (((2 * h_b) + d_sf) ** 2))  # Dune growth and alongshore transport added to LTA14 formulation
+
+    # Record changes
+    x_t = x_t + x_t_dt
+    x_s = x_s + x_s_dt
+
+    return x_s, x_t  # [m]
+
+
 def foredune_crest(topo):
     """Finds and returns the location of the foredune crest for each grid column alongshore."""
 
