@@ -9,6 +9,7 @@ Translated from Matlab by IRB Reeves
 Last update: 27 October 2022
 
 __________________________________________________________________________________________________________________________________"""
+import random
 
 import numpy as np
 import scipy.io
@@ -103,7 +104,6 @@ class DUBEVEG:
             pioneer_probability=0.05,  # Probability of occurrence of new pioneering vegetation
 
             maxvegeff=1.0,  # [0-1] Value of maximum vegetation effectiveness allowed
-            no_timeseries=0,
 
             # STORM OVERWASH AND DUNE EROSION
             storm_list_filename="VCRStormList.npy",
@@ -113,7 +113,7 @@ class DUBEVEG:
 
         self._name = name
         self._simnum = simnum
-        self._MHT = MHT
+        self._MHT = MHT * slabheight  # [slabs]
         self._RSLR = RSLR
         self._qpotseries = qpotseries
         self._writeyear = writeyear
@@ -148,7 +148,6 @@ class DUBEVEG:
         self._s_sf_eq = shoreface_equilibrium_slope
         self._DShoreface = shoreface_depth
         self._LShoreface = shoreface_length_init
-        self._no_timeseries = no_timeseries
         self._sp1_a = sp1_a
         self._sp1_b = sp1_b
         self._sp1_c = sp1_c
@@ -180,6 +179,13 @@ class DUBEVEG:
         # self._eqtopo_initial = scipy.io.loadmat(inputloc + eqtopo_filename)["topo_final"]  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
         self._topo_initial = np.load(inputloc + topo_filename)  # [m] 2D-matrix with initial topography
         self._eqtopo_initial = np.load(inputloc + eqtopo_filename)  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
+
+        # Temp Reduce Size of Initial Topo
+        self._topo_initial = self._topo_initial[:50, :200]
+        self._eqtopo_initial = self._eqtopo_initial[:50, :200]
+        # Temp add noise to initial topography
+        self._topo_initial = self._topo_initial + np.random.randint(-1, 2, self._eqtopo_initial.shape) * self._slabheight_m
+        self._eqtopo_initial = self._eqtopo_initial + np.random.randint(-1, 2, self._eqtopo_initial.shape) * self._slabheight_m
 
         topo0 = self._topo_initial / self._slabheight_m  # [slabs] Transform from m into number of slabs
         self._topo = np.round(topo0)  # [slabs] Initialise the topography map
@@ -214,17 +220,18 @@ class DUBEVEG:
         self._x_s = (self._x_t + self._LShoreface) * np.ones([self._longshore]) # [m] Start locations of shoreline
 
         # HYDRODYNAMIC
-        self._wl_timeseries = scipy.io.loadmat(inputloc + waterlevel_filename)["wl_max_texel"]  # [m] Only when "no_timeseries" = 0. Waterlevel time-series. Length and frequency in relation to "simulation_time_y" and "qpotseries"
-        # self._wl_probcum                  = scipy.io.loadmat('prob_wl.mat')  # Only when "no_timeseries" = 1. Waterlevel probabilities values. To be used only when no_timeseries = 1
+        self._wl_timeseries = scipy.io.loadmat(inputloc + waterlevel_filename)["wl_max_texel"]  # [m] Waterlevel time-series. Length and frequency in relation to "simulation_time_y" and "qpotseries"
 
-        if self._no_timeseries == 0:
-            self._waterlevels = np.concatenate([self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0]])  # <------------- TEMP!!!!!!!!!!!!!!
-        else:
-            raise ValueError('No water level time-series has been loaded. Functionality to automatically build a WL time-series from cumulative probabilities has not yet been incorporated into this model version.')
+        # TEMP extend WL time series
+        self._waterlevels = np.concatenate([self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0]])
 
         # VEGETATION
         self._spec1 = scipy.io.loadmat(inputloc + veg_spec1_filename)["vegf"]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
         self._spec2 = scipy.io.loadmat(inputloc + veg_spec2_filename)["vegf"]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
+
+        # Temp Reduce Size of Initial veg
+        self._spec1 = self._spec1[:50, :200]
+        self._spec2 = self._spec2[:50, :200]
 
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
@@ -241,7 +248,7 @@ class DUBEVEG:
 
         # MODEL PARAMETERS
         self._timewaterlev = np.linspace(self._beachreset / self._iterations_per_cycle, len(self._waterlevels) * self._beachreset / self._iterations_per_cycle, num=len(self._waterlevels))
-        self._waterlevels = ((self._timewaterlev * self._RSLR) + (self._waterlevels + self._MHT)) / self._slabheight_m  # [slabs]
+        self._waterlevels = (self._timewaterlev * self._RSLR + self._waterlevels) / self._slabheight_m  # [slabs]
         self._slabheight = round(self._slabheight_m * 100) / 100
         self._balance = self._topo * 0  # Initialise the sedimentation balance map [slabs]
         self._stability = self._topo * 0  # Initialise the stability map [slabs]
@@ -258,6 +265,8 @@ class DUBEVEG:
         self._Qat = np.zeros([self._longshore])  # Need to convert from slabs to m
         self._OWflux = np.zeros([self._longshore])  # Need to convert from slabs to m
         self._DuneLoss = np.zeros([self._longshore])  # Need to convert from slabs to m
+        self._StormRecord = np.empty([5])  # Record of each storm that occurs in model: Year, iteration, Rhigh, Rlow, duration
+        self._topo_change_leftover = np.zeros(self._topo.shape)
 
         # __________________________________________________________________________________________________________________________________
         # MODEL OUPUT CONFIGURATION
@@ -309,7 +318,7 @@ class DUBEVEG:
         year = math.ceil(it / self._iterations_per_cycle)
 
         # Update sea level
-        self._MHT += self._RSLR / self._iterations_per_cycle
+        self._MHT += self._RSLR / self._iterations_per_cycle / self._slabheight_m  # [slabs]
 
         if self._eqtopo_initial.ndim == 3:
             self._eqtopo = np.squeeze(self._eqtopo_initial[:, :, it]) / self._slabheight_m
@@ -341,6 +350,47 @@ class DUBEVEG:
         stability_init = self._stability + abs(self._topo - before)
 
         # --------------------------------------
+        # STORMS
+
+        OWloss = 0  # [m^3] Aggreagate volume of overwash deposition landward of dune crest  <- NEED TO CHANGE THIS TO ARRAY WITH LENGTH LONGSHORE
+        beach_slope = np.ones([self._longshore]) * 0.04  # <- Temp! Need to calculate slope for each m alongshore
+        iteration_year = it % self._iterations_per_cycle  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
+        storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, beach_slope)  # [m MSL]
+
+        if storm and year > 10:  # Temp allowing storms to start at year 10
+            self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
+
+            # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
+            Rhigh += self._MHT * self._slabheight_m
+            Rlow += self._MHT * self._slabheight_m
+
+            self._topo, topo_change_overwash, self._topo_change_leftover, OWloss = routine.overwash_processes(
+                self._topo,
+                self._topo_change_leftover,
+                Rhigh,
+                Rlow,
+                dur,
+                self._slabheight_m,
+                threshold_in=0.25,
+                Rin_i=0.1,
+                Rin_r=8,  # was 1.2
+                Cx=10,
+                AvgSlope=np.max(self._eqtopo_initial) * self._slabheight_m / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
+                nn=0.5,
+                MaxUpSlope=0.25,
+                Qs_min=1.0,
+                Kr=7.5e-04,  # was 7.5e-05
+                Ki=7.5e-05,  # was 7.5e-06
+                mm=2.0,
+                MHT=self._MHT,
+                Cbb_i=0.85,
+                Cbb_r=0.7,
+                Qs_bb_min=1,
+            )
+
+            self._balance = self._balance + topo_change_overwash
+
+        # --------------------------------------
         # BEACH UPDATE
 
         if it % self._beachreset == 0:  # Update the inundated part of the beach
@@ -348,27 +398,9 @@ class DUBEVEG:
             inundatedold = copy.deepcopy(self._inundated)  # Make a copy for later use
             before1 = copy.deepcopy(self._topo)  # Copy of topo before it is changed
 
-            # self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes3_IRBRtest(  #3_diss3e(
-            #     self._waterlevels[self._beachcount],
-            #     self._MHTrise,
-            #     self._slabheight_m,
-            #     self._cellsize,
-            #     self._topo,
-            #     self._eqtopo,
-            #     self._veg,
-            #     self._m26,
-            #     self._wave_energy,
-            #     self._m28f,
-            #     self._pwavemaxf,
-            #     self._pwaveminf,
-            #     self._depth_limit,
-            #     self._shelterf,
-            #     self._pcurr,
-            # )
-
             self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes(
                 self._waterlevels[self._beachcount],
-                self._RSLR,
+                self._MHT,  # IRBR 9Nov22: Big change here: replaced RSLR with MHT; the varying MHT water level should be used here, not static RSLR rate
                 self._slabheight_m,
                 self._cellsize,
                 self._topo,
@@ -398,19 +430,15 @@ class DUBEVEG:
             # --------------------------------------
             # SHORELINE CHANGE & EQUILIBRIUM BEACH PROFILE
 
-            tempQat = np.ones([self._longshore]) * (np.linspace(1, self._longshore, self._longshore) - self._longshore / 2)
-            self._Qat = tempQat/120
-
             # Calculate net volume change of beach/dune from marine processes
-            crestline = routine.foredune_crest(self._topo)
+            dune_crest = routine.foredune_crest(self._topo)
             Qbe = np.zeros([self._longshore])  # [m^3/m/ts] Volume of sediment removed from (+) or added to (-) the upper shoreface by fairweather beach change
             for ls in range(self._longshore):
-                Qbe[ls] = np.sum(balance_ts[ls, :int(crestline[ls])])
+                Qbe[ls] = np.sum(balance_ts[ls, :int(dune_crest[ls])])
             Qbe = Qbe * self._slabheight_m / self._cellsize
 
             self._x_s, self._x_t = routine.shoreline_change2(
                 self.topo,
-                self._longshore,
                 self._DShoreface,
                 self._k_sf,
                 self._s_sf_eq,
@@ -448,8 +476,6 @@ class DUBEVEG:
                 sc_ls = int(shoreline_change[ls])
                 self._eqtopo[ls, :] = np.roll(self._eqtopo[ls, :], sc_ls)  # Shift laterally
                 if sc_ls >= 0:
-                    # if sc_ls > 0:
-                    #     print()
                     shoreface = np.ones([sc_ls]) * (np.linspace(-sc_ls, 0, sc_ls) * self._s_sf_eq + self._eqtopo[0, sc_ls])
                     self._eqtopo[ls, :sc_ls] = shoreface
                 else:
@@ -633,6 +659,10 @@ class DUBEVEG:
     def simulation_time_y(self):
         return self._simulation_time_y
 
+    @property
+    def StormRecord(self):
+        return self._StormRecord
+
 
 # __________________________________________________________________________________________________________________________________
 # RUN MODEL
@@ -641,9 +671,9 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 dubeveg = DUBEVEG(
-    name="15 yr, SLR 0 mm/yr",
-    simulation_time_y=15,
-    RSLR=0.00,
+    name="25 yr, SLR 4 mm/yr",
+    simulation_time_y=25,
+    RSLR=0.004,
     save_data=False,
 )
 
@@ -681,6 +711,9 @@ plt.matshow(dubeveg.veg,
             )
 plt.title("Veg TMAX, " + dubeveg.name)
 
+# plt.figure()
+# plt.hist(dubeveg.StormRecord[1:, 1], bins=50, range=(0, dubeveg.iterations_per_cycle))
+# plt.title("Model Storm Occurance by Week")
 
 # Elevation Animation
 for t in range(0, dubeveg.simulation_time_y + 1):
@@ -702,7 +735,7 @@ frames = []
 for filenum in range(0, dubeveg.simulation_time_y + 1):
     filename = "Output/SimFrames/dubeveg_elev_" + str(filenum) + ".png"
     frames.append(imageio.imread(filename))
-imageio.mimsave("Output/SimFrames/dubeveg_elev.gif", frames, "GIF-FI")
+imageio.mimwrite("Output/SimFrames/dubeveg_elev.gif", frames, fps=3)
 print()
 print("[ * GIF successfully generated * ]")
 
