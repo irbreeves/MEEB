@@ -631,7 +631,11 @@ def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, veg
     #       runup = 1.1*(.35*tan(b)*sqrt(H*L) + sqrt(H*L*(0.563*tan(b^2)+0.004))/2);
 
     # Derive gradient of eqtopo as an approximation of foreshore slope
-    b = np.nanmean(np.gradient(eqtopof[0, :] * slabheight))
+    # b = np.nanmean(np.gradient(eqtopof[0, :] * slabheight))  # Old method
+
+    dune_crest_loc = foredune_crest(topof)  # Cross-shore location of pre-storm dune crest
+    slopes = beach_slopes(topof, msl, dune_crest_loc, slabheight)
+    b = np.mean(slopes)
 
     # Tidal elevation above MSL
     tide = total_tide - msl  # [slabs]
@@ -1042,9 +1046,42 @@ def foredune_crest(topo):
 
     elev_max = np.argmax(topo, axis=1)
 
-    crestline = elev_max  # IRBR 1Nov22: Temporary. Need better algorithm to find actual foredune, since there can be gaps in dune line and cells behind foredune could potentially be taller.
+    crestline = elev_max  # TODO: Need better algorithm to find actual foredune, since there can be gaps in dune line and cells behind foredune could potentially be taller.
 
     return crestline
+
+
+def beach_slopes(eqtopo, MHT, crestline, slabheight_m):
+    """Finds beach slope based on EQ beach profile for each cell alongshore, from MHW to location of dune crest.
+
+    Parameters
+    ----------
+    eqtopo : ndarray
+        [slabs] Current equilibrium beach topography.
+    MHT : float
+        [slabs] Current mean high tide water level.
+    crestline : ndarray
+        Location of the foredune crest for each cell alongshore
+    slabheight_m : float
+        [m] Height of slabs.
+
+    Returns
+    ----------
+    slopes
+        Array of beach slopes for each cell alongshore
+    """
+
+    longshore = eqtopo.shape[0]
+    slopes = np.zeros([longshore])
+
+    # Derive gradient of eqtopo as an approximation of foreshore slope
+    for ls in range(longshore):
+        loc_upper_slope = crestline[ls]
+        loc_lower_slope = np.argmax(eqtopo[ls, :] >= MHT)
+        slopes[ls] = np.nanmean(np.gradient(eqtopo[ls, loc_lower_slope: loc_upper_slope] * slabheight_m))
+
+    return slopes
+
 
 
 def stochastic_storm(pstorm, iteration, storm_list, beach_slope):
@@ -1202,7 +1239,7 @@ def overwash_processes(
     # --------------------------------------
     # OVERWASH
 
-    OWloss = 0  # [m^3] Initialize aggreagate volume of overwash deposition landward of dune crest for this storm  <- NEED TO CHANGE THIS TO ARRAY WITH LENGTH LONGSHORE
+    OWloss = np.zeros([longshore])  # [m^3] Initialize aggreagate volume of overwash deposition landward of dune crest for this storm
 
     # Find overwashed dunes and gaps
     inundation_regime = Rlow > dune_crest_height_prestorm  # [bool] Identifies rows alongshore where dunes crest is overwashed in inundation regime
@@ -1234,7 +1271,7 @@ def overwash_processes(
         Elevation = np.zeros([iterations, longshore, domain_width])
         # Bay = np.ones([bay_routing_width, longshore]) * -BayDepth
         domain_topo_start = (topof[:, domain_width_start:] + topof_change_remainder[:, domain_width_start:]) * slabheight_m  # [m] Incorporate leftover topochange from PREVIOUS storm)
-        Elevation[0, :, :] = domain_topo_start  # np.vstack([Dunes, self._InteriorDomain, Bay])  # <- IRBR: Should this routing domain have extendable bay like in Barrier3D?
+        Elevation[0, :, :] = domain_topo_start  # np.vstack([Dunes, self._InteriorDomain, Bay])  # TODO: Allow for open boundary conditions
 
         # Initialize Memory Storage Arrays
         Discharge = np.zeros([iterations, longshore, domain_width])
@@ -1248,14 +1285,14 @@ def overwash_processes(
         Qdune = Vdune * Rexcess * 3600  # [m^3/hr] Discharge at each overtopped dune crest cell
 
         # Set discharge at dune gap
-        Discharge[:, np.arange(longshore), dune_crest_loc_prestorm - domain_width_start] = Qdune  # This means that discharge over overtopped dunes is invariant over course of storm; in future, should be improved upon by varying Rhigh over storm duration
+        Discharge[:, np.arange(longshore), dune_crest_loc_prestorm - domain_width_start] = Qdune  # TODO: This means that discharge over overtopped dunes is invariant over course of storm; in future, should be improved upon by varying Rhigh over storm duration
 
         # Run Flow Routing Algorithm
         for TS in range(iterations):
 
             if TS > 0:
                 Elevation[TS, :, :] = Elevation[TS - 1, :, :]  # Begin timestep with elevation from end of last
-                # Elevation[TS, 0, :] = Dunes - (Hd_TSloss / substep * TS)  # Reduce dune in height linearly over course of storm   IRBR To Do
+                # Elevation[TS, 0, :] = Dunes - (Hd_TSloss / substep * TS)  # TODO: Reduce dune in height linearly over course of storm
 
             for d in range(domain_width - 1):
                 # Reduce discharge across row via infiltration
@@ -1373,7 +1410,7 @@ def overwash_processes(
                             Discharge[TS, i + 1, d + 1] = Discharge[TS, i + 1, d + 1] + Q3
 
                         # Calculate Sed Movement
-                        fluxLimit = 1  # [m] Maximum elevation change during one storm substep allowed
+                        fluxLimit = 1  # [m] Maximum elevation change during one storm substep allowed  TODO: should be based on topographic feature, i.e. max dune height
 
                         # Run-up Regime
                         if inundation == 0:
@@ -1499,11 +1536,7 @@ def overwash_processes(
 
 
             # Calculate and save volume of sediment deposited on/behind the island for every hour
-            # (all four methods below should equal the same!)
-            # OWloss = OWloss + np.sum(ElevationChange[1:,:])
-            # OWloss = OWloss + (np.sum(SedFluxIn[TS,1:,:]) - np.sum(SedFluxOut[TS,1:,:])) / substep
-            # OWloss = OWloss + np.sum(SedFluxIn[TS,1,:]) / substep
-            OWloss = OWloss + np.sum(SedFluxOut[TS, :, 0]) / substep  # To do: calculate for each cell alongshore
+            OWloss = OWloss + np.sum(ElevationChange, axis=1)  # [m^3] For each cell alongshore
 
             # # Shrub Burial/Erosion
             # if Shrubs:
