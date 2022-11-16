@@ -6,10 +6,9 @@ Python version of the DUne, BEach, and VEGetation (DUBEVEG) model from Keijsers 
 
 Translated from Matlab by IRB Reeves
 
-Last update: 27 October 2022
+Last update: 15 November 2022
 
 __________________________________________________________________________________________________________________________________"""
-import random
 
 import numpy as np
 import scipy.io
@@ -20,8 +19,8 @@ import time
 import imageio
 import os
 import copy
+from mpl_toolkits.mplot3d import Axes3D
 
-import routines_dubeveg
 import routines_dubeveg as routine
 
 
@@ -46,6 +45,7 @@ class DUBEVEG:
             waterlevel_filename="wl_max_texel.mat",
             veg_spec1_filename="spec1.mat",
             veg_spec2_filename="spec2.mat",
+            seeded_random_numbers=True,
             save_data=False,
 
             # AEOLIAN
@@ -67,7 +67,7 @@ class DUBEVEG:
             n_contour=10,  # Number of contours to be used to calculate fluxes. Multiples of 10
 
             # HYDRODYNAMIC
-            m26=0.012,  # Parameter for dissipation strength ~[0.01 - 0.02]
+            m26=0.012,  # Parameter for dissipation strength ~[0.01 - 0.02], AKA Fdiss
             wave_energy=1,  # Parameter for initial wave strength ~[1 - 10]
             depth_limit=0.01,  # Depth limit up to where dissipation is calculated. For depths smaller than "depth_limit", the program sets the value as "pwaveminf"
             pcurr=0,  # Probability of erosion due to any hydrodynamic forcing rather that waves
@@ -125,7 +125,6 @@ class DUBEVEG:
         self._outputloc = outputloc
         self._save_data = save_data
         self._groundwater_depth = groundwater_depth
-        self._direction = np.random.choice(np.tile([direction1, direction2, direction3, direction4, direction5], (1, 2000))[0, :], 10000, replace=False)
         self._p_dep_sand = p_dep_sand
         self._p_dep_bare = p_dep_bare
         self._p_ero_bare = p_ero_bare
@@ -168,6 +167,12 @@ class DUBEVEG:
         # __________________________________________________________________________________________________________________________________
         # SET INITIAL CONDITIONS
 
+        # SEEDED RANDOM NUMBER GENERATOR
+        if seeded_random_numbers:
+            self._RNG = np.random.default_rng(seed=13)  # Seeded random numbers for reproducibility (e.g., model development/testing)
+        else:
+            self._RNG = np.random.default_rng()  # Non-seeded random numbers (e.g., model simulations)
+
         # TIME
         self._vegetationupdate = round(self._qpotseries * 25)
         self._iterations_per_cycle = round(self._qpotseries * 25)  # Number of iterations that is regarded as 1 year (was 50) [iterations/year]
@@ -184,14 +189,14 @@ class DUBEVEG:
         self._topo_initial = self._topo_initial[:50, :200]
         self._eqtopo_initial = self._eqtopo_initial[:50, :200]
         # Temp add back-barrier bay
-        addbay = np.ones([self._topo_initial.shape[0], 35])
-        for n in range(35):
+        addbay = np.ones([self._topo_initial.shape[0], 50])
+        for n in range(50):
             addbay[:, n] = max((13 - 1 * n) * self._slabheight_m, -1.5)
         self._topo_initial = np.hstack((self._topo_initial, addbay))
         self._eqtopo_initial = np.hstack((self._eqtopo_initial, addbay))
         # Temp add noise to initial topography
-        self._topo_initial = self._topo_initial + np.random.randint(-1, 2, self._eqtopo_initial.shape) * self._slabheight_m
-        self._eqtopo_initial = self._eqtopo_initial + np.random.randint(-1, 2, self._eqtopo_initial.shape) * self._slabheight_m
+        self._topo_initial = self._topo_initial + self._RNG.integers(-1, 2, self._eqtopo_initial.shape) * self._slabheight_m
+        self._eqtopo_initial = self._eqtopo_initial + self._RNG.integers(-1, 2, self._eqtopo_initial.shape) * self._slabheight_m
 
         topo0 = self._topo_initial / self._slabheight_m  # [slabs] Transform from m into number of slabs
         self._topo = np.round(topo0)  # [slabs] Initialise the topography map
@@ -223,7 +228,7 @@ class DUBEVEG:
         self._offbeachslabs = eqtopo_i[0, 0] - self._beachslopeslabs * self._cellsize  # [slabs] Offset for calculating moving equilibirum beach
 
         self._x_t = shoreface_toe_init * np.ones([self._longshore])  # Start locations of shoreface toe
-        self._x_s = (self._x_t + self._LShoreface) * np.ones([self._longshore]) # [m] Start locations of shoreline
+        self._x_s = (self._x_t + self._LShoreface) * np.ones([self._longshore])  # [m] Start locations of shoreline
 
         # HYDRODYNAMIC
         self._wl_timeseries = scipy.io.loadmat(inputloc + waterlevel_filename)["wl_max_texel"]  # [m] Waterlevel time-series. Length and frequency in relation to "simulation_time_y" and "qpotseries"
@@ -238,6 +243,12 @@ class DUBEVEG:
         # Temp Reduce Size of Initial veg
         self._spec1 = self._spec1[:50, :200]
         self._spec2 = self._spec2[:50, :200]
+        # # Temp increase initial veg cover
+        # self._spec1[:, 120:] += (self._RNG.random(self._spec1[:, 120:].shape) < 0.5) * self._RNG.uniform(0.5, 0.8, self._spec1[:, 120:].shape)
+        # self._spec1[:, 120:] += (self._RNG.random(self._spec1[:, 120:].shape) < 0.5) * self._RNG.uniform(0, 0.8, self._spec1[:, 120:].shape)
+        # # Or: Temp set initial veg cover to zero
+        # self._spec1 *= 0
+        # self._spec2 *= 0
         # Temp Add Bay
         self._spec1 = np.hstack((self._spec1, addbay * 0))
         self._spec2 = np.hstack((self._spec2, addbay * 0))
@@ -256,6 +267,7 @@ class DUBEVEG:
                         0.181818181818182, 0.333333333333333, 0.151515151515152, 0.212121212121212, 0.272727272727273]  # Empirical probability of storm occurance for each 1/50th (~weekly) iteration of the year, from 1980-2013 VCR storm record
 
         # MODEL PARAMETERS
+        self._direction = self._RNG.choice(np.tile([direction1, direction2, direction3, direction4, direction5], (1, 2000))[0, :], 10000, replace=False)
         self._timewaterlev = np.linspace(self._beachreset / self._iterations_per_cycle, len(self._waterlevels) * self._beachreset / self._iterations_per_cycle, num=len(self._waterlevels))
         self._waterlevels = (self._timewaterlev * self._RSLR + self._waterlevels) / self._slabheight_m  # [slabs]
         self._slabheight = round(self._slabheight_m * 100) / 100
@@ -346,13 +358,13 @@ class DUBEVEG:
 
         if self._direction[it] == 1 or self._direction[it] == 3:  # East or west wind direction
             contour = np.linspace(0, round(self._crossshore) - 1, self._n_contour + 1)  # Contours to account for transport
-            changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, direction=self._direction[it])  # Returns map of height changes
+            changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
         else:  # North or south wind direction
             contour = np.linspace(0, round(self._longshore) - 1, self._n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This may produce slightly different results than Matlab version - need to verify
-            changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, direction=self._direction[it])  # Returns map of height changes
+            changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
 
         self._topo = self._topo + changemap  # Changes applied to the topography
-        self._topo, aval = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold)  # Enforce angles of repose: avalanching
+        self._topo, aval = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)  # Enforce angles of repose: avalanching
         self._balance = self._balance + (self._topo - before)  # Update the sedimentation balance map
         balance_init = self._balance + (self._topo - before)
         self._stability = self._stability + abs(self._topo - before)
@@ -361,13 +373,13 @@ class DUBEVEG:
         # --------------------------------------
         # STORMS
 
-        dune_crest = routine.foredune_crest(self._topo)
+        dune_crest = routine.foredune_crest(self._topo, self._eqtopo_initial, self._veg)
         slopes = routine.beach_slopes(self._eqtopo, self._MHT, dune_crest, self._slabheight_m)
 
         iteration_year = it % self._iterations_per_cycle  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
-        storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, slopes)  # [m MSL]
+        storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, slopes, self._RNG)  # [m MSL]
 
-        if storm and year > 10:  # Temp allowing storms to start at year 10
+        if storm and year > 10:  # Temp allowing storms to start at year n
             self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
 
             # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
@@ -377,17 +389,18 @@ class DUBEVEG:
             self._topo, topo_change_overwash, self._topo_change_leftover, self._OWflux = routine.overwash_processes(
                 self._topo,
                 self._topo_change_leftover,
+                dune_crest,
                 Rhigh,
                 Rlow,
                 dur,
                 self._slabheight_m,
                 threshold_in=0.25,
                 Rin_i=0.1,
-                Rin_r=8,  # was 1.2
+                Rin_r=0.1,  # was 1.2
                 Cx=10,
                 AvgSlope=np.max(self._eqtopo_initial) * self._slabheight_m / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
                 nn=0.5,
-                MaxUpSlope=0.25,
+                MaxUpSlope=0.35,  # was 0.25
                 Qs_min=1.0,
                 Kr=7.5e-04,  # was 7.5e-05
                 Ki=7.5e-05,  # was 7.5e-06
@@ -399,7 +412,7 @@ class DUBEVEG:
             )
 
             self._balance = self._balance + topo_change_overwash  # Record changes to sediment balance
-            self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold)[0]  # Enforce angles of repose again after overwash; TODO: Investigate whether slope enforcement after overwash is necessary; remove if not
+            self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again after overwash; TODO: Investigate whether slope enforcement after overwash is necessary; remove if not
 
         else:
             self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
@@ -413,7 +426,7 @@ class DUBEVEG:
             before1 = copy.deepcopy(self._topo)  # Copy of topo before it is changed
 
             self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes(
-                min(15, self._waterlevels[self._beachcount]),  # self._waterlevels[self._beachcount],
+                self._waterlevels[self._beachcount],
                 self._MHT,  # IRBR 9Nov22: Big change here: replaced RSLR with MHT; the varying MHT water level should be used here, not static RSLR rate
                 self._slabheight_m,
                 self._cellsize,
@@ -434,7 +447,7 @@ class DUBEVEG:
 
             self._inundated = np.logical_or(self._inundated, inundatedold)  # Combine updated area from individual loops
             self._pbeachupdatecum = pbeachupdate + self._pbeachupdatecum  # Cumulative beachupdate probabilities
-            self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold)[0]  # Enforce angles of repose again
+            self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again
             balance_ts = self._topo - before1
             self._balance = self._balance + balance_ts
             self._stability = self._stability + abs(self._topo - before1)
@@ -445,7 +458,7 @@ class DUBEVEG:
             # SHORELINE CHANGE & EQUILIBRIUM BEACH PROFILE
 
             # Calculate net volume change of beach/dune from marine processes
-            dune_crest = routine.foredune_crest(self._topo)
+            dune_crest = routine.foredune_crest(self._topo, self._eqtopo, self._veg)
             Qbe = np.zeros([self._longshore])  # [m^3/m/ts] Volume of sediment removed from (+) or added to (-) the upper shoreface by fairweather beach change
             for ls in range(self._longshore):
                 Qbe[ls] = np.sum(balance_ts[ls, :int(dune_crest[ls])])
@@ -509,10 +522,10 @@ class DUBEVEG:
             self._spec2 = routine.growthfunction2_sens(self._spec2, self._balance * self._slabheight_m, self._sp2_a, self._sp2_b, self._sp2_d, self._sp1_e, self._sp2_peak)
 
             # Lateral Expansion & Veg Establishment
-            lateral1 = routine.lateral_expansion(spec1_old, 1, self._lateral_probability * veg_multiplier)  # Species 1
-            lateral2 = routine.lateral_expansion(spec2_old, 1, self._lateral_probability * veg_multiplier)  # Species 1
-            pioneer1 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHT, self._pioneer_probability * veg_multiplier) * (spec1_old <= 0)
-            pioneer2 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHT, self._pioneer_probability * veg_multiplier) * (spec2_old <= 0) * (self._stability == 0)
+            lateral1 = routine.lateral_expansion(spec1_old, 1, self._lateral_probability * veg_multiplier, self._RNG)  # Species 1
+            lateral2 = routine.lateral_expansion(spec2_old, 1, self._lateral_probability * veg_multiplier, self._RNG)  # Species 1
+            pioneer1 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHT, self._pioneer_probability * veg_multiplier, self._RNG) * (spec1_old <= 0)
+            pioneer2 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHT, self._pioneer_probability * veg_multiplier, self._RNG) * (spec2_old <= 0) * (self._stability == 0)
 
             lateral1[self._topo <= self._MHT] = False
             lateral2[self._topo <= self._MHT] = False
@@ -697,10 +710,10 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 dubeveg = DUBEVEG(
-    name="30 yr, SLR 0 mm/yr, temp bay, constrained beach twl, stormstart 1",
+    name="30 yr, SLR 0 mm/yr",
     simulation_time_y=30,
     RSLR=0.000,
-    save_data=False,
+    seeded_random_numbers=True,
 )
 
 print(dubeveg.name)
@@ -740,6 +753,29 @@ plt.title("Veg TMAX, " + dubeveg.name)
 # plt.figure()
 # plt.hist(dubeveg.StormRecord[1:, 1], bins=50, range=(0, dubeveg.iterations_per_cycle))
 # plt.title("Model Storm Occurance by Week")
+
+# # Plot 3D Elevation
+# fig = plt.figure(figsize=(12, 8))
+# ax = fig.add_subplot(111, projection="3d")
+# scale_x = 1
+# L, C = dubeveg.topo.shape
+# scale_y = L / C
+# scale_z = 10 / L
+# ax.get_proj = lambda: np.dot(
+#     Axes3D.get_proj(ax), np.diag([scale_x, scale_y, scale_z, 1])
+# )
+# X, Y = np.meshgrid(np.arange(C), np.arange(L))
+# ax.plot_surface(
+#     X,
+#     Y,
+#     dubeveg.topo * dubeveg.slabheight,
+#     cmap="terrain",
+#     alpha=1,
+#     linewidth=0,
+#     shade=True,
+#     vmin=0,
+#     vmax=4.5,
+# )
 
 # Elevation Animation
 for t in range(0, dubeveg.simulation_time_y + 1):

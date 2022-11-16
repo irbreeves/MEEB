@@ -104,7 +104,7 @@ def depprobs(vegf, shade, sand, dep0, dep1):
     return r
 
 
-def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore, direction):
+def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore, direction, RNG):
     """Shifts the sand. Movement is from left to right, along +2 dimension, across columns, along rows. Returns a map of height changes [-,+].
     Open boundaries (modification by Alma), no feeding from the sea side.
     - erosprobs: map of erosion probabilities [erosmap]
@@ -112,7 +112,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
     - hop: jumplength
     - direction: wind direction (1 east, 2 north, 3, west, 4 south)"""
 
-    pickedup = np.random.rand(longshore, crossshore) < erosprobs  # True where slab is picked up
+    pickedup = RNG.random((longshore, crossshore)) < erosprobs  # True where slab is picked up
     # pickedup[:, -1 - hop: -1] = 0  # Do not pick any slab that are on the ladward boundary -- east only?
 
     totaldeposit = np.zeros([longshore, crossshore])
@@ -127,7 +127,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             inmotion = np.roll(inmotion, hop, axis=1)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
+            depocells = RNG.random((longshore, crossshore)) < deposprobs  # True where slab should be deposited
             # depocells[:, -1 - hop: -1] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[:, 0: hop] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
@@ -135,7 +135,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             inmotion = np.roll(inmotion, hop, axis=0)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
+            depocells = RNG.random((longshore, crossshore)) < deposprobs  # True where slab should be deposited
             # depocells[0 : hop, :] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[0: hop, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
@@ -143,7 +143,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             inmotion = np.roll(inmotion, -hop, axis=1)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
+            depocells = RNG.random((longshore, crossshore)) < deposprobs  # True where slab should be deposited
             # depocells[:, -1 - hop: -1] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[:, -1 - hop: -1] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
@@ -151,7 +151,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             inmotion = np.roll(inmotion, -hop, axis=0)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[contour.astype(np.int64), :], axis=1)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = np.random.rand(longshore, crossshore) < deposprobs  # True where slab should be deposited
+            depocells = RNG.random((longshore, crossshore)) < deposprobs  # True where slab should be deposited
             # depocells[0 : hop + 1, :] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[-1 - hop: -1, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
@@ -165,7 +165,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
     return diff, numshifted, sum_contour
 
 
-def enforceslopes2(topof, vegf, sh, anglesand, angleveg, th):
+def enforceslopes2(topof, vegf, sh, anglesand, angleveg, th, RNG):
     """Function to enforce the angle of repose; open boundaries (18 oct 2010). Returns an updated topography.
     - topof         : topography map [topo]
     - vegf          : map of combined vegetation effectiveness [veg] [0,1]
@@ -224,7 +224,7 @@ def enforceslopes2(topof, vegf, sh, anglesand, angleveg, th):
         if k.size != 0:
             for i in range(len(k)):
                 row, col = k[i]  # Recover row and col #s from k
-                a1 = np.random.rand(1, 1, 8) * exceeds[row, col, :]  # Give all equally steepest slopes in this cell a random number
+                a1 = RNG.random((1, 1, 8)) * exceeds[row, col, :]  # Give all equally steepest slopes in this cell a random number
                 exceeds[row, col, :] = (a1 == np.max(a1))  # Pick the largest random number and set the rest to zero
 
         # Begin avalanching
@@ -245,7 +245,7 @@ def enforceslopes2(topof, vegf, sh, anglesand, angleveg, th):
     return topof, total
 
 
-def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, pcurr):
+def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, pcurr, RNG):
     """Calculates the effects of high tide levels on the beach and foredune (with stochastic element)
     % Beachupdate in cellular automata fashion
     % Sets back a certain length of the profile to the equilibrium;
@@ -389,8 +389,8 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
 
     # Stochastic element
     width, length = pbeachupdate.shape
-    dbeachupdate = np.random.rand(width, length) < pbeachupdate  # Do beachupdate only for random cells
-    dbeachupdate_ero = np.random.rand(width, length) < pbeachupdate_ero  # Do beachupdate only for random cells
+    dbeachupdate = RNG.random((width, length)) < pbeachupdate  # Do beachupdate only for random cells
+    dbeachupdate_ero = RNG.random((width, length)) < pbeachupdate_ero  # Do beachupdate only for random cells
 
     # # marine_processes3_diss3e
     topof = topof - ((topof - eqtopof) * dbeachupdate)  # Adjusting the topography
@@ -411,7 +411,7 @@ def marine_processes3_diss3e(total_tide, msl, slabheight, cellsizef, topof, eqto
     return topof, inundatedf, pbeachupdate, diss, cumdiss, pwave
 
 
-def marine_processes3_IRBRtest(total_tide, msl, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, pcurr):
+def marine_processes3_IRBRtest(total_tide, msl, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, pcurr, RNG):
     """Calculates the effects of high tide levels on the beach and foredune (with stochastic element)
     % Beachupdate in cellular automata fashion
     % Sets back a certain length of the profile to the equilibrium;
@@ -559,10 +559,10 @@ def marine_processes3_IRBRtest(total_tide, msl, slabheight, cellsizef, topof, eq
 
     # Stochastic element
     width, length = pbeachupdate.shape
-    dbeachupdate = np.random.rand(width, length) < pbeachupdate  # Do beachupdate only for random cells
-    dbeachupdate_ero = np.random.rand(width, length) < pbeachupdate_ero  # Do beachupdate only for random cells
-    # dbeachupdate = pbeachupdate * (np.random.rand(width, length) < pbeachupdate)  # IRBR 31Oct22 Test: from preceeding marine_processes versions
-    # dbeachupdate_ero = pbeachupdate_ero * (np.random.rand(width, length) < pbeachupdate_ero)  # IRBR 31Oct22 Test: from preceeding marine_processes versions
+    dbeachupdate = RNG.random((width, length)) < pbeachupdate  # Do beachupdate only for random cells
+    dbeachupdate_ero = RNG.random((width, length)) < pbeachupdate_ero  # Do beachupdate only for random cells
+    # dbeachupdate = pbeachupdate * (RNG.random((width, length)) < pbeachupdate)  # IRBR 31Oct22 Test: from preceeding marine_processes versions
+    # dbeachupdate_ero = pbeachupdate_ero * (RNG.random((width, length)) < pbeachupdate_ero)  # IRBR 31Oct22 Test: from preceeding marine_processes versions
 
     # # marine_processes3_diss3e
     # topof = topof - ((topof - eqtopof) * dbeachupdate)  # Adjusting the topography
@@ -633,7 +633,7 @@ def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, veg
     # Derive gradient of eqtopo as an approximation of foreshore slope
     # b = np.nanmean(np.gradient(eqtopof[0, :] * slabheight))  # Old method
 
-    dune_crest_loc = foredune_crest(topof)  # Cross-shore location of pre-storm dune crest
+    dune_crest_loc = foredune_crest(topof, eqtopof, vegf)  # Cross-shore location of pre-storm dune crest
     slopes = beach_slopes(topof, msl, dune_crest_loc, slabheight)
     b = np.mean(slopes)
 
@@ -664,9 +664,9 @@ def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, veg
     # toolow = topof < totalwater  # [0 1] Give matrix with cells that are potentially under water
     pexposed = np.ones(topof.shape)  # Initialise matrix
     for m20 in range(len(topof[:, 0])):  # Run along all the rows
-        twlloc = np.argwhere(topof[m20, :] >= totalwater)
-        if len(twlloc) > 0:  # If there are any sheltered cells
-            m21 = twlloc[0][0]  # Finds for every row the first instance where the topography exceeds the total water level
+        twlloc = np.argmax(topof[m20, :] >= totalwater)  # Finds for every row the first instance where the topography exceeds the total water level
+        if twlloc > 0:  # If there are any sheltered cells
+            m21 = twlloc
             pexposed[m20, m21:] = 1 - shelterf  # Subtract shelter from exposedness: sheltered cells are less exposed
 
     # --------------------------------------
@@ -800,7 +800,7 @@ def growthfunction2_sens(spec, sed, A2, B2, D2, E2, P2):
     return spec
 
 
-def lateral_expansion(veg, dist, prob):
+def lateral_expansion(veg, dist, prob, RNG):
     """LATERAL_EXPANSION implements lateral expansion of existing vegetation patches.
     1) mark cells that lie within <dist> of existing patches: probability for new vegetated cells = 1
     2) cells not adjacent to existing patches get probability depending on elevation: pioneer most likely to establish between 3 and 5 m + sea level.
@@ -825,7 +825,7 @@ def lateral_expansion(veg, dist, prob):
 
     # Lateral expansion only takes place in a fraction <prob> of the possible cells
     width, length = veg.shape
-    lateral_expansion_allowed = np.random.rand(width, length) < (lateral_expansion_possible * prob)
+    lateral_expansion_allowed = RNG.random((width, length)) < (lateral_expansion_possible * prob)
     # Include existing vegetation to incorporate growth or decay of existing patches
     lateral_expansion_allowed = lateral_expansion_allowed + veg
     lateral_expansion_allowed = lateral_expansion_allowed > 0
@@ -833,7 +833,7 @@ def lateral_expansion(veg, dist, prob):
     return lateral_expansion_allowed
 
 
-def establish_new_vegetation(topof, mht, prob):
+def establish_new_vegetation(topof, mht, prob, RNG):
     """Establishment of pioneer veg in previously bare cells.
     Represents the germination and development of veg from seeds or rhizome fragments distributed by the sea or wind.
     Returns logical array of which cells new veg has successfully established in."""
@@ -868,7 +868,7 @@ def establish_new_vegetation(topof, mht, prob):
 
     pioneer_establish_prob = leftextension + firstleg + secondleg + thirdleg + fourthleg + rightextension
     width, length = topof.shape
-    pioneer_established = np.random.rand(width, length) < pioneer_establish_prob
+    pioneer_established = RNG.random((width, length)) < pioneer_establish_prob
 
     return pioneer_established
 
@@ -1041,14 +1041,56 @@ def shoreline_change2(
     return x_s, x_t  # [m]
 
 
-def foredune_crest(topo):
+def foredune_crest(topo, eqtopo, veg):
     """Finds and returns the location of the foredune crest for each grid column alongshore."""
 
-    elev_max = np.argmax(topo, axis=1)
+    # TODO: Need better algorithm to find actual foredune, since there can be gaps in dune line and
+    #  cells behind foredune could potentially be taller.
 
-    crestline = elev_max  # TODO: Need better algorithm to find actual foredune, since there can be gaps in dune line and cells behind foredune could potentially be taller.
+    # 1: Simplest, maximum elev for each column
+    crestline = np.argmax(topo, axis=1)
 
-    return crestline
+    # # 2: Average location of maximum, invariant alongshore
+    # elev_max = np.argmax(topo, axis=1)
+    # crestline = (np.ones([len(elev_max)]) * np.round(np.nanmean(elev_max))).astype(int)
+
+    # 3: Highest point within buffer of mean topo highpoint
+    elev_max_mean = np.ceil(np.mean(np.argmax(topo, axis=1))).astype(int)
+    crestline = np.zeros([topo.shape[0]])
+    buff = 15
+    for r in range(topo.shape[0]):
+        mini = elev_max_mean - buff
+        maxi = elev_max_mean + buff
+        loc = np.argmax(topo[r, mini: maxi])
+        crestline[r] = int(mini + loc)
+
+    # # 4: Equilibrium topo highpoint
+    # crestline = np.argmax(eqtopo, axis=1)
+
+    # # 5: Highest point within buffer of EQtopo highpoint
+    # eqelev_max = np.argmax(eqtopo, axis=1)
+    # crestline = np.zeros([len(eqelev_max)])
+    # buff = 10
+    # for r in range(len(eqelev_max)):
+    #     mini = eqelev_max[r] - buff
+    #     maxi = eqelev_max[r] + buff
+    #     loc = np.argmax(topo[r, mini: maxi])
+    #     crestline[r] = int(mini + loc)
+
+    # # 6: Highest point within buffer of 95% veg
+    # veg_max = np.argmax(veg > 0.9, axis=1)
+    # crestline = np.zeros([len(veg_max)])
+    # buff = 15
+    # for r in range(len(veg_max)):
+    #     if veg_max[r] > 0:
+    #         mini = veg_max[r] - buff
+    #         maxi = veg_max[r] + buff
+    #         loc = np.argmax(topo[r, mini: maxi])
+    #         crestline[r] = int(mini + loc)
+    #     else:
+    #         crestline[r] = int(np.argmax(eqtopo[r, :]))
+
+    return crestline.astype(int)
 
 
 def beach_slopes(eqtopo, MHT, crestline, slabheight_m):
@@ -1084,7 +1126,7 @@ def beach_slopes(eqtopo, MHT, crestline, slabheight_m):
 
 
 
-def stochastic_storm(pstorm, iteration, storm_list, beach_slope):
+def stochastic_storm(pstorm, iteration, storm_list, beach_slope, RNG):
     """Stochastically determines whether a storm occurs for this timestep, and, if so, stochastically determines the relevant characteristics of the storm (i.e., water levels, duration).
 
     Parameters
@@ -1097,6 +1139,8 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope):
         List of synthetic storms (rows), with wave and tide statistics (columns) desccribing each storm.
     beach_slope : float
         Beach slope from MHW to dune toe.
+    RNG :
+        Random number generator, either seeded or unseeded
 
     Returns
     ----------
@@ -1111,11 +1155,11 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope):
     """
 
     # Determine if storm will occur this iteration
-    storm = np.random.rand() < pstorm[iteration]
+    storm = RNG.random() < pstorm[iteration]
 
     if storm:
         # Randomly select storm from list of synthetic storms
-        n = np.random.randint(0, len(storm_list))  # Randomly selected storm
+        n = RNG.integers(0, len(storm_list))  # Randomly selected storm
         Hs = storm_list[n, 0]  # Significant wave height
         dur = storm_list[n, 1]  # Duration
         NTR = storm_list[n, 3]  # Non-tidal residual
@@ -1145,6 +1189,7 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope):
 def overwash_processes(
         topof,
         topof_change_remainder,
+        crestline,
         Rhigh,
         Rlow,
         dur,
@@ -1173,6 +1218,8 @@ def overwash_processes(
         [slabs] Current elevation domain.
     topof_change_remainder : ndarray
         [slabs] Portion of elevation change unused in previous time step (i.e., partial slabs).
+    crestline : ndarray
+        Cross-shore location of foredune crest cells.
     Rhigh : ndarray
         [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
     Rlow : ndarray
@@ -1226,7 +1273,7 @@ def overwash_processes(
 
     longshore, crossshore = topof.shape
     topof_prestorm = copy.deepcopy(topof)
-    dune_crest_loc_prestorm = foredune_crest(topof_prestorm)  # Cross-shore location of pre-storm dune crest
+    dune_crest_loc_prestorm = crestline  # Cross-shore location of pre-storm dune crest
     dune_crest_height_prestorm = topof_prestorm[np.arange(len(topof_prestorm)), dune_crest_loc_prestorm] * slabheight_m  # [m] Height of dune crest alongshore
     MHT_m = MHT * slabheight_m  # Convert from slabs to meters
 
