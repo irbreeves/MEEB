@@ -6,7 +6,7 @@ Python version of the DUne, BEach, and VEGetation (DUBEVEG) model from Keijsers 
 
 Translated from Matlab by IRB Reeves
 
-Last update: 15 November 2022
+Last update: 28 November 2022
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -294,11 +294,8 @@ class DUBEVEG:
 
         # __________________________________________________________________________________________________________________________________
         # MODEL OUPUT CONFIGURATION
-        """Select matrices to be calculated during the simulation. CAUTION WITH THE SIZE OF YOUR OUTPUT, YOU MAY GET AN OUT-OF-MEMORY ERROR."""
 
-        # MANDATORY
         self._timeits = np.linspace(1, self._iterations, self._iterations)  # Time vector for budget calculations
-        self._seainput_slabs = np.zeros([self._longshore, self._crossshore])  # Inititalise vector for sea-transported slab
         self._topo_TS = np.empty([self._longshore, self._crossshore, self._simulation_time_yr + 1])  # Array for saving each topo map for each simulation year
         self._topo_TS[:, :, 0] = self._topo
         self._spec1_TS = np.empty([self._longshore, self._crossshore, self._simulation_time_yr + 1])  # Array for saving each spec1 map for each simulation year
@@ -307,21 +304,6 @@ class DUBEVEG:
         self._spec2_TS[:, :, 0] = self._spec2
         self._veg_TS = np.empty([self._longshore, self._crossshore, self._simulation_time_yr + 1])  # Array for saving each veg map for each simulation year
         self._veg_TS[:, :, 0] = self._veg
-
-        # OPTIONAL
-        # self._flux_contour = np.zeros([len(self._timeits), self._n_contour + 1])  # Inititalise vector for sea-transported slabs
-        # self._seainput_tot = np.empty([self._longshore, self._crossshore, len(self._timeits)])  # 3-D seainput matrices
-        # self._diss_tot = np.empty([self._longshore, self._crossshore, len(self._timeits)])  # 3-D dissipation matrices
-        # self._cumdiss_tot = np.empty([self._longshore, self._crossshore, len(self._timeits)])  # 3-D cummulative dissipation matrices
-        # pself._wave_tot = np.empty([self._longshore, self._crossshore, len(self._timeits)])  # 3-D pwave matrices
-        # self._pbeachupdate_tot = np.empty([self._longshore, self._crossshore, len(self._timeits)])  # 3-D pbeachupdate matrices
-        # bself._alancea_tot = np.empty([self._longshore, self._crossshore, len(self._timeits)])  # 3-D balancea matrices
-        # self._balanceb_tot = np.empty([self._longshore, self._crossshore, len(self._timeits)])  # 3-D balanceb matrices
-        # self._stabilitya_tot = np.empty([self._longshore, self._crossshore, len(self._timeits)])  # 3-D stabilitya matrices
-        # self._stabilityb_tot = np.empty([self._longshore, self._crossshore, len(self._timeits)])  # 3-D stabilityb matrices
-        # self._erosmap_tot = np.empty([self._longshore, self._crossshore, len(self._timeits)])  # 3-D erosmap matrices
-        # self._deposmap_tot = np.empty([self._longshore, self._crossshore, len(self._timeits)])  # 3-D deposmap matrices
-        # self._shadowmap_tot = np.zeros([self._longshore, self._crossshore])  # 3-D shadowmap matrice
         self._erosmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all erosmaps
         self._deposmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all deposmaps
         self._seainput_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all seainput maps
@@ -329,10 +311,7 @@ class DUBEVEG:
         self._balanceb_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all balanceb maps
         self._stabilitya_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all stabilitya maps
         self._stabilityb_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all stabilityb maps
-
-        # Inititalise vectors for transport activity
         self._windtransp_slabs = np.zeros([len(self._timeits)])
-        self._landward_transport = np.zeros([len(self._timeits)])
         self._avalanches = np.zeros([len(self._timeits)])
 
     # __________________________________________________________________________________________________________________________________
@@ -450,7 +429,6 @@ class DUBEVEG:
             )
 
             seainput = self._topo - before1  # Sand added to the beach by the sea
-            # seainput_slabs[it] = np.nansum(seainput)  # IRBR 24OCt22: Bug here. Why is this even needed?
 
             self._inundated = np.logical_or(self._inundated, inundatedold)  # Combine updated area from individual loops
             self._pbeachupdatecum = pbeachupdate + self._pbeachupdatecum  # Cumulative beachupdate probabilities
@@ -516,6 +494,8 @@ class DUBEVEG:
                     self._eqtopo[ls, :shoreline_ls] = shoreface
                 else:
                     self._eqtopo[ls, sc_ls:] = self._eqtopo[ls, sc_ls * 2: sc_ls]
+        else:
+            seainput = np.zeros([self._longshore, self._crossshore])
 
         # --------------------------------------
         # VEGETATION
@@ -585,76 +565,18 @@ class DUBEVEG:
             self._spec2_TS[:, :, moment] = self._spec2
             self._veg_TS[:, :, moment] = self._veg
 
-        if 'erosmap_sum' in locals():
-            self._erosmap_sum = self._erosmap_sum + erosmap
-
-        if 'deposmap_sum' in locals():
-            self._deposmap_sum = self._deposmap_sum + deposmap
-
-        if 'erosmap_tot' in locals():
-            self._erosmap_tot[:, :, it] = erosmap
-
-        if 'deposmap_tot' in locals():
-            self._deposmap_tot[:, :, it] = deposmap
-
-        if 'shadowmap_tot' in locals():
-            self._shadowmap_tot[:, :, it] = shadowmap
-
-        if 'balancea_sum' in locals():
-            self._balancea_sum = self._balancea_sum + balance_init
-
-        # if 'balancea_tot' in locals():
-        #     balancea_tot[:, :, it] = balance_init
-
-        if 'stabilitya_sum' in locals():
-            self._stabilitya_sum = self._stabilitya_sum + stability_init
-
-        # if 'stabilitya_tot' in locals():
-        #     stabilitya_tot[:, :, it] = stabilitya
-
-        if 'windtransp_slabs' in locals():
-            self._windtransp_slabs[it] = (slabtransp * self._slabheight_m * self._cellsize ** 2) / self._longshore
-
-        if 'avalanches' in locals():
-            self._avalanches[it] = aval
-
-        if 'flux_contour' in locals():
-            self._flux_contour[it, :] = (sum_contour * self._slabheight_m * self._cellsize ** 2)
-
-        # if 'seainput_total' in locals():
-        #     seainput_total[:, :, it] = seainput
-
-        # if 'diss_total' in locals():
-        #     diss_total[:, :, it] = diss
-
-        # if 'cumdiss_total' in locals():
-        #     cumdiss_total[:, :, it] = cumdiss
-
-        # if 'pwave_total' in locals():
-        #     pwave_total[:, :, it] = pwave
-
-        # if 'pbeachupdate_total' in locals():
-        #     pbeachupdate_total[:, :, it] = pbeachupdate
-
-        if 'seainput_sum' in locals():
-            self._seainput_sum = self._seainput_sum + seainput
-
-        if 'balanceb_sum' in locals():
-            balanceb_sum = self._balanceb_sum + self._balance
-
-        if 'balanceb_tot' in locals():
-            self._balanceb_tot[:, :, it] = self._balance
-
-        if 'stabilityb_sum' in locals():
-            self._stabilityb_sum = self._stabilityb_sum + self._stability
-
-        # if 'stabilityb' in locals():
-        #     stabilityb[:, :, it] = self._balance
+        self._erosmap_sum = self._erosmap_sum + erosmap
+        self._deposmap_sum = self._deposmap_sum + deposmap
+        self._balancea_sum = self._balancea_sum + balance_init
+        self._stabilitya_sum = self._stabilitya_sum + stability_init
+        self._stabilityb_sum = self._stabilityb_sum + self._stability
+        self._windtransp_slabs[it] = (slabtransp * self._slabheight_m * self._cellsize ** 2) / self._longshore
+        self._avalanches[it] = aval
+        self._seainput_sum = self._seainput_sum + seainput
 
         # --------------------------------------
         # RESET DOMAINS
 
-        balance_copy = copy.deepcopy(self._balance)
         self._balance[:] = 0  # Reset the balance map
         self._inundated[:] = 0  # Reset part of beach with wave/current action
         self._pbeachupdatecum[:] = 0
