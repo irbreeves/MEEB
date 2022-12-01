@@ -78,7 +78,9 @@ def erosprobs2(vegf, shade, sand, topof, groundw, p_er):
     - groundw: groundwater map [gw]
     - p_er: probability of erosion of bare cell"""
 
-    r = np.logical_not(shade) * sand * (1 - vegf) * (topof > groundw) * p_er
+    # r = np.logical_not(shade) * sand * (1 - vegf) * (topof > groundw) * p_er
+    r = np.logical_not(shade) * sand * (p_er - vegf) * (topof > groundw)  # IRBR 30Nov22: Fixed to follow Keijsers paper
+    r[r < 0] = 0
 
     return r
 
@@ -92,11 +94,13 @@ def depprobs(vegf, shade, sand, dep0, dep1):
     - dep1: deposition probability on sandy cell [p_dep_sand]"""
 
     # For bare cells
-    temp1 = vegf * (1 - dep0) + dep0  # Deposition probabilities on bare cells
+    # temp1 = vegf * (1 - dep0) + dep0  # Deposition probabilities on bare cells
+    temp1 = vegf * dep0 + dep0  # Deposition probabilities on bare cells  # IRBR 30Nov22: Fixed to follow Keijsers paper
     temp2 = np.logical_not(sand) * np.logical_not(shade) * temp1  # Apply to bare cells outside shadows only
 
     # For sandy cells
-    temp3 = vegf * (1 - dep1) + dep1  # Deposition probabilities on sandy cells
+    # temp3 = vegf * (1 - dep1) + dep1  # Deposition probabilities on sandy cells
+    temp3 = vegf * dep1 + dep1  # Deposition probabilities on sandy cells  # IRBR 30Nov22: Fixed to follow Keijsers paper
     temp4 = sand * np.logical_not(shade) * temp3  # Apply to sandy cells outside shadows only
 
     r = temp2 + temp4 + shade  # Combine both types of cells + shadowzones
@@ -706,6 +710,12 @@ def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, veg
     pbeachupdate = pbare * pwave * pexposed  # Probability for beachupdate, also indication of strength of process (it does not do anything random)  IRBR 1Nov22: Un-commented *pexposed
     pbeachupdate[pbeachupdate < 0] = 0  # Keep probabilities to 0 - 1 range
     pbeachupdate[pbeachupdate > 1] = 1
+
+    # IRBR 1Dec22: Only allow update up to dune/berm crest
+    crest_limit = np.ones(topof.shape)
+    for ls in range(topof.shape[0]):
+        crest_limit[ls, dune_crest_loc[ls]:] = 0
+    pbeachupdate *= crest_limit
 
     # Changed after revision (JK 21/01/2015)
     topof = topof - (topof - eqtopof) * pbeachupdate  # Adjusting the topography
