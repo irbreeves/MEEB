@@ -187,6 +187,10 @@ class DUBEVEG:
         self._topo_initial = np.load(inputloc + topo_filename)  # [m] 2D-matrix with initial topography
         self._eqtopo_initial = np.load(inputloc + eqtopo_filename)  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
 
+        # # Temp convert slabs to m
+        # self._topo_initial = self._topo_initial * self._slabheight_m
+        # self._eqtopo_initial = self._eqtopo_initial * self._slabheight_m
+
         # Temp Reduce Size of Initial Topo
         self._topo_initial = self._topo_initial[:50, :200]
         self._eqtopo_initial = self._eqtopo_initial[:50, :200]
@@ -354,82 +358,82 @@ class DUBEVEG:
         self._stability = self._stability + abs(self._topo - before)
         stability_init = self._stability + abs(self._topo - before)
 
-        # --------------------------------------
-        # STORMS
-
-        dune_crest = routine.foredune_crest(self._topo, self._eqtopo_initial, self._veg, self._TWLexcursion, year, self._iterations_per_cycle / self._beachreset)
-        slopes = routine.beach_slopes(self._eqtopo, self._MHT, dune_crest, self._slabheight_m)
-
-        iteration_year = it % self._iterations_per_cycle  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
-        storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, slopes, self._RNG)  # [m MSL]
-
-        if storm and year > 5:  # Temp allowing storms to start at year n
-            self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
-
-            # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
-            Rhigh += self._MHT * self._slabheight_m
-            Rlow += self._MHT * self._slabheight_m
-
-            self._topo, topo_change_overwash, self._topo_change_leftover, self._OWflux = routine.overwash_processes(
-                self._topo,
-                self._topo_change_leftover,
-                dune_crest,
-                Rhigh,
-                Rlow,
-                dur,
-                self._slabheight_m,
-                threshold_in=0.25,
-                Rin_i=5,
-                Rin_r=50,
-                Cx=10,
-                AvgSlope=np.max(self._eqtopo_initial) * self._slabheight_m / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
-                nn=0.5,
-                MaxUpSlope=2,  # was 0.25
-                Qs_min=1.0,
-                Kr=7.5e-05,
-                Ki=7.5e-06,
-                mm=2.0,
-                MHT=self._MHT,
-                Cbb_i=0.85,
-                Cbb_r=0.7,
-                Qs_bb_min=1,
-                substep_i=5,
-                substep_r=5,
-            )
-
-            self._balance = self._balance + topo_change_overwash  # Record changes to sediment balance
-            self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again after overwash; TODO: Investigate whether slope enforcement after overwash is necessary; remove if not
-
-        else:
-            self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
 
         # --------------------------------------
-        # BEACH UPDATE
+        # STORMS - UPDATE BEACH, DUNE, AND INTERIOR
 
         if it % self._beachreset == 0:  # Update the inundated part of the beach
+            dune_crest = routine.foredune_crest(self._topo, self._eqtopo_initial, self._veg, self._TWLexcursion, year, self._iterations_per_cycle / self._beachreset)
+            slopes = routine.beach_slopes(self._eqtopo, self._MHT, dune_crest, self._slabheight_m)
 
-            inundatedold = copy.deepcopy(self._inundated)  # Make a copy for later use
-            before1 = copy.deepcopy(self._topo)  # Copy of topo before it is changed
+            iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
 
-            self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes(
-                self._waterlevels[self._beachcount],
-                self._MHT,  # IRBR 9Nov22: Big change here: replaced RSLR with MHT; the varying MHT water level should be used here, not static RSLR rate
-                self._slabheight_m,
-                self._cellsize,
-                self._topo,
-                self._eqtopo,
-                self._veg,
-                self._m26,
-                self._wave_energy,
-                self._m28f,
-                self._pwavemaxf,
-                self._pwaveminf,
-                self._depth_limit,
-                self._shelterf,
-                self._TWLexcursion,
-                year,
-                self._iterations_per_cycle / self._beachreset,
-            )
+            # Generate storm stats stochastically
+            storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, slopes, self._RNG)  # [m MSL]
+            Rhigh += self._MHT * self._slabheight_m  # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
+            Rlow += self._MHT * self._slabheight_m  # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
+
+            if storm:
+                # Overwash
+                self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
+                # self._topo, topo_change_overwash, self._topo_change_leftover, self._OWflux = routine.overwash_processes(
+                #     self._topo,
+                #     self._topo_change_leftover,
+                #     dune_crest,
+                #     Rhigh,
+                #     Rlow,
+                #     dur,
+                #     self._slabheight_m,
+                #     threshold_in=0.25,
+                #     Rin_i=5,
+                #     Rin_r=50,
+                #     Cx=10,
+                #     AvgSlope=np.max(self._eqtopo_initial) * self._slabheight_m / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
+                #     nn=0.5,
+                #     MaxUpSlope=2,  # was 0.25
+                #     Qs_min=1.0,
+                #     Kr=7.5e-05,
+                #     Ki=7.5e-06,
+                #     mm=2.0,
+                #     MHT=self._MHT,
+                #     Cbb_i=0.85,
+                #     Cbb_r=0.7,
+                #     Qs_bb_min=1,
+                #     substep_i=2,
+                #     substep_r=2,
+                # )
+                #
+                # self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again after overwash; TODO: Investigate whether slope enforcement after overwash is necessary; remove if not
+
+                inundatedold = copy.deepcopy(self._inundated)  # Make a copy for later use
+                before1 = copy.deepcopy(self._topo)  # Copy of topo before it is changed
+
+                #  Update Beach
+                self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes_Rhigh(
+                    Rhigh / self._slabheight_m,  # Convert to slabs
+                    self._slabheight_m,
+                    self._cellsize,
+                    self._topo,
+                    self._eqtopo,
+                    self._veg,
+                    self._m26,
+                    self._wave_energy,
+                    self._m28f,
+                    self._pwavemaxf,
+                    self._pwaveminf,
+                    self._depth_limit,
+                    self._shelterf,
+                    self._TWLexcursion,
+                    year,
+                    self._iterations_per_cycle / self._beachreset,
+                )
+            else:
+                self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
+                inundatedold = copy.deepcopy(self._inundated)
+                self._inundated = np.zeros(self._topo.shape)  # Reset
+                pbeachupdate = np.zeros(self._topo.shape)  # Reset
+                before1 = copy.deepcopy(self._topo)
+            topo_change_overwash = np.zeros(self._topo.shape)  #  TEMP !!!
 
             seainput = self._topo - before1  # Sand added to the beach by the sea
 
@@ -437,7 +441,7 @@ class DUBEVEG:
             self._pbeachupdatecum = pbeachupdate + self._pbeachupdatecum  # Cumulative beachupdate probabilities
             self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again
             balance_ts = self._topo - before1
-            self._balance = self._balance + balance_ts
+            self._balance = self._balance + balance_ts + topo_change_overwash
             self._stability = self._stability + abs(self._topo - before1)
             self._TWLexcursion[:, int(it / self._beachreset)] = np.argmax(self._inundated < 1, axis=1)  # Will return 0 if whole column is inundated
 
@@ -447,11 +451,12 @@ class DUBEVEG:
             # SHORELINE CHANGE & EQUILIBRIUM BEACH PROFILE
 
             # Calculate net volume change of beach/dune from marine processes
-            dune_crest = routine.foredune_crest(self._topo, self._eqtopo, self._veg, self._TWLexcursion, year, self._iterations_per_cycle / self._beachreset)
-            Qbe = np.zeros([self._longshore])  # [m^3/m/ts] Volume of sediment removed from (+) or added to (-) the upper shoreface by fairweather beach change
-            for ls in range(self._longshore):
-                Qbe[ls] = np.sum(balance_ts[ls, :int(dune_crest[ls])])
-            Qbe = Qbe * self._slabheight_m / self._cellsize
+            # dune_crest = routine.foredune_crest(self._topo, self._eqtopo, self._veg, self._TWLexcursion, year, self._iterations_per_cycle / self._beachreset)
+            # Qbe = np.zeros([self._longshore])  # [m^3/m/ts] Volume of sediment removed from (+) or added to (-) the upper shoreface by fairweather beach change
+            # for ls in range(self._longshore):
+            #     Qbe[ls] = np.sum(balance_ts[ls, :int(dune_crest[ls])])
+            # Qbe = Qbe * self._slabheight_m / self._cellsize
+            Qbe = np.sum(seainput, axis=1) * self._slabheight_m / self._cellsize  # [m^3/m/ts] Volume of sediment removed from (+) or added to (-) the upper shoreface by beach change
 
             self._x_s, self._x_t = routine.shoreline_change2(
                 self.topo,
@@ -657,11 +662,11 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 dubeveg = DUBEVEG(
-    name="30 yr, SLR 0 mm/yr, no OW, fixed depprobs, fixed erosprobs, crest_limit",
+    name="30 yr, SLR 0 mm/yr, woth OW, MP_Rhigh",
     simulation_time_yr=30,
     RSLR=0.000,
     seeded_random_numbers=True,
-    p_dep_sand=0.13,
+    p_dep_sand=0.1,
     p_ero_bare=0.5,
     repose_bare=20,
     repose_veg=30,
