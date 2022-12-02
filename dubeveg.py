@@ -42,11 +42,11 @@ class DUBEVEG:
             slabheight=0.1,  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
             inputloc="Input/",  # Input file directory
             outputloc="Output/",  # Output file directory
-            topo_filename="topo_west.npy",
-            eqtopo_filename="eqtopo_west.npy",
+            topo_filename="topo_small_dune.npy",  # "topo_west.npy",
+            eqtopo_filename="eqtopo_small_dune.npy",  # "eqtopo_west.npy",
             waterlevel_filename="wl_max_texel.mat",
-            veg_spec1_filename="spec1.mat",
-            veg_spec2_filename="spec2.mat",
+            veg_spec1_filename="spec1_small_dune.npy",  # "spec1.mat",
+            veg_spec2_filename="spec2_small_dune.npy",  # "spec2.mat",
             seeded_random_numbers=True,
             save_data=False,
 
@@ -239,8 +239,10 @@ class DUBEVEG:
         self._waterlevels = np.concatenate([self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0]])
 
         # VEGETATION
-        self._spec1 = scipy.io.loadmat(inputloc + veg_spec1_filename)["vegf"]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
-        self._spec2 = scipy.io.loadmat(inputloc + veg_spec2_filename)["vegf"]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
+        # self._spec1 = scipy.io.loadmat(inputloc + veg_spec1_filename)["vegf"]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
+        # self._spec2 = scipy.io.loadmat(inputloc + veg_spec2_filename)["vegf"]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
+        self._spec1 = np.load(inputloc + veg_spec1_filename)  # [0-1] 2D-matrix of vegetation effectiveness for spec1
+        self._spec2 = np.load(inputloc + veg_spec2_filename)  # [0-1] 2D-matrix of vegetation effectiveness for spec2
 
         # Temp Reduce Size of Initial veg
         self._spec1 = self._spec1[:50, :200]
@@ -360,45 +362,45 @@ class DUBEVEG:
         iteration_year = it % self._iterations_per_cycle  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
         storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, slopes, self._RNG)  # [m MSL]
 
-        if storm and year > 5:  # Temp allowing storms to start at year n
-            self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
-
-            # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
-            Rhigh += self._MHT * self._slabheight_m
-            Rlow += self._MHT * self._slabheight_m
-
-            self._topo, topo_change_overwash, self._topo_change_leftover, self._OWflux = routine.overwash_processes(
-                self._topo,
-                self._topo_change_leftover,
-                dune_crest,
-                Rhigh,
-                Rlow,
-                dur,
-                self._slabheight_m,
-                threshold_in=0.25,
-                Rin_i=5,
-                Rin_r=50,
-                Cx=10,
-                AvgSlope=np.max(self._eqtopo_initial) * self._slabheight_m / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
-                nn=0.5,
-                MaxUpSlope=2,  # was 0.25
-                Qs_min=1.0,
-                Kr=7.5e-05,
-                Ki=7.5e-06,
-                mm=2.0,
-                MHT=self._MHT,
-                Cbb_i=0.85,
-                Cbb_r=0.7,
-                Qs_bb_min=1,
-                substep_i=5,
-                substep_r=5,
-            )
-
-            self._balance = self._balance + topo_change_overwash  # Record changes to sediment balance
-            self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again after overwash; TODO: Investigate whether slope enforcement after overwash is necessary; remove if not
-
-        else:
-            self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
+        # if storm and year > 5:  # Temp allowing storms to start at year n
+        #     self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
+        #
+        #     # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
+        #     Rhigh += self._MHT * self._slabheight_m
+        #     Rlow += self._MHT * self._slabheight_m
+        #
+        #     self._topo, topo_change_overwash, self._topo_change_leftover, self._OWflux = routine.overwash_processes(
+        #         self._topo,
+        #         self._topo_change_leftover,
+        #         dune_crest,
+        #         Rhigh,
+        #         Rlow,
+        #         dur,
+        #         self._slabheight_m,
+        #         threshold_in=0.25,
+        #         Rin_i=5,
+        #         Rin_r=50,
+        #         Cx=10,
+        #         AvgSlope=np.max(self._eqtopo_initial) * self._slabheight_m / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
+        #         nn=0.5,
+        #         MaxUpSlope=2,  # was 0.25
+        #         Qs_min=1.0,
+        #         Kr=7.5e-05,
+        #         Ki=7.5e-06,
+        #         mm=2.0,
+        #         MHT=self._MHT,
+        #         Cbb_i=0.85,
+        #         Cbb_r=0.7,
+        #         Qs_bb_min=1,
+        #         substep_i=5,
+        #         substep_r=5,
+        #     )
+        #
+        #     self._balance = self._balance + topo_change_overwash  # Record changes to sediment balance
+        #     self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again after overwash; TODO: Investigate whether slope enforcement after overwash is necessary; remove if not
+        #
+        # else:
+        #     self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
 
         # --------------------------------------
         # BEACH UPDATE
@@ -654,7 +656,7 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 dubeveg = DUBEVEG(
-    name="35 yr, SLR 0 mm/yr",
+    name="35 yr, SLR 0 mm/yr, small_dune init",
     simulation_time_yr=35,
     RSLR=0.000,
     seeded_random_numbers=True,
