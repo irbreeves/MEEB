@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 import copy
+import scipy.signal as signal
 
 
 def shadowzones2(topof, sh, lee, longshore, crossshore, direction):
@@ -596,7 +597,7 @@ def marine_processes3_IRBRtest(total_tide, msl, slabheight, cellsizef, topof, eq
     return topof, inundatedf, pbeachupdate, diss, cumdiss, pwave
 
 
-def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, TWLexcursion, year, iterations_per_year):
+def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, TWLexcursion, veg_elev_limit, year, iterations_per_year):
     """Calculates the effects of high tide levels on the beach and foredune (with stochastic element)
     % Beachupdate in cellular automata fashion
     % Sets back a certain length of the profile to the equilibrium;
@@ -637,7 +638,7 @@ def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, veg
     # Derive gradient of eqtopo as an approximation of foreshore slope
     # b = np.nanmean(np.gradient(eqtopof[0, :] * slabheight))  # Old method
 
-    dune_crest_loc = foredune_crest(topof, eqtopof, vegf, TWLexcursion, year, iterations_per_year)  # Cross-shore location of pre-storm dune crest
+    dune_crest_loc = foredune_crest(topof, eqtopof, vegf, TWLexcursion, veg_elev_limit, year, iterations_per_year)  # Cross-shore location of pre-storm dune crest
     slopes = beach_slopes(topof, msl, dune_crest_loc, slabheight)
     b = np.mean(slopes)
 
@@ -724,7 +725,7 @@ def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, veg
     return topof, inundatedf, pbeachupdate, diss, cumdiss, pwave
 
 
-def marine_processes_Rhigh(Rhigh, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, TWLexcursion, year, iterations_per_year):
+def marine_processes_Rhigh(Rhigh, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, TWLexcursion, veg_elev_limit, year, iterations_per_year):
     """Calculates the effects of high tide levels on the beach and foredune (with stochastic element) - IRBR 1Dec22: This version takes already-computed TWL as direct input.
     % Beachupdate in cellular automata fashion
     % Sets back a certain length of the profile to the equilibrium;
@@ -746,7 +747,7 @@ def marine_processes_Rhigh(Rhigh, slabheight, cellsizef, topof, eqtopof, vegf, m
     % shelterf: exposure of sheltered cells: 1 = full shelter, 0 = no shelter.
     % phydro: probability of erosion due to any other hydrodynamic process rather than waves"""
 
-    dune_crest_loc = foredune_crest(topof, eqtopof, vegf, TWLexcursion, year, iterations_per_year)  # Cross-shore location of pre-storm dune crest
+    dune_crest_loc = foredune_crest(topof, eqtopof, vegf, TWLexcursion, veg_elev_limit, year, iterations_per_year)  # Cross-shore location of pre-storm dune crest
 
     totalwater = np.mean(Rhigh)
 
@@ -1159,7 +1160,7 @@ def ocean_shoreline(topof, MHW):
     return shoreline
 
 
-def foredune_crest(topo, eqtopo, veg, TWLexcursion, year, iterations_per_year):
+def foredune_crest(topo, eqtopo, veg, TWLexcursion, veg_elev_limit, year, iterations_per_year):
     """Finds and returns the location of the foredune crest for each grid column alongshore."""
 
     # TODO: Need better algorithm to find actual foredune, since there can be gaps in dune line and
@@ -1172,15 +1173,16 @@ def foredune_crest(topo, eqtopo, veg, TWLexcursion, year, iterations_per_year):
     # elev_max = np.argmax(topo, axis=1)
     # crestline = (np.ones([len(elev_max)]) * np.round(np.nanmean(elev_max))).astype(int)
 
-    # # 3: Highest point within buffer of mean topo highpoint
-    # elev_max_mean = np.ceil(np.mean(np.argmax(topo, axis=1))).astype(int)
-    # crestline = np.zeros([topo.shape[0]])
-    # buff = 15
-    # for r in range(topo.shape[0]):
-    #     mini = elev_max_mean - buff
-    #     maxi = elev_max_mean + buff
-    #     loc = np.argmax(topo[r, mini: maxi])
-    #     crestline[r] = int(mini + loc)
+    if year < 5:
+        # 3: Highest point within buffer of mean topo highpoint
+        elev_max_mean = np.ceil(np.mean(np.argmax(topo, axis=1))).astype(int)
+        crestline = np.zeros([topo.shape[0]])
+        buff = 15
+        for r in range(topo.shape[0]):
+            mini = elev_max_mean - buff
+            maxi = elev_max_mean + buff
+            loc = np.argmax(topo[r, mini: maxi])
+            crestline[r] = int(mini + loc)
 
     # # 4: Equilibrium topo highpoint
     # crestline = np.argmax(eqtopo, axis=1)
@@ -1208,20 +1210,23 @@ def foredune_crest(topo, eqtopo, veg, TWLexcursion, year, iterations_per_year):
     #     else:
     #         crestline[r] = int(np.argmax(eqtopo[r, :]))
 
-    # 7: Highest peak within buffer of 90% of TWL excursions of past year
-    TWLexcursion_yr = TWLexcursion[:, (year - 2) * int(iterations_per_year): (year - 1) * int(iterations_per_year)]
-    TWLexcursion_yr[TWLexcursion_yr <= 0] = np.nan
-    Lveg = np.ceil(np.nanpercentile(TWLexcursion_yr, 90, axis=1)).astype(int)
-    crestline = np.zeros([len(Lveg)])
-    buff = 15
-    for r in range(len(Lveg)):
-        if Lveg[r] > 0:
-            mini = Lveg[r] - buff
-            maxi = Lveg[r] + buff
-            loc = np.argmax(topo[r, mini: maxi])
-            crestline[r] = int(mini + loc)
-        else:
-            crestline[r] = int(np.argmax(eqtopo[r, :]))
+    else:
+        # 7: Highest peak within buffer of 90% of TWL excursions of past year
+        TWLexcursion_yr = TWLexcursion[:, (year - 2) * int(iterations_per_year): (year - 1) * int(iterations_per_year)]
+        TWLexcursion_yr[TWLexcursion_yr <= 0] = np.nan
+        Lveg = np.ceil(np.maximum(np.nanpercentile(TWLexcursion_yr, 90, axis=1), veg_elev_limit)).astype(int)
+        crestline = np.zeros([len(Lveg)])
+        buff = 20
+        for r in range(len(Lveg)):
+            if Lveg[r] > 0:
+                mini = Lveg[r] - buff
+                maxi = Lveg[r] + buff
+                loc = np.argmax(topo[r, mini: maxi])
+                crestline[r] = int(mini + loc)
+            else:
+                crestline[r] = int(np.argmax(eqtopo[r, :]))
+
+    crestline = np.round(signal.savgol_filter(crestline, 5, 3)).astype(int)
 
     return crestline.astype(int)
 
@@ -1455,7 +1460,7 @@ def overwash_processes(
         Elevation = np.zeros([iterations, longshore, domain_width])
         # Bay = np.ones([bay_routing_width, longshore]) * -BayDepth
         domain_topo_start = (topof[:, domain_width_start:] + topof_change_remainder[:, domain_width_start:]) * slabheight_m  # [m] Incorporate leftover topochange from PREVIOUS storm)
-        Elevation[0, :, :] = domain_topo_start  # np.vstack([Dunes, self._InteriorDomain, Bay])  # TODO: Allow for open boundary conditions
+        Elevation[0, :, :] = domain_topo_start  # np.vstack([Dunes, self._InteriorDomain, Bay])  # TODO: Allow for open boundary conditions?
 
         # Initialize Memory Storage Arrays
         Discharge = np.zeros([iterations, longshore, domain_width])
