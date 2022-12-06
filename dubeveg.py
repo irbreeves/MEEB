@@ -112,6 +112,21 @@ class DUBEVEG:
 
             # STORM OVERWASH AND DUNE EROSION
             storm_list_filename="VCRStormList.npy",
+            threshold_in=0.25,  # [%] Threshold percentage of overtopped dune cells exceeded by Rlow needed to be in inundation overwash regime
+            Rin_in=5,  # [m^3/hr] Flow infiltration and drag parameter, inundation overwash regime
+            Rin_ru=40,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
+            Cx=10,  # Constant for representing flow momentum for sediment transport in inundation overwash regime
+            nn=0.5,  # Flow routing constant
+            MaxUpSlope=2,  # Maximum slope water can flow uphill
+            Qs_min=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
+            K_ru=7.5e-05,  # Sediment transport coefficient for run-up overwash regime
+            K_in=7.5e-06,  # Sediment transport coefficient for inundation overwash regime
+            mm=2.0,  # Inundation overwash constant
+            Cbb_in=0.85,  # [%] Coefficient for exponential decay of sediment load entering back-barrier bay, inundation regime
+            Cbb_ru=0.7,  # [%] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
+            Qs_bb_min=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
+            substep_in=2,  # Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+            substep_ru=2,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
 
     ):
         """Python version of the DUne, BEach, and VEGetation model"""
@@ -170,6 +185,21 @@ class DUBEVEG:
         self._maxvegeff = maxvegeff
         self._Spec1_elev_min = Spec1_elev_min
         self._Spec2_elev_min = Spec2_elev_min
+        self._threshold_in = threshold_in
+        self._Rin_in = Rin_in
+        self._Rin_ru = Rin_ru
+        self._Cx = Cx
+        self._nn = nn
+        self._MaxUpSlope = MaxUpSlope
+        self._Qs_min = Qs_min
+        self._K_ru = K_ru
+        self._K_in = K_in
+        self._mm = mm
+        self._Cbb_in = Cbb_in
+        self._Cbb_ru = Cbb_ru
+        self._Qs_bb_min = Qs_bb_min
+        self._substep_in = substep_in
+        self._substep_ru = substep_ru
 
         # __________________________________________________________________________________________________________________________________
         # SET INITIAL CONDITIONS
@@ -400,23 +430,23 @@ class DUBEVEG:
                     Rlow,
                     dur,
                     self._slabheight_m,
-                    threshold_in=0.25,
-                    Rin_i=5,
-                    Rin_r=40,
-                    Cx=10,
-                    AvgSlope=np.max(self._eqtopo_initial) * self._slabheight_m / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
-                    nn=0.5,
-                    MaxUpSlope=2,  # was 0.25
-                    Qs_min=1.0,
-                    Kr=7.5e-05,
-                    Ki=7.5e-06,
-                    mm=2.0,
-                    MHT=self._MHT,
-                    Cbb_i=0.85,
-                    Cbb_r=0.7,
-                    Qs_bb_min=1,
-                    substep_i=2,
-                    substep_r=2,
+                    self._threshold_in,
+                    self._Rin_in,
+                    self._Rin_ru,
+                    self._Cx,
+                    np.max(self._eqtopo_initial) * self._slabheight_m / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
+                    self._nn,
+                    self._MaxUpSlope,  # was 0.25
+                    self._Qs_min,
+                    self._K_ru,
+                    self._K_in,
+                    self._mm,
+                    self._MHT,
+                    self._Cbb_in,
+                    self._Cbb_ru,
+                    self._Qs_bb_min,
+                    self._substep_in,
+                    self._substep_ru,
                 )
 
                 self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again after overwash; TODO: Investigate whether slope enforcement after overwash is necessary; remove if not
@@ -676,7 +706,7 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 dubeveg = DUBEVEG(
-    name="30 yr, SLR 0 mm/yr, p_dep=0.5, veg_min=1, dir2=2, Rin=40",
+    name="30 yr, SLR 0 mm/yr, p_dep=0.5, veg_min=1, dir2=2, Rin=40, test orig",
     simulation_time_yr=30,
     RSLR=0.000,
     seeded_random_numbers=True,
