@@ -1,19 +1,19 @@
 """__________________________________________________________________________________________________________________________________
 
-Main Model Script for PyDUBEVEG
+Model Functions for PyDUBEVEG
 
 Python version of the DUne, BEach, and VEGetation (DUBEVEG) model from Keijsers et al. (2016) and Galiforni Silva et al. (2018, 2019)
 
 Translated from Matlab by IRB Reeves
 
-Last update: 14 November 2022
+Last update: 9 January 2023
 
 __________________________________________________________________________________________________________________________________"""
 import matplotlib.pyplot as plt
 import numpy as np
 import math
 import copy
-import scipy.signal as signal
+from scipy import signal
 
 
 def shadowzones2(topof, sh, lee, longshore, crossshore, direction):
@@ -638,7 +638,7 @@ def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, veg
     # Derive gradient of eqtopo as an approximation of foreshore slope
     # b = np.nanmean(np.gradient(eqtopof[0, :] * slabheight))  # Old method
 
-    dune_crest_loc = foredune_crest(topof, eqtopof, vegf, TWLexcursion, veg_elev_limit, year, iterations_per_year)  # Cross-shore location of pre-storm dune crest
+    dune_crest_loc = foredune_crest(topof, eqtopof, vegf)  # Cross-shore location of pre-storm dune crest
     slopes = beach_slopes(topof, msl, dune_crest_loc, slabheight)
     b = np.mean(slopes)
 
@@ -725,7 +725,7 @@ def marine_processes(total_tide, msl, slabheight, cellsizef, topof, eqtopof, veg
     return topof, inundatedf, pbeachupdate, diss, cumdiss, pwave
 
 
-def marine_processes_Rhigh(Rhigh, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, TWLexcursion, veg_elev_limit, year, iterations_per_year):
+def marine_processes_Rhigh(Rhigh, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, crestline):
     """Calculates the effects of high tide levels on the beach and foredune (with stochastic element) - IRBR 1Dec22: This version takes already-computed TWL as direct input.
     % Beachupdate in cellular automata fashion
     % Sets back a certain length of the profile to the equilibrium;
@@ -746,8 +746,6 @@ def marine_processes_Rhigh(Rhigh, slabheight, cellsizef, topof, eqtopof, vegf, m
     % depthlimitf: no erosive strength in very shallow water
     % shelterf: exposure of sheltered cells: 1 = full shelter, 0 = no shelter.
     % phydro: probability of erosion due to any other hydrodynamic process rather than waves"""
-
-    dune_crest_loc = foredune_crest(topof, eqtopof, vegf, TWLexcursion, veg_elev_limit, year, iterations_per_year)  # Cross-shore location of pre-storm dune crest
 
     totalwater = np.mean(Rhigh)
 
@@ -801,17 +799,19 @@ def marine_processes_Rhigh(Rhigh, slabheight, cellsizef, topof, eqtopof, vegf, m
     pbeachupdate[pbeachupdate < 0] = 0  # Keep probabilities to 0 - 1 range
     pbeachupdate[pbeachupdate > 1] = 1
 
-    # IRBR 1Dec22: Only allow update up to dune/berm crest
+    # Only allow beach update up to the dune/berm crest; IRBR 1Dec22
     crest_limit = np.ones(topof.shape)
     for ls in range(topof.shape[0]):
-        crest_limit[ls, dune_crest_loc[ls]:] = 0
+        crest_limit[ls, crestline[ls] + 1:] = 0
     pbeachupdate *= crest_limit
 
     # Changed after revision (JK 21/01/2015)
-    topof = topof - (topof - eqtopof) * pbeachupdate  # Adjusting the topography
+    newtopof = topof - (topof - eqtopof) * pbeachupdate  # Adjusting the topography
     topof[np.logical_and(topof > totalwater, pbeachupdate > 0)] = totalwater  # Limit filling up of topography to the maximum water level so added (accreted) cells cannot be above the maximum water level
 
-    return topof, inundatedf, pbeachupdate, diss, cumdiss, pwave
+    crestline_change = topof[np.arange(topof.shape[0]), crestline] - newtopof[np.arange(topof.shape[0]), crestline]
+
+    return newtopof, inundatedf, pbeachupdate, diss, cumdiss, pwave, crestline_change
 
 
 def growthfunction1_sens(spec, sed, A1, B1, C1, D1, E1, P1):
@@ -1160,75 +1160,115 @@ def ocean_shoreline(topof, MHW):
     return shoreline
 
 
-def foredune_crest(topo, eqtopo, veg, TWLexcursion, veg_elev_limit, year, iterations_per_year):
+def foredune_crest(topo, eqtopo, veg):
     """Finds and returns the location of the foredune crest for each grid column alongshore."""
 
-    # TODO: Need better algorithm to find actual foredune, since there can be gaps in dune line and
-    #  cells behind foredune could potentially be taller.
-
-    # 1: Simplest, maximum elev for each column
-    # crestline = np.argmax(topo, axis=1)
-
-    # # 2: Average location of maximum alongshore
-    # elev_max = np.argmax(topo, axis=1)
-    # crestline = (np.ones([len(elev_max)]) * np.round(np.nanmean(elev_max))).astype(int)
-
-    if year < 5:
-        # 3: Highest point within buffer of mean topo highpoint
-        elev_max_mean = np.ceil(np.mean(np.argmax(topo, axis=1))).astype(int)
-        crestline = np.zeros([topo.shape[0]])
-        buff = 15
-        for r in range(topo.shape[0]):
-            mini = elev_max_mean - buff
-            maxi = elev_max_mean + buff
-            loc = np.argmax(topo[r, mini: maxi])
-            crestline[r] = int(mini + loc)
-
-    # # 4: Equilibrium topo highpoint
-    # crestline = np.argmax(eqtopo, axis=1)
-
-    # # 5: Highest point within buffer of EQtopo highpoint
-    # eqelev_max = np.argmax(eqtopo, axis=1)
-    # crestline = np.zeros([len(eqelev_max)])
-    # buff = 10
-    # for r in range(len(eqelev_max)):
-    #     mini = eqelev_max[r] - buff
-    #     maxi = eqelev_max[r] + buff
-    #     loc = np.argmax(topo[r, mini: maxi])
-    #     crestline[r] = int(mini + loc)
-
-    # # 6: Highest point within buffer of 95% veg
-    # veg_max = np.argmax(veg > 0.9, axis=1)
-    # crestline = np.zeros([len(veg_max)])
-    # buff = 15
-    # for r in range(len(veg_max)):
-    #     if veg_max[r] > 0:
-    #         mini = veg_max[r] - buff
-    #         maxi = veg_max[r] + buff
-    #         loc = np.argmax(topo[r, mini: maxi])
-    #         crestline[r] = int(mini + loc)
-    #     else:
-    #         crestline[r] = int(np.argmax(eqtopo[r, :]))
-
-    else:
-        # 7: Highest peak within buffer of 90% of TWL excursions of past year
-        TWLexcursion_yr = TWLexcursion[:, (year - 2) * int(iterations_per_year): (year - 1) * int(iterations_per_year)]
-        TWLexcursion_yr[TWLexcursion_yr <= 0] = np.nan
-        Lveg = np.ceil(np.maximum(np.nanpercentile(TWLexcursion_yr, 90, axis=1), veg_elev_limit)).astype(int)
-        crestline = np.zeros([len(Lveg)])
-        buff = 20
-        for r in range(len(Lveg)):
-            if Lveg[r] > 0:
-                mini = Lveg[r] - buff
-                maxi = Lveg[r] + buff
-                loc = np.argmax(topo[r, mini: maxi])
-                crestline[r] = int(mini + loc)
+    # Step 1: Find peaks within buffer of location of nth percentile of all vegetated cells
+    crestline = np.zeros([len(topo)])
+    buff1 = 50
+    percentile = 0.98
+    veg = veg > 0
+    for r in range(len(topo)):
+        veg_profile = veg[r, :]
+        sum_veg = np.sum(veg_profile)
+        target = sum_veg * (1 - percentile)
+        sum = 0
+        n = 0
+        while sum < target:
+            sum += veg_profile[n]
+            if sum >= target:
+                Lveg = n
             else:
-                crestline[r] = int(np.argmax(eqtopo[r, :]))
+                n += 1
+        if Lveg > 0:
+            mini = max(0, Lveg - buff1)
+            maxi = min(topo.shape[1] - 1, Lveg + buff1)
+            loc = find_peak(topo[r, mini: maxi] * 0.1, 0, 0.6, 0.1)
+            if np.isnan(loc):
+                crestline[r] = crestline[r - 1]
+            else:
+                crestline[r] = int(mini + loc)
+        else:
+            crestline[r] = int(np.argmax(eqtopo[r, :]))
+        # TODO: Set secondary for cases in which pre-existing dunes or vegetation are minimal/nonexistant
 
-    crestline = np.round(signal.savgol_filter(crestline, 5, 3)).astype(int)
+    # Step 2: Apply smoothening to crestline
+    crestline = np.round(signal.savgol_filter(crestline, 25, 1)).astype(int)
+
+    # # Step 3: Relocate peaks within smaller buffer of smoothened crestline
+    # buff2 = 5
+    # for r in range(len(topo)):
+    #     mini = int(crestline[r] - buff2)
+    #     maxi = int(crestline[r] + buff2)
+    #     # loc = np.argmax(topo[r, mini: maxi])
+    #     loc = find_peak(topo[r, mini: maxi] * 0.1, 0, 0.6, 0.1)
+    #     if np.isnan(loc):
+    #         crestline[r] = crestline[r - 1]
+    #     else:
+    #         crestline[r] = int(mini + loc)
 
     return crestline.astype(int)
+
+
+def find_peak(profile, MHT, threshold, crest_pct):
+    """Finds foredune peak of profile following Automorph (Itzkin et al., 2021). Returns Nan if no dune peak found on profile."""
+
+    # Find peaks on the profile. The indices increase landwards
+    pks_idx, _ = signal.find_peaks(profile)
+
+    # Remove peaks below MHT
+    if len(pks_idx) > 0:
+        pks_idx = pks_idx[profile[pks_idx] > MHT]
+
+    # If there aren't any peaks just take the maximum value
+    if len(pks_idx) == 0:
+        idx = np.argmax(profile)
+
+    else:
+
+        peak_found = False
+
+        # Loop through the peaks
+        for idx in pks_idx:
+            backshore_drop = 0
+
+            # Set the current peak elevation
+            curr_elevation = profile[idx]
+
+            # Loop landwards across the profile
+            check_idx = idx
+            while check_idx < len(profile):
+
+                # Check that the next landward point is lower
+                if check_idx + 1 >= len(profile):
+                    break
+                elif profile[check_idx + 1] > profile[idx]:
+                    break
+                else:
+
+                    # Check the elevation distance
+                    check_elevation = profile[check_idx + 1]
+                    backshore_drop = curr_elevation - check_elevation
+                    if backshore_drop >= threshold:
+                        peak_found = True
+                        break
+                    else:
+                        check_idx += 1
+
+            if backshore_drop >= threshold:
+
+                # Check the seaward peaks
+                lo = profile[idx] * (1 - crest_pct)
+                pks_idx = pks_idx[profile[pks_idx] > lo]
+                if len(pks_idx) > 0:
+                    idx = pks_idx[0]
+                break
+
+        # If there aren't any peaks with backshore drop past threshold, set to NaN
+        if not peak_found:
+            idx = float('NaN')
+
+    return idx
 
 
 def beach_slopes(eqtopo, MHT, crestline, slabheight_m):
