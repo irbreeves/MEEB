@@ -6,7 +6,7 @@ Python version of the DUne, BEach, and VEGetation (DUBEVEG) model from Keijsers 
 
 Translated from Matlab by IRB Reeves
 
-Last update: 28 November 2022
+Last update: 9 January 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -107,8 +107,8 @@ class DUBEVEG:
 
             maxvegeff=1.0,  # [0-1] Value of maximum vegetation effectiveness allowed
 
-            Spec1_elev_min=1.0,  # [m MHT] Minimum elevation for species 1 (1 m MHW for A. brevigulata from Young et al., 2011)
-            Spec2_elev_min=1.0,  # [m MHT] Minimum elevation for species 2
+            Spec1_elev_min=0.25,  # [m MHT] Minimum elevation for species 1 (1 m MHW for A. brevigulata from Young et al., 2011)
+            Spec2_elev_min=0.25,  # [m MHT] Minimum elevation for species 2
 
             # STORM OVERWASH AND DUNE EROSION
             storm_list_filename="VCRStormList.npy",
@@ -222,22 +222,6 @@ class DUBEVEG:
         self._topo_initial = np.load(inputloc + topo_filename)  # [m] 2D-matrix with initial topography
         self._eqtopo_initial = np.load(inputloc + eqtopo_filename)  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
 
-        # # Temp convert slabs to m
-        # self._topo_initial = self._topo_initial * self._slabheight_m
-        # self._eqtopo_initial = self._eqtopo_initial * self._slabheight_m
-
-        # Temp Reduce Size of Initial Topo
-        self._topo_initial = self._topo_initial[:50, :200]
-        self._eqtopo_initial = self._eqtopo_initial[:50, :200]
-        # Temp add back-barrier bay
-        addbay = np.ones([self._topo_initial.shape[0], 50])
-        for n in range(50):
-            addbay[:, n] = max((13 - 1 * n) * self._slabheight_m, -1.5)
-        self._topo_initial = np.hstack((self._topo_initial, addbay))
-        self._eqtopo_initial = np.hstack((self._eqtopo_initial, addbay))
-        # Temp add noise to initial topography
-        self._topo_initial = self._topo_initial + self._RNG.integers(-1, 2, self._eqtopo_initial.shape) * self._slabheight_m
-
         topo0 = self._topo_initial / self._slabheight_m  # [slabs] Transform from m into number of slabs
         self._topo = np.round(topo0)  # [slabs] Initialise the topography map
 
@@ -247,18 +231,6 @@ class DUBEVEG:
             self._eqtopo = np.round(np.squeeze(self._eqtopo_initial[:, :, 0]) / self._slabheight_m)  # [slabs] Transform from m into number of slabs
         else:
             self._eqtopo = np.round(self._eqtopo_initial / self._slabheight_m)  # [slabs] Transform from m into number of slabs
-
-        # # Temp planar equilibrium profile
-        # self._eqtopo = np.zeros(self._topo.shape)
-        # for i in range(44, self._topo.shape[1]):
-        #     n = i - 44
-        #     self._eqtopo[:, i] = 0.2 * n
-        # self._eqtopo[:, 115:] = self._eqtopo[0, 114]
-
-        # Temp add shoreface slope
-        shoreface = np.floor(np.ones([self._longshore, 45]) * np.linspace(-44, 0, 45) * self._s_sf_eq / self._slabheight_m)  # [slabs]
-        self._eqtopo[:, :45] += shoreface
-        self._topo[:, :45] += shoreface
 
         eqtopo_i = copy.deepcopy(self._eqtopo)
 
@@ -283,19 +255,6 @@ class DUBEVEG:
         self._spec1 = np.load(inputloc + veg_spec1_filename)  # [0-1] 2D-matrix of vegetation effectiveness for spec1
         self._spec2 = np.load(inputloc + veg_spec2_filename)  # [0-1] 2D-matrix of vegetation effectiveness for spec2
 
-        # Temp Reduce Size of Initial veg
-        self._spec1 = self._spec1[:50, :200]
-        self._spec2 = self._spec2[:50, :200]
-        # # Temp increase initial veg cover
-        # self._spec1[:, 120:] += (self._RNG.random(self._spec1[:, 120:].shape) < 0.5) * self._RNG.uniform(0.5, 0.8, self._spec1[:, 120:].shape)
-        # self._spec1[:, 120:] += (self._RNG.random(self._spec1[:, 120:].shape) < 0.5) * self._RNG.uniform(0, 0.8, self._spec1[:, 120:].shape)
-        # # Or: Temp set initial veg cover to zero
-        # self._spec1 *= 0
-        # self._spec2 *= 0
-        # Temp Add Bay
-        self._spec1 = np.hstack((self._spec1, addbay * 0))
-        self._spec2 = np.hstack((self._spec2, addbay * 0))
-
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
         self._veg[self._veg < 0] = 0
@@ -311,6 +270,27 @@ class DUBEVEG:
         self._pstorm = [0.787878787878788, 0.393939393939394, 0.454545454545455, 0.727272727272727, 0.575757575757576, 0.484848484848485, 0.363636363636364, 0.363636363636364, 0.151515151515152, 0.0606060606060606, 0.181818181818182,
                         0.0606060606060606, 0.0606060606060606, 0, 0.0303030303030303, 0.121212121212121, 0.393939393939394, 0.272727272727273, 0.424242424242424, 0.424242424242424, 0.545454545454545, 0.424242424242424,
                         0.272727272727273, 0.484848484848485, 0.484848484848485]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1980-2013 VCR storm record
+        # self._pstorm = [0.232558139534884, 0.0697674418604651, 0.116279069767442, 0.186046511627907, 0.0930232558139535, 0.0465116279069767, 0.139534883720930, 0.0697674418604651, 0.0232558139534884, 0, 0, 0, 0.0232558139534884, 0,
+        #                 0.0232558139534884, 0.0465116279069767, 0.255813953488372, 0.255813953488372, 0.116279069767442, 0.139534883720930, 0.0697674418604651, 0.0465116279069767, 0.0697674418604651, 0.0697674418604651, 0.0930232558139535]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 NCB storm record
+
+        # TEMP! Adjust beach towards equilibrium profile before sim begins
+        dune_crest = routine.foredune_crest(self._topo, self._eqtopo_initial, self._veg)
+        self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave, crestline_change = routine.marine_processes_Rhigh(
+            2.5 / self._slabheight_m,  # Convert to slabs
+            self._slabheight_m,
+            self._cellsize,
+            self._topo,
+            self._eqtopo,
+            self._veg,
+            self._m26,
+            self._wave_energy,
+            self._m28f,
+            self._pwavemaxf,
+            self._pwaveminf,
+            self._depth_limit,
+            self._shelterf,
+            dune_crest,
+        )
 
         # MODEL PARAMETERS
         self._direction = self._RNG.choice(np.tile([direction1, direction2, direction3, direction4, direction5], (1, 2000))[0, :], 10000, replace=False)
@@ -401,11 +381,11 @@ class DUBEVEG:
 
         if it % self._beachreset == 0:  # Update the inundated part of the beach
             veg_elev_limit = np.argmax(min(self._Spec1_elev_min, self._Spec2_elev_min) / self._slabheight_m + self._MHT < self._topo, axis=1)
-            dune_crest = routine.foredune_crest(self._topo, self._eqtopo_initial, self._veg, self._TWLexcursion, veg_elev_limit, year, self._iterations_per_cycle / self._beachreset)
+            dune_crest = routine.foredune_crest(self._topo, self._eqtopo_initial, self._veg)
             slopes = routine.beach_slopes(self._eqtopo, self._MHT, dune_crest, self._slabheight_m)
 
-            # # TEMP DEBUGGING DUNE CREST
-            # if 5 > year > 1:
+            # # TEMP: DEBUGGING DUNE CREST LOCATION
+            # if it % 50 == 0:
             #     tempfig = plt.figure(figsize=(14, 4.5))
             #     tempfig.suptitle(dubeveg.name, fontsize=13)
             #     ax_1 = tempfig.add_subplot(111)
@@ -420,6 +400,27 @@ class DUBEVEG:
             Rlow += self._MHT * self._slabheight_m  # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
 
             if storm:
+                inundatedold = copy.deepcopy(self._inundated)  # Make a copy for later use
+                before1 = copy.deepcopy(self._topo)  # Copy of topo before it is changed
+
+                #  Update Beach
+                self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave, crestline_change = routine.marine_processes_Rhigh(
+                    Rhigh / self._slabheight_m,  # Convert to slabs
+                    self._slabheight_m,
+                    self._cellsize,
+                    self._topo,
+                    self._eqtopo,
+                    self._veg,
+                    self._m26,
+                    self._wave_energy,
+                    self._m28f,
+                    self._pwavemaxf,
+                    self._pwaveminf,
+                    self._depth_limit,
+                    self._shelterf,
+                    dune_crest,
+                )
+
                 # Overwash
                 self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
                 self._topo, topo_change_overwash, self._topo_change_leftover, self._OWflux = routine.overwash_processes(
@@ -451,29 +452,6 @@ class DUBEVEG:
 
                 self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again after overwash; TODO: Investigate whether slope enforcement after overwash is necessary; remove if not
 
-                inundatedold = copy.deepcopy(self._inundated)  # Make a copy for later use
-                before1 = copy.deepcopy(self._topo)  # Copy of topo before it is changed
-
-                #  Update Beach
-                self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave = routine.marine_processes_Rhigh(
-                    Rhigh / self._slabheight_m,  # Convert to slabs
-                    self._slabheight_m,
-                    self._cellsize,
-                    self._topo,
-                    self._eqtopo,
-                    self._veg,
-                    self._m26,
-                    self._wave_energy,
-                    self._m28f,
-                    self._pwavemaxf,
-                    self._pwaveminf,
-                    self._depth_limit,
-                    self._shelterf,
-                    self._TWLexcursion,
-                    veg_elev_limit,
-                    year,
-                    self._iterations_per_cycle / self._beachreset,
-                )
             else:
                 self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
                 inundatedold = copy.deepcopy(self._inundated)
@@ -481,7 +459,7 @@ class DUBEVEG:
                 self._inundated[self._topo <= self._MHT] = 1  # Cells below MHW are always considered inundated TODO: problem if bay cells are marked as inundated here?
                 pbeachupdate = np.zeros(self._topo.shape)  # Reset
                 before1 = copy.deepcopy(self._topo)
-                topo_change_overwash = np.zeros(self._topo.shape)  #  TEMP !!!
+                topo_change_overwash = np.zeros(self._topo.shape)
 
             seainput = self._topo - before1  # Sand added to the beach by the sea
 
@@ -706,15 +684,20 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 dubeveg = DUBEVEG(
-    name="30 yr, SLR 0 mm/yr, p_dep=0.5, veg_min=1, dir2=2, Rin=40, test orig",
-    simulation_time_yr=30,
+    name="10 yr, SLR 0 mm/yr",
+    simulation_time_yr=10,
     RSLR=0.000,
     seeded_random_numbers=True,
     p_dep_sand=0.5,  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr
     p_ero_bare=0.5,
-    repose_bare=20,
-    repose_veg=30,
-    direction2=2
+    direction2=2,
+    direction4=4,
+    substep_ru=1,
+    # storm_list_filename="NCB_SimStorms.npy",
+    topo_filename="Topo_NCB_20190830_100m_23980.npy",
+    eqtopo_filename="EQTopo_NCB_20190830_100m_23980.npy",
+    veg_spec1_filename="Spec1_NCB_20190830_100m_23980.npy",
+    veg_spec2_filename="Spec2_NCB_20190830_100m_23980.npy",
 )
 
 print(dubeveg.name)
@@ -739,10 +722,10 @@ if dubeveg.save_data:
     dill.dump_module(filename)  # To re-load data: dill.load_session(filename)
 
 # Plot
-Fig = plt.figure(figsize=(14, 4.5))
+Fig = plt.figure(figsize=(14, 9.5))
 Fig.suptitle(dubeveg.name, fontsize=13)
 ax1 = Fig.add_subplot(211)
-cax1 = ax1.matshow(dubeveg.topo * dubeveg.slabheight, cmap='terrain', vmin=-1.1, vmax=4.0)
+cax1 = ax1.matshow(dubeveg.topo * dubeveg.slabheight, cmap='terrain', vmin=-1.2, vmax=5.0)
 cbar = Fig.colorbar(cax1)
 cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
 ax2 = Fig.add_subplot(212)
@@ -780,9 +763,9 @@ plt.tight_layout()
 
 # Elevation Animation
 for t in range(0, dubeveg.simulation_time_yr + 1):
-    Fig = plt.figure(figsize=(14, 4.5))
+    Fig = plt.figure(figsize=(14, 9.5))
     ax1 = Fig.add_subplot(211)
-    cax1 = ax1.matshow(dubeveg.topo_TS[:, :, t] * dubeveg.slabheight, cmap='terrain', vmin=-1.1, vmax=4.0)  # TODO: Plot relative to sea level
+    cax1 = ax1.matshow(dubeveg.topo_TS[:, :, t] * dubeveg.slabheight, cmap='terrain', vmin=-1.2, vmax=5.0)  # TODO: Plot relative to sea level
     cbar = Fig.colorbar(cax1)
     cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
     timestr = "Year " + str(t)
