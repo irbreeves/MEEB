@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 import copy
+import scipy
 from scipy import signal
 
 
@@ -1163,26 +1164,29 @@ def ocean_shoreline(topof, MHW):
 def foredune_crest(topo, eqtopo, veg):
     """Finds and returns the location of the foredune crest for each grid column alongshore."""
 
-    # Step 1: Find peaks within buffer of location of nth percentile of all vegetated cells
+    # Step 1: Find locations of nth percentile of all vegetated cells
     crestline = np.zeros([len(topo)])
     buff1 = 50
     percentile = 0.98
     veg = veg > 0
+    Lveg_longshore = np.zeros(len(topo))
     for r in range(len(topo)):
         veg_profile = veg[r, :]
         sum_veg = np.sum(veg_profile)
         target = sum_veg * (1 - percentile)
-        sum = 0
-        n = 0
-        while sum < target:
-            sum += veg_profile[n]
-            if sum >= target:
-                Lveg = n
-            else:
-                n += 1
-        if Lveg > 0:
-            mini = max(0, Lveg - buff1)
-            maxi = min(topo.shape[1] - 1, Lveg + buff1)
+        CumVeg = np.cumsum(veg_profile) * veg_profile
+        Lveg = np.argmax(CumVeg >= target)
+        Lveg_longshore[r] = Lveg
+        Lveg_longshore[Lveg_longshore == len(topo)] = float('NaN')
+
+    # Step 2: Apply smoothening to Lveg
+    Lveg_longshore = np.round(scipy.signal.savgol_filter(Lveg_longshore, 25, 1)).astype(int)
+
+    # Step 3: Find peaks within buffer of location of smoothed Lveg
+    for r in range(len(topo)):
+        if Lveg_longshore[r] > 0:
+            mini = max(0, Lveg_longshore[r] - buff1)
+            maxi = min(topo.shape[1] - 1, Lveg_longshore[r] + buff1)
             loc = find_peak(topo[r, mini: maxi] * 0.1, 0, 0.6, 0.1)
             if np.isnan(loc):
                 crestline[r] = crestline[r - 1]
@@ -1192,20 +1196,22 @@ def foredune_crest(topo, eqtopo, veg):
             crestline[r] = int(np.argmax(eqtopo[r, :]))
         # TODO: Set secondary for cases in which pre-existing dunes or vegetation are minimal/nonexistant
 
-    # Step 2: Apply smoothening to crestline
-    crestline = np.round(signal.savgol_filter(crestline, 25, 1)).astype(int)
+    # Step 4: Apply smoothening to crestline
+    crestline = np.round(scipy.signal.savgol_filter(crestline, 25, 1)).astype(int)
 
-    # # Step 3: Relocate peaks within smaller buffer of smoothened crestline
-    # buff2 = 5
-    # for r in range(len(topo)):
-    #     mini = int(crestline[r] - buff2)
-    #     maxi = int(crestline[r] + buff2)
-    #     # loc = np.argmax(topo[r, mini: maxi])
-    #     loc = find_peak(topo[r, mini: maxi] * 0.1, 0, 0.6, 0.1)
-    #     if np.isnan(loc):
-    #         crestline[r] = crestline[r - 1]
-    #     else:
-    #         crestline[r] = int(mini + loc)
+    # Step 5: Relocate peaks within smaller buffer of smoothened crestline
+    buff2 = 5
+    for r in range(len(topo)):
+        mini = int(crestline[r] - buff2)
+        maxi = int(crestline[r] + buff2)
+        try:
+            loc = np.argmax(topo[r, mini: maxi])
+        except:
+            raise Exception("Crestline Error")
+        if np.isnan(loc):
+            crestline[r] = crestline[r - 1]
+        else:
+            crestline[r] = int(mini + loc)
 
     return crestline.astype(int)
 
@@ -1214,7 +1220,7 @@ def find_peak(profile, MHT, threshold, crest_pct):
     """Finds foredune peak of profile following Automorph (Itzkin et al., 2021). Returns Nan if no dune peak found on profile."""
 
     # Find peaks on the profile. The indices increase landwards
-    pks_idx, _ = signal.find_peaks(profile)
+    pks_idx, _ = scipy.signal.find_peaks(profile)
 
     # Remove peaks below MHT
     if len(pks_idx) > 0:
@@ -1491,6 +1497,11 @@ def overwash_processes(
             substep = substep_r
             Rin = Rin_r
             print("  RUN-UP OVERWASH")
+
+        # Modify based on number of substeps
+        fluxLimit = 0.45 / substep  # [m/hr] Maximum elevation change during one storm hour allowed  TODO: should be based on topographic feature? e.g. max dune height
+        Qs_min /= substep
+        Qs_bb_min /= substep
 
         # Set Domain      <- IRBR: Should this routing domain have extendable bay like in Barrier3D?
         iterations = int(math.floor(dur) * substep)
