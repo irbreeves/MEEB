@@ -12,8 +12,8 @@ import copy
 
 # Specifications
 tif_file = "/Users/reevesi/Desktop/WHOI-USGS/Data/InitConditions/NCB_20190830_DEM.tif"
-xlim1 = 22550  # [m]
-xlim2 = xlim1 + 250  # [m]
+xlim1 = 22000 +900 # [m]
+xlim2 = xlim1 + 1000  # [m]
 ylim1 = -50  # [m]
 ylim2 = 800  # [m]
 MHW = 0.2  # [m initial datum]
@@ -27,8 +27,8 @@ EQ_barrier_width = 650  # [m] Barrier width (including beach) of equilibrium top
 Veggie = True  # [bool] Whether or not to load & convert a contemporaneous init veg raster
 veg_tif_file = "/Users/reevesi/Desktop/WHOI-USGS/Data/InitConditions/NCB_20190830_ModSAVI.tif"
 veg_min = 0.45  # [m] Minimum elevation for vegetation
-save = True  # [bool] Whether or not to save finished arrays
-savename = "NCB_20190830_250m_22550_LrgGap"
+save = False  # [bool] Whether or not to save finished arrays
+savename = "NCB_20190830_1000m_22900_OWflat"
 
 RNG = np.random.default_rng(seed=13)  # Seeded random numbers for reproducibility (e.g., model development/testing)
 
@@ -135,21 +135,27 @@ if Veggie:
 
     # Save
     if save:
-        name = "Topo_" + savename
-        outloc = "Input/" + name
-        np.save(outloc, dem)
+        Init = np.zeros([4, dem.shape[0], dem.shape[1]])
+        Init[0, :, :] = dem
+        Init[1, :, :] = EQ_dem
+        Init[2, :, :] = spec1
+        Init[3, :, :] = spec2
 
-        name = "EQTopo_" + savename
+        name = "Init_" + savename
         outloc = "Input/" + name
-        np.save(outloc, EQ_dem)
+        np.save(outloc, Init)
 
-        name = "Spec1_" + savename
-        outloc = "Input/" + name
-        np.save(outloc, spec1)
-
-        name = "Spec2_" + savename
-        outloc = "Input/" + name
-        np.save(outloc, spec2)
+        # name = "EQTopo_" + savename
+        # outloc = "Input/" + name
+        # np.save(outloc, EQ_dem)
+        #
+        # name = "Spec1_" + savename
+        # outloc = "Input/" + name
+        # np.save(outloc, spec1)
+        #
+        # name = "Spec2_" + savename
+        # outloc = "Input/" + name
+        # np.save(outloc, spec2)
 
 else:
     # Import
