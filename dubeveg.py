@@ -684,8 +684,8 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 dubeveg = DUBEVEG(
-    name="10 yr, SLR 0 mm/yr",
-    simulation_time_yr=10,
+    name="30 yr, SLR 0 mm/yr, Rhigh < 1.5",
+    simulation_time_yr=30,
     RSLR=0.000,
     seeded_random_numbers=True,
     p_dep_sand=0.5,  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr
