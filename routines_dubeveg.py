@@ -1808,3 +1808,89 @@ def overwash_processes(
         topof_change_effective = np.zeros(topof.shape)  # No topo change if no overwash
 
     return topof, topof_change_effective, topof_change_remainder, OWloss
+
+def calc_dune_erosion(topo,
+               x_s,
+               dx,
+               x_Dheel,
+               MHW,
+               Rhigh,
+               slopes,
+               Q,
+               storm_iter,
+
+):
+    """Dune erosion model from CDM v2.0 (Duran Vinent & Moore, 2015). Returns updated topography after time step.
+
+    Parameters
+    ----------
+    topo : ndarray
+        [slabs] Elevation domain.
+    x_s : ndarray
+        Alongshore array of shoreline location within domain.
+    dx : float
+        [m] Cell dimension.
+    x_Dheel : ndarray
+        Alongshore array of dune heel locations.
+    MHW : float
+        [slabs] Mean high water
+    Rhigh : float
+        []
+    slopes : ndarray
+        Alongshore array of beach slopes.
+    Q : float
+        Timescale
+    storm_iter : int
+        Scalar for degree of storm erosiveness.
+
+    Returns
+    ----------
+    topo
+        Updated elevation domain.
+    """
+
+    longshore, crossshore = topo.shape
+
+    # Loop through iterations of storm
+    for iter in range(storm_iter * Rhigh ** 2):
+
+        # Loop through each cell in domain from shoreline to dune toe
+        for y in range(longshore):
+            cont = True
+            for x in range(x_s[y], x_Dheel[y]):
+                hi = topo[x, y]  # Cell to operate on
+
+                # Definition of boundary conditions
+                # left: topo = MHW
+                if x == x_s[y]:
+                    hprev = MHW
+                else:
+                    hprev = topo[x - 1, y]
+                # right: depend on storm surge
+                if x == x_Dheel[y] - 1:
+                    hnext = MHW
+                else:
+                    hnext = topo[x + 1, y]
+
+                if hi <= Rhigh < topo[x + 1, y]:
+                    hnext = Rhigh
+                    cont = False
+
+                # Auxiliar
+                hx = 0.5 * (hnext - hprev) / dx  # Linear interpolated elevation difference for hi between hprev and hnext
+                hxx = (hnext - 2 * hi + hprev) / dx / dx
+                Sfactor = Rhigh - hi  # Height of water above elevation surface
+
+                # Flux
+                # in
+                # m_sflux(x, y) = (m_slope - hx) * Sfactor * Sfactor;
+                # div Q
+                divq = Sfactor * (hxx * Sfactor + 2 * (slopes[y] - hx) * hx)
+
+                # Evol
+                topo[x, y] += Q * divq / Rhigh / Rhigh
+
+                if not cont:
+                    break
+
+    return topo
