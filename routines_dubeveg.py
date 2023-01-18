@@ -1161,6 +1161,27 @@ def ocean_shoreline(topof, MHW):
     return shoreline
 
 
+def backbarrier_shoreline(topof, MHW):
+    """Returns location of the back-barrier shoreline.
+
+    Parameters
+    ----------
+    topof : ndarray
+        [m] Present elevation domain.
+    MHW : float
+        [slabs] Mean high water elevation.
+
+    Returns
+    ----------
+    BBshoreline : ndarray
+        Cross-shore location of the back-barrier shoreline for each row alongshore.
+    """
+
+    BBshoreline = topof.shape[1] - np.argmax(np.flip(topof) >= MHW, axis=1) - 1
+
+    return BBshoreline
+
+
 def foredune_crest(topo, eqtopo, veg):
     """Finds and returns the location of the foredune crest for each grid column alongshore."""
 
@@ -1214,6 +1235,40 @@ def foredune_crest(topo, eqtopo, veg):
             crestline[r] = int(mini + loc)
 
     return crestline.astype(int)
+
+
+def foredune_heel(topof, crestline, threshold, slabheight_m):
+    """Finds and returns the location of the foredune heel for each grid column alongshore."""
+
+    topof *= slabheight_m  # Convert from slabs to m
+    longshore, crossshore = topof.shape
+    heelline = np.zeros([longshore])
+
+    for ls in range(longshore):
+        # Loop landward from the crest
+        idx = crestline[ls]
+        while idx < crossshore:
+
+            # Check the elevation difference
+            elevation_difference = topof[ls, crestline[ls]] - topof[ls, idx]
+            if idx + 1 >= crossshore:
+                break
+            elif topof[ls, idx + 1] < topof[ls, idx]:
+                idx += 1
+            elif elevation_difference >= threshold:
+                break
+            elif topof[ls, idx + 1] * 0.95 >= topof[ls, idx]:
+                break
+            else:
+                idx += 1
+
+        # plt.plot(topo[ls, :idx + 100])
+        # plt.scatter(crestline[ls], topo[ls, crestline[ls]])
+        # plt.scatter(idx, topof[ls, idx])
+
+        heelline[ls] = idx
+
+    return heelline.astype(int)
 
 
 def find_peak(profile, MHT, threshold, crest_pct):
@@ -1562,7 +1617,7 @@ def overwash_processes(
                             S3 = float('NaN')
 
                         # Calculate Discharge To Downflow Neighbors
-                        
+
                         # One or more slopes positive
                         if S1 > 0 or S2 > 0 or S3 > 0:
 
@@ -1584,7 +1639,7 @@ def overwash_processes(
                             Q1 = np.nan_to_num(Q1)
                             Q2 = np.nan_to_num(Q2)
                             Q3 = np.nan_to_num(Q3)
-                            
+
                         # No slopes positive, one or more equal to zero
                         elif S1 == 0 or S2 == 0 or S3 == 0:
 
@@ -1809,38 +1864,35 @@ def overwash_processes(
 
     return topof, topof_change_effective, topof_change_remainder, OWloss
 
-def calc_dune_erosion(topo,
-               x_s,
-               dx,
-               x_Dheel,
-               MHW,
-               Rhigh,
-               slopes,
-               Q,
-               storm_iter,
 
-):
+def calc_dune_erosion(topo,
+                      dx,
+                      heelline,
+                      MHW,
+                      Rhigh,
+                      slopes,
+                      Q,
+                      storm_iter,
+                      ):
     """Dune erosion model from CDM v2.0 (Duran Vinent & Moore, 2015). Returns updated topography after time step.
 
     Parameters
     ----------
     topo : ndarray
         [slabs] Elevation domain.
-    x_s : ndarray
-        Alongshore array of shoreline location within domain.
     dx : float
         [m] Cell dimension.
-    x_Dheel : ndarray
+    heelline : ndarray
         Alongshore array of dune heel locations.
     MHW : float
         [slabs] Mean high water
-    Rhigh : float
-        []
+    Rhigh : ndarray
+        [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
     slopes : ndarray
         Alongshore array of beach slopes.
     Q : float
         Timescale
-    storm_iter : int
+    storm_iter : float
         Scalar for degree of storm erosiveness.
 
     Returns
@@ -1850,47 +1902,192 @@ def calc_dune_erosion(topo,
     """
 
     longshore, crossshore = topo.shape
+    x_s = ocean_shoreline(topo, MHW)
+    BBshoreline = backbarrier_shoreline(topo, MHW)
+    interstorm0 = 10
+    itermax = int(round(storm_iter * (np.max(Rhigh) ** 2)))
+    sflux = np.zeros(topo.shape)
+    topoChange = np.zeros(topo.shape)
+    topo_prestorm = copy.deepcopy(topo)
 
     # Loop through iterations of storm
-    for iter in range(storm_iter * Rhigh ** 2):
+    for it in range(itermax):
 
-        # Loop through each cell in domain from shoreline to dune toe
-        for y in range(longshore):
-            cont = True
-            for x in range(x_s[y], x_Dheel[y]):
-                hi = topo[x, y]  # Cell to operate on
+        for step in range(interstorm0):
 
-                # Definition of boundary conditions
-                # left: topo = MHW
-                if x == x_s[y]:
-                    hprev = MHW
-                else:
-                    hprev = topo[x - 1, y]
-                # right: depend on storm surge
-                if x == x_Dheel[y] - 1:
-                    hnext = MHW
-                else:
-                    hnext = topo[x + 1, y]
+            # Loop through each cell in domain from shoreline to dune toe
+            for y in range(longshore):
+                cont = True
+                # for x in range(x_s[y], heelline[y]):
+                for x in range(x_s[y], np.argmax(topo[y, x_s[y]:] <= 0) - 1):
+                    hi = topo[y, x]  # Cell to operate on
 
-                if hi <= Rhigh < topo[x + 1, y]:
-                    hnext = Rhigh
-                    cont = False
+                    # Definition of boundary conditions
+                    # left: topo = MHW
+                    if x == x_s[y]:
+                        hprev = MHW
+                    else:
+                        hprev = topo[y, x - 1]
+                    # right: depend on storm surge
+                    if x == BBshoreline[y] - 1:  # heelline[y] - 1:
+                        hnext = MHW
+                    else:
+                        hnext = topo[y, x + 1]
 
-                # Auxiliar
-                hx = 0.5 * (hnext - hprev) / dx  # Linear interpolated elevation difference for hi between hprev and hnext
-                hxx = (hnext - 2 * hi + hprev) / dx / dx
-                Sfactor = Rhigh - hi  # Height of water above elevation surface
+                    if hi <= Rhigh[y] < topo[y, x + 1]:
+                        hnext = Rhigh[y]
+                        cont = False
 
-                # Flux
-                # in
-                # m_sflux(x, y) = (m_slope - hx) * Sfactor * Sfactor;
-                # div Q
-                divq = Sfactor * (hxx * Sfactor + 2 * (slopes[y] - hx) * hx)
+                    # Auxiliar
+                    hx = 0.5 * (hnext - hprev) / dx  # Linear interpolated elevation difference for hi between hprev and hnext
+                    hxx = (hnext - 2 * hi + hprev) / dx / dx  # Measure of degree to which slope between hnext and hprev is off of 1/1 slope
+                    Sfactor = Rhigh[y] - hi  # Height of water above elevation surface
 
-                # Evol
-                topo[x, y] += Q * divq / Rhigh / Rhigh
+                    # Flux
+                    # in
+                    sflux[y, x] += (slopes[y] - hx) * Sfactor * Sfactor
+                    # div Q
+                    divq = Sfactor * (hxx * Sfactor + 2 * (slopes[y] - hx) * hx)
 
-                if not cont:
-                    break
+                    # Evol
+                    topo[y, x] += Q * divq / Rhigh[y] / Rhigh[y]
+                    topoChange[y, x] += Q * divq / Rhigh[y] / Rhigh[y]
+
+                    if not cont:
+                        break
+
+    for y in range(longshore):
+        topoChange[y, heelline[y]:] = 0  # IRBR added 18 Jan 23: only changes topo up to dune heel
+
+    topo = topo_prestorm + topoChange
+
+    return topo, sflux
+
+
+def calc_dune_erosion2(topo,
+                       dx,
+                       crestline,
+                       MHW,
+                       Rhigh,
+                       Q,
+                       storm_iter,
+                       ):
+    """Beach and dune erosion model following updated SBEACH (Larson et al., 2004). Returns updated topography after time step.
+
+    Parameters
+    ----------
+    topo : ndarray
+        [slabs] Elevation domain.
+    dx : float
+        [m] Cell dimension.
+    crestline : ndarray
+        Alongshore array of dune crest locations.
+    MHW : float
+        [slabs] Mean high water
+    Rhigh : ndarray
+        [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
+    Q : float
+        Timescale
+    storm_iter : float
+        Scalar for degree of storm erosiveness.
+
+    Returns
+    ----------
+    topo
+        Updated elevation domain.
+    """
+
+    # TODO: Add these as function inputs
+    Kc = 3.0e-3
+    Kb = 0.005
+    Cls = 0.12  # Longshore / spreading angle coefficient
+    Beq = 0.03  # Equilibrium beach slope
+    g = 9.8
+
+    longshore, crossshore = topo.shape
+    x_s = ocean_shoreline(topo, MHW)
+    BBshoreline = backbarrier_shoreline(topo, MHW)
+    interstorm0 = 10
+    itermax = int(round(storm_iter * (np.max(Rhigh) ** 2)))
+
+    # Loop through iterations of storm
+    for it in range(itermax):
+
+        for step in range(interstorm0):
+
+            # Loop through each cell in domain from shoreline to dune toe
+            for y in range(longshore):
+                cont = True
+                qtot = 0
+
+                Reff = Rhigh[y] - MHW  # TODO: Determine if this transformation is needed or if Rhigh alreads comes relative to MHW
+                hD = topo[y, crestline[y]]  # Dune crest height
+                xD = crestline[y]  # Dune crest location
+
+                qS = 0  # Init
+                qD = 0  # Init
+
+                for x in range(x_s[y], BBshoreline[y]):
+                    hi = topo[y, x]  # Cell to operate on
+
+                    # Definition of boundary conditions
+                    # left: topo = MHW
+                    if x == x_s[y]:
+                        hprev = MHW
+                    else:
+                        hprev = topo[y, x - 1]
+                    # right: depend on storm surge
+                    if x == BBshoreline[y] - 1:
+                        hnext = MHW
+                    else:
+                        hnext = topo[y, x + 1]
+
+                    if hi <= Rhigh[y] < topo[y, x + 1]:
+                        hnext = Rhigh[y]
+                        cont = False
+
+                    # Auxiliar
+                    hx = (hi - hprev) / dx
+
+                    # Flux
+
+                    # Surfzone/Swashzone Boundary
+                    if x == x_s[y]:
+                        # Calculate transport at surfzone/swashzone boundary
+                        Bl = (hnext - hi) / dx
+                        qS = Kc * 2 * math.sqrt(2 * g) * Reff ** (3 / 2) * (Bl - Beq)  # Eqn 5 from Larson et al. (2004)
+
+                        # Calculate transport over dune crest
+                        qD = Kb * 2 * math.sqrt((2 * g) / Reff) * (Rhigh[y] - hD) ** 2  # Eqn 15 from Larson et al. (2004)
+
+                        # Flux
+                        divq = qS
+
+                    # Seaward of Dune Crest
+                    elif x_s[y] < x < xD:
+                        if Rhigh[y] > hD:  # Overwash regime
+                            divq = qD + (qS - qD) * ((x - xD) / (x_s[y] - xD)) ** 2  # Eqn 21 from Larson et al. (2004)  # Note, Larson et al. (2004) Eqn 21 appears to have typo: it gives (xs - xs) when it presumably should be (xs - xr)
+                            # divq = qD + (qS - qD) * (1 - (hi - MHW) / (hD - MHW)) ** (3 / 2)  # From CDM v3
+                            qtot += divq
+                        else:  # Collision regime
+                            divq = Kc * 2 * math.sqrt(2 * g) * Reff ** (3 / 2) * (1 - ((hi - MHW) / Reff)) ** 2 * (hx - Beq)  # Eqn 4 from Larson et al. (2004)
+
+                    # Dune Crest Boundary
+                    elif x == xD:
+                        divq = qD
+
+                    # Landward of Dune Crest
+                    else:
+                        divq = qD / (1 + (x - xD) * Cls)  # Eqn 20 from Larson et al. (2004)
+                        # scalar = qtot / (qD / Cls * (math.log(Cls * (crossshore - xD) + 1)))
+                        # divq = -1 * scalar * qD / (1 + (x - xD) * Cls)  # From CDM v3, Partially from Eqn 20 from Larson et al. (2004), not sure where scalar comes from
+
+                    # Evol
+                    topo[y, x] -= Q * divq / Rhigh[y] / Rhigh[y]
+                    if topo[y, x] < MHW:
+                        topo[y, x] = MHW
+
+                    if not cont:
+                        break
 
     return topo
