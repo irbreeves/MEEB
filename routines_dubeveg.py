@@ -1208,7 +1208,7 @@ def foredune_crest(topo, eqtopo, veg):
         if Lveg_longshore[r] > 0:
             mini = max(0, Lveg_longshore[r] - buff1)
             maxi = min(topo.shape[1] - 1, Lveg_longshore[r] + buff1)
-            loc = find_peak(topo[r, mini: maxi] * 0.1, 0, 0.6, 0.1)
+            loc = find_peak(topo[r, mini: maxi] * 0.1, 0, 0.6, 0.1)  # TODO: Replace second input with MHW
             if np.isnan(loc):
                 crestline[r] = crestline[r - 1]
             else:
@@ -1867,10 +1867,8 @@ def overwash_processes(
 
 def calc_dune_erosion(topo,
                       dx,
-                      heelline,
                       MHW,
                       Rhigh,
-                      slopes,
                       Q,
                       storm_iter,
                       ):
@@ -1901,25 +1899,29 @@ def calc_dune_erosion(topo,
         Updated elevation domain.
     """
 
+    Beq = 0.03
+
     longshore, crossshore = topo.shape
     x_s = ocean_shoreline(topo, MHW)
     BBshoreline = backbarrier_shoreline(topo, MHW)
-    interstorm0 = 10
+    iterstorm0 = 10
     itermax = int(round(storm_iter * (np.max(Rhigh) ** 2)))
     sflux = np.zeros(topo.shape)
+    sdiverge = np.zeros(topo.shape)
     topoChange = np.zeros(topo.shape)
     topo_prestorm = copy.deepcopy(topo)
 
     # Loop through iterations of storm
     for it in range(itermax):
 
-        for step in range(interstorm0):
+        for step in range(iterstorm0):
 
             # Loop through each cell in domain from shoreline to dune toe
             for y in range(longshore):
                 cont = True
-                # for x in range(x_s[y], heelline[y]):
-                for x in range(x_s[y], np.argmax(topo[y, x_s[y]:] <= 0) - 1):
+                flux = np.zeros([BBshoreline[y] - x_s[y]])
+
+                for x in range(x_s[y], BBshoreline[y]):
                     hi = topo[y, x]  # Cell to operate on
 
                     # Definition of boundary conditions
@@ -1939,38 +1941,39 @@ def calc_dune_erosion(topo,
                         cont = False
 
                     # Auxiliar
-                    hx = 0.5 * (hnext - hprev) / dx  # Linear interpolated elevation difference for hi between hprev and hnext
-                    hxx = (hnext - 2 * hi + hprev) / dx / dx  # Measure of degree to which slope between hnext and hprev is off of 1/1 slope
+                    hx = 0.5 * (hnext - hprev) / dx  # Local topo gradient
+                    hxx = (hnext - 2 * hi + hprev) / dx / dx
                     Sfactor = Rhigh[y] - hi  # Height of water above elevation surface
 
                     # Flux
                     # in
-                    sflux[y, x] += (slopes[y] - hx) * Sfactor * Sfactor
+                    sflux[y, x] += (Beq - hx) * Sfactor * Sfactor
+                    flux[x - x_s[y]] = (Beq - hx) * Sfactor * Sfactor
+
                     # div Q
-                    divq = Sfactor * (hxx * Sfactor + 2 * (slopes[y] - hx) * hx)
+                    divq = Sfactor * (hxx * Sfactor + 2 * (Beq - hx) * hx)
+                    # sdiverge[y, x] = divq
 
                     # Evol
                     topo[y, x] += Q * divq / Rhigh[y] / Rhigh[y]
-                    topoChange[y, x] += Q * divq / Rhigh[y] / Rhigh[y]
+                    # topoChange[y, x] += Q * divq / Rhigh[y] / Rhigh[y]
 
                     if not cont:
                         break
 
-    for y in range(longshore):
-        topoChange[y, heelline[y]:] = 0  # IRBR added 18 Jan 23: only changes topo up to dune heel
-
-    topo = topo_prestorm + topoChange
-
     return topo, sflux
 
 
-def calc_dune_erosion2(topo,
+def calc_dune_erosion3(topo,
                        dx,
                        crestline,
                        MHW,
                        Rhigh,
-                       Q,
-                       storm_iter,
+                       T,
+                       duration,
+                       veg,
+                       eqtopo,
+                       RNG,
                        ):
     """Beach and dune erosion model following updated SBEACH (Larson et al., 2004). Returns updated topography after time step.
 
@@ -1983,56 +1986,79 @@ def calc_dune_erosion2(topo,
     crestline : ndarray
         Alongshore array of dune crest locations.
     MHW : float
-        [slabs] Mean high water
+        [slabs] Mean high water.
     Rhigh : ndarray
         [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
-    Q : float
-        Timescale
-    storm_iter : float
-        Scalar for degree of storm erosiveness.
+    T : float
+        [sec] Wave period.
+    duration : float
+        [hrs] Duration of storm event.
 
     Returns
     ----------
     topo
         Updated elevation domain.
     """
-
-    # TODO: Add these as function inputs
-    Kc = 3.0e-3
-    Kb = 0.005
-    Cls = 0.12  # Longshore / spreading angle coefficient
-    Beq = 0.03  # Equilibrium beach slope
+    Kc = 0.003  # 0.0016
+    Kb = 0.005  # 0.005
+    Cls = 0.12  # Longshore / spreading angle coefficient  # 0.12
+    Beq = 0.02  # Equilibrium beach slope
     g = 9.8
+    Rlow = 2
+    Rhigh = 3.6
+
+    pretopo = copy.deepcopy(topo)  # temp
 
     longshore, crossshore = topo.shape
     x_s = ocean_shoreline(topo, MHW)
     BBshoreline = backbarrier_shoreline(topo, MHW)
-    interstorm0 = 10
-    itermax = int(round(storm_iter * (np.max(Rhigh) ** 2)))
+    fluxMap = np.zeros(topo.shape)
+
+    duration = 24  # [hr] Storm duration
+    Tp = 12  # [sec] Wave period
+    dT = 1  # [hr] Time step length
+    timesteps = int(duration / dT)  # [hr] Steps
+    substeps = 10 * int(round(np.max(Rhigh) ** 2))  # Number of substeps scales with size of storms to account for greater transport rates during larger storms
+    Q = (dT * 60 * 60) / Tp  # [sec/sec] Timescale, step length [sec] over wave period of that step [sec]
+
+    # figgy = plt.figure(figsize=(13, 6))
+    # ax1 = figgy.add_subplot(111)
 
     # Loop through iterations of storm
-    for it in range(itermax):
+    for it in range(timesteps):
 
-        for step in range(interstorm0):
+        # if it % 5 == 0:
+        #     ax1.plot(topo[0, :200])
+
+        for step in range(substeps):
+
+            # crestline = foredune_crest(topo, eqtopo,  veg)
 
             # Loop through each cell in domain from shoreline to dune toe
             for y in range(longshore):
+
+                # TEMP
+                crestline = np.zeros([longshore, ]).astype(int)
+                peak = find_peak(topo[y, 80: 200], 0, 0.6, 0.1) + 80
+                if np.isnan(peak):
+                    peak = int(np.argmax(topo[y, 80:120])) + 80
+                crestline[y] = peak
+
                 cont = True
-                qtot = 0
+                flux = np.zeros([BBshoreline[y] - x_s[y]])  # Array of sediment flux for this substep at cross-shore position y
 
-                Reff = Rhigh[y] - MHW  # TODO: Determine if this transformation is needed or if Rhigh alreads comes relative to MHW
-                hD = topo[y, crestline[y]]  # Dune crest height
+                Rh = Rhigh
+                Rl = Rlow
+                hD = topo[y, crestline[y]] - MHW  # Dune crest height
                 xD = crestline[y]  # Dune crest location
+                xS = x_s[y]  # Shoreline position
 
-                qS = 0  # Init
-                qD = 0  # Init
-
-                for x in range(x_s[y], BBshoreline[y]):
+                for x in range(xS, BBshoreline[y]):
                     hi = topo[y, x]  # Cell to operate on
 
                     # Definition of boundary conditions
                     # left: topo = MHW
-                    if x == x_s[y]:
+                    if x == xS:
                         hprev = MHW
                     else:
                         hprev = topo[y, x - 1]
@@ -2042,52 +2068,187 @@ def calc_dune_erosion2(topo,
                     else:
                         hnext = topo[y, x + 1]
 
-                    if hi <= Rhigh[y] < topo[y, x + 1]:
-                        hnext = Rhigh[y]
-                        cont = False
+                    if hi <= Rh < topo[y, x + 1]:
+                        hnext = Rh
+                        cont = False  # Next cell not inundated, break after this current cell
 
-                    # Auxiliar
-                    hx = (hi - hprev) / dx
-
-                    # Flux
+                    # Local topo gradient
+                    Bl = 0.5 * (hnext - hprev) / dx
 
                     # Surfzone/Swashzone Boundary
                     if x == x_s[y]:
                         # Calculate transport at surfzone/swashzone boundary
-                        Bl = (hnext - hi) / dx
-                        qS = Kc * 2 * math.sqrt(2 * g) * Reff ** (3 / 2) * (Bl - Beq)  # Eqn 5 from Larson et al. (2004)
+                        qS = Kc * 2 * math.sqrt(2 * g) * Rh ** (3 / 2) * (Beq - Bl)  # Sediment flux Eqn 5 from Larson et al. (2004)
 
                         # Calculate transport over dune crest
-                        qD = Kb * 2 * math.sqrt((2 * g) / Reff) * (Rhigh[y] - hD) ** 2  # Eqn 15 from Larson et al. (2004)
+                        if Rl > hD:
+                            # Inundation overwash regime
+                            qDr = Kb * 2 * math.sqrt((2 * g) / Rh) * (max(0, Rh)) ** 2  # Run-up component sediment flux Eqn 15 from Larson et al. (2004)
+                            qDi = Kb * 2 * math.sqrt(2 * g) * (Rh - hD) ** (3 / 2)  # Inundation component sediment flux Eqn 5 from Donnelly et al. (2009), modified from Eqn 15 of Larson et al. (2004)
+                            qD = qDr + qDi  # Sediment flux Eqn 26 from Donnelly et al. (2009)
+                        elif Rh > hD:
+                            # Run-up overwash regime
+                            qD = Kb * 2 * math.sqrt((2 * g) / Rh) * (max(0, Rh - hD)) ** 2  # Sediment flux Eqn 15 from Larson et al. (2004)
+                        else:
+                            # Collision regime
+                            qD = 0
 
-                        # Flux
-                        divq = qS
+                        Bls = Bl  # Save local slope at surfzone edge
+                        qs = copy.copy(qS)  # Sediment flux
 
                     # Seaward of Dune Crest
-                    elif x_s[y] < x < xD:
-                        if Rhigh[y] > hD:  # Overwash regime
-                            divq = qD + (qS - qD) * ((x - xD) / (x_s[y] - xD)) ** 2  # Eqn 21 from Larson et al. (2004)  # Note, Larson et al. (2004) Eqn 21 appears to have typo: it gives (xs - xs) when it presumably should be (xs - xr)
-                            # divq = qD + (qS - qD) * (1 - (hi - MHW) / (hD - MHW)) ** (3 / 2)  # From CDM v3
-                            qtot += divq
-                        else:  # Collision regime
-                            divq = Kc * 2 * math.sqrt(2 * g) * Reff ** (3 / 2) * (1 - ((hi - MHW) / Reff)) ** 2 * (hx - Beq)  # Eqn 4 from Larson et al. (2004)
+                    elif xS < x < xD:
+                        qs = qD + (qS - qD) * (1 - ((hi - MHW) / Rh)) ** 2 * ((Beq - Bl) / (Beq - Bls))  # Sediment flux following Eqn 6 and Eqn 21 from Larson et al. (2004)
 
                     # Dune Crest Boundary
                     elif x == xD:
-                        divq = qD
+                        qs = copy.copy(qD)  # Sediment flux
 
                     # Landward of Dune Crest
                     else:
-                        divq = qD / (1 + (x - xD) * Cls)  # Eqn 20 from Larson et al. (2004)
-                        # scalar = qtot / (qD / Cls * (math.log(Cls * (crossshore - xD) + 1)))
-                        # divq = -1 * scalar * qD / (1 + (x - xD) * Cls)  # From CDM v3, Partially from Eqn 20 from Larson et al. (2004), not sure where scalar comes from
+                        qs = qD / (1 + (x - xD) * Cls)  # Sediment flux Eqn 20 from Larson et al. (2004)
 
-                    # Evol
-                    topo[y, x] -= Q * divq / Rhigh[y] / Rhigh[y]
-                    if topo[y, x] < MHW:
-                        topo[y, x] = MHW
+                    # # Flux from CDM v.2
+                    # qs = (Bl - Beq) * (Rh - hi) * (Rh - hi)
 
+                    # Store Sediment Flux
+                    flux[x - x_s[y]] = qs  # Update array of sediment flux for this substep at cross-shore position y
+                    fluxMap[y, x] += qs  # Update map of sediment flux
+
+                    # Break if next cell not inundated
                     if not cont:
                         break
 
-    return topo
+                # Topo Evolution
+                divq = np.gradient(flux, dx)  # Flux divergence
+                topo[y, xS: xS + len(divq)] -= Q * divq / substeps  # / Rhigh[y] / Rhigh[y]  # Update elevation for this substep
+
+        print("\r", "  Time Step: ", it + 1, "/", timesteps, end="")
+
+        # # Avalanch
+        # topo = enforceslopes2(topo, veg, 0.01, 5, 8, 0.3, RNG)[0]
+
+    # plt.show()
+
+    return topo, fluxMap
+
+
+def calc_dune_erosion4(topo,
+                       dx,
+                       crestline,
+                       MHW,
+                       Rhigh,
+                       T,
+                       duration,
+                       veg,
+                       eqtopo,
+                       RNG,
+                       ):
+    """Beach and dune erosion model following updated SBEACH (Larson et al., 2004). Returns updated topography after time step.
+
+    Parameters
+    ----------
+    topo : ndarray
+        [slabs] Elevation domain.
+    dx : float
+        [m] Cell dimension.
+    crestline : ndarray
+        Alongshore array of dune crest locations.
+    MHW : float
+        [slabs] Mean high water.
+    Rhigh : ndarray
+        [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
+    T : float
+        [sec] Wave period.
+    duration : float
+        [hrs] Duration of storm event.
+
+    Returns
+    ----------
+    topo
+        Updated elevation domain.
+    """
+
+    Beq = 0.02  # Equilibrium beach slope
+    Rhigh = 3.5
+    duration = 50  # [hr] Storm duration
+    Tc = 1  # Timescale constant: larger Tc = lesser erosion
+    dT = 1  # [hr] Time step length
+
+    # Time
+    timesteps = int(duration / dT)  # [hr] Steps
+    substeps = 5 + int(round(np.max(Rhigh) ** 2))  # Number of substeps scales with size of storms to account for greater transport rates during larger storms
+    Q = dT / Tc  # Timescale
+
+    # Initialize
+    longshore, crossshore = topo.shape  # Domain dimensions
+    x_s = ocean_shoreline(topo, MHW)
+    BBshoreline = backbarrier_shoreline(topo, MHW)  # Get positions back-barrier shoreline
+    fluxMap = np.zeros(topo.shape)  # Initialize map of sediment flux aggregated over duration of storm
+
+    topoPrestorm = copy.copy(topo)
+
+    # Loop through iterations of storm
+    for it in range(timesteps):
+
+        # Loop through each substep of each iteration
+        for step in range(substeps):
+
+            # # Find Dune Crest, Beach Slopes
+            # dune_crest = foredune_crest(topo, eqtopo, veg)
+            # dune_heel = foredune_heel(topo, dune_crest, 0.6, 0.1)
+
+            # Loop through each cell alongshore
+            for y in range(longshore):
+
+                Rh = Rhigh  # Total water level
+                xStart = 73  # x_s[y]  # Start
+                xFinish = 132  # BBshoreline[y]  # Finish
+                xB = BBshoreline[y]  # Back-barrier shoreline position
+
+                cont = True
+
+                # Loop through each cell in domain from ocean shoreline to back-barrier bay shoreline
+                for x in range(xStart, xFinish):
+
+                    # Cell to operate on
+                    hi = topo[y, x]
+
+                    # Definition of boundary conditions
+                    if x == 0:
+                        hprev = MHW
+                    else:
+                        hprev = topo[y, x - 1]
+
+                    if x == xB - 1:
+                        hnext = MHW
+                    else:
+                        hnext = topo[y, x + 1]
+
+                    if hi <= Rh < topo[y, x + 1]:
+                        hnext = Rh
+                        cont = False
+
+                    # Auxiliar
+                    Bl = 0.5 * (hnext - hprev) / dx  # Local topo gradient
+                    hxx = (hnext - 2 * hi + hprev) / dx / dx
+                    Rexcess = Rh - hi  # Height of water above elevation surface
+
+                    # Flux
+                    fluxMap[y, x] += (Beq - Bl) * Rexcess * Rexcess
+
+                    # Flux divergence
+                    divq = Rexcess * (hxx * Rexcess + 2 * (Beq - Bl) * Bl)
+
+                    # Evolve topography
+                    topo[y, x] += Q * divq / substeps
+
+                    # Break if next cell not inundated
+                    if not cont:
+                        break
+
+    topoChange = topo - topoPrestorm
+    dV = np.sum(topoChange, axis=1) * dx ** 3  # [m^3] Dune volume change: (-) loss, (+) gain
+    print("Dune Volume Change:", dV)
+
+    return topo, fluxMap, dV
