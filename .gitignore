@@ -4,8 +4,6 @@ Output/
 # Model input
 Input/
 
-test_overwash.py
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
