@@ -1,5 +1,5 @@
 """ This script converts a .tif elevation raster file to a numpy array initial elevation file suitable for
-    use in the coupled DUBEVEG/Barrier3D model.
+    use in BEEM (Barrier Explicit Evolution Model).
 
     IRB Reeves
     Last update: 9 January 2023

@@ -1,12 +1,12 @@
 """__________________________________________________________________________________________________________________________________
 
-Main Model Script for PyDUBEVEG
+Main Model Script for BEEM
 
-Python version of the DUne, BEach, and VEGetation (DUBEVEG) model from Keijsers et al. (2016) and Galiforni Silva et al. (2018, 2019)
+Barrier Explicit Evolution Model
 
-Translated from Matlab by IRB Reeves
+IRB Reeves
 
-Last update: 9 January 2023
+Last update: 11 February 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -21,12 +21,12 @@ import os
 import copy
 from mpl_toolkits.mplot3d import Axes3D
 
-import routines_dubeveg as routine
+import routines_beem as routine
 
 np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
 
 
-class DUBEVEG:
+class BEEM:
     def __init__(
             self,
 
@@ -129,7 +129,7 @@ class DUBEVEG:
             substep_ru=2,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
 
     ):
-        """Python version of the DUne, BEach, and VEGetation model"""
+        """BEEM: Barrier Explicit Evolution Model"""
 
         self._name = name
         self._simnum = simnum
@@ -342,7 +342,7 @@ class DUBEVEG:
     # MAIN ITERATION LOOP
 
     def update(self, it):
-        """Update PyDUBEVEG by a single time step"""
+        """Update BEEM by a single time step"""
 
         year = math.ceil(it / self._iterations_per_cycle)
 
@@ -387,9 +387,9 @@ class DUBEVEG:
             # # TEMP: DEBUGGING DUNE CREST LOCATION
             # if it % 50 == 0:
             #     tempfig = plt.figure(figsize=(14, 4.5))
-            #     tempfig.suptitle(dubeveg.name, fontsize=13)
+            #     tempfig.suptitle(beem.name, fontsize=13)
             #     ax_1 = tempfig.add_subplot(111)
-            #     cax_1 = ax_1.matshow(dubeveg.topo * dubeveg.slabheight, cmap='terrain', vmin=-1.1, vmax=4.0)
+            #     cax_1 = ax_1.matshow(beem.topo * beem.slabheight, cmap='terrain', vmin=-1.1, vmax=4.0)
             #     ax_1.plot(dune_crest, np.arange(len(dune_crest)))
 
             iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
@@ -683,7 +683,7 @@ class DUBEVEG:
 start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
-dubeveg = DUBEVEG(
+beem = BEEM(
     name="30 yr, SLR 0 mm/yr, Rhigh < 1.5",
     simulation_time_yr=30,
     RSLR=0.000,
@@ -700,15 +700,15 @@ dubeveg = DUBEVEG(
     veg_spec2_filename="Spec2_NCB_20190830_100m_23980.npy",
 )
 
-print(dubeveg.name)
+print(beem.name)
 
 # Loop through time
-for time_step in range(int(dubeveg.iterations)):
+for time_step in range(int(beem.iterations)):
     # Print time step to screen
-    print("\r", "Time Step: ", time_step / dubeveg.iterations_per_cycle, "years", end="")
+    print("\r", "Time Step: ", time_step / beem.iterations_per_cycle, "years", end="")
 
     # Run time step
-    dubeveg.update(time_step)
+    beem.update(time_step)
 
 # Print elapsed time of simulation
 print()
@@ -717,32 +717,32 @@ print()
 print("Elapsed Time: ", SimDuration, "sec")
 
 # Save Results
-if dubeveg.save_data:
-    filename = dubeveg.outputloc + "Sim_" + str(dubeveg.simnum)
+if beem.save_data:
+    filename = beem.outputloc + "Sim_" + str(beem.simnum)
     dill.dump_module(filename)  # To re-load data: dill.load_session(filename)
 
 # Plot
 Fig = plt.figure(figsize=(14, 9.5))
-Fig.suptitle(dubeveg.name, fontsize=13)
+Fig.suptitle(beem.name, fontsize=13)
 ax1 = Fig.add_subplot(211)
-cax1 = ax1.matshow(dubeveg.topo * dubeveg.slabheight, cmap='terrain', vmin=-1.2, vmax=5.0)
+cax1 = ax1.matshow(beem.topo * beem.slabheight, cmap='terrain', vmin=-1.2, vmax=5.0)
 cbar = Fig.colorbar(cax1)
 cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
 ax2 = Fig.add_subplot(212)
-cax2 = ax2.matshow(dubeveg.veg, cmap='YlGn', vmin=0, vmax=1)
+cax2 = ax2.matshow(beem.veg, cmap='YlGn', vmin=0, vmax=1)
 cbar = Fig.colorbar(cax2)
 cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
 plt.tight_layout()
 
 # plt.figure()
-# plt.hist(dubeveg.StormRecord[1:, 1], bins=50, range=(0, dubeveg.iterations_per_cycle))
+# plt.hist(beem.StormRecord[1:, 1], bins=50, range=(0, beem.iterations_per_cycle))
 # plt.title("Model Storm Occurance by Week")
 
 # # Plot 3D Elevation
 # fig = plt.figure(figsize=(12, 8))
 # ax = fig.add_subplot(111, projection="3d")
 # scale_x = 1
-# L, C = dubeveg.topo.shape
+# L, C = beem.topo.shape
 # scale_y = L / C
 # scale_z = 10 / L
 # ax.get_proj = lambda: np.dot(
@@ -752,7 +752,7 @@ plt.tight_layout()
 # ax.plot_surface(
 #     X,
 #     Y,
-#     dubeveg.topo * dubeveg.slabheight,
+#     beem.topo * beem.slabheight,
 #     cmap="terrain",
 #     alpha=1,
 #     linewidth=0,
@@ -762,32 +762,32 @@ plt.tight_layout()
 # )
 
 # Elevation Animation
-for t in range(0, dubeveg.simulation_time_yr + 1):
+for t in range(0, beem.simulation_time_yr + 1):
     Fig = plt.figure(figsize=(14, 9.5))
     ax1 = Fig.add_subplot(211)
-    cax1 = ax1.matshow(dubeveg.topo_TS[:, :, t] * dubeveg.slabheight, cmap='terrain', vmin=-1.2, vmax=5.0)  # TODO: Plot relative to sea level
+    cax1 = ax1.matshow(beem.topo_TS[:, :, t] * beem.slabheight, cmap='terrain', vmin=-1.2, vmax=5.0)  # TODO: Plot relative to sea level
     cbar = Fig.colorbar(cax1)
     cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
     timestr = "Year " + str(t)
-    plt.text(2, dubeveg.topo.shape[0] - 2, timestr, c='white')
+    plt.text(2, beem.topo.shape[0] - 2, timestr, c='white')
     ax2 = Fig.add_subplot(212)
-    cax2 = ax2.matshow(dubeveg.veg_TS[:, :, t], cmap='YlGn', vmin=0, vmax=1)
+    cax2 = ax2.matshow(beem.veg_TS[:, :, t], cmap='YlGn', vmin=0, vmax=1)
     cbar = Fig.colorbar(cax2)
     cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
     timestr = "Year " + str(t)
-    plt.text(2, dubeveg.veg.shape[0] - 2, timestr, c='darkblue')
+    plt.text(2, beem.veg.shape[0] - 2, timestr, c='darkblue')
     if not os.path.exists("Output/SimFrames/"):
         os.makedirs("Output/SimFrames/")
     plt.tight_layout()
-    name = "Output/SimFrames/dubeveg_elev_" + str(t)
+    name = "Output/SimFrames/beem_elev_" + str(t)
     plt.savefig(name)  # dpi=200
     plt.close()
 
 frames = []
-for filenum in range(0, dubeveg.simulation_time_yr + 1):
-    filename = "Output/SimFrames/dubeveg_elev_" + str(filenum) + ".png"
+for filenum in range(0, beem.simulation_time_yr + 1):
+    filename = "Output/SimFrames/beem_elev_" + str(filenum) + ".png"
     frames.append(imageio.imread(filename))
-imageio.mimwrite("Output/SimFrames/dubeveg_elev.gif", frames, fps=3)
+imageio.mimwrite("Output/SimFrames/beem_elev.gif", frames, fps=3)
 print()
 print("[ * GIF successfully generated * ]")
 

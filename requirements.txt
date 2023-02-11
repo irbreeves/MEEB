@@ -4,3 +4,4 @@ scipy
 dill
 setuptools
 imageio
+rasterio

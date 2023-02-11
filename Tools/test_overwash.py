@@ -1,11 +1,11 @@
 """
-Script for testing overwash function.
+Script for testing BEEM overwash function.
 IRBR 9 Feb 2023
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-import routines_dubeveg as routine
+import routines_beem as routine
 import copy
 import time
 

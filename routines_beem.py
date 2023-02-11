@@ -1,12 +1,12 @@
 """__________________________________________________________________________________________________________________________________
 
-Model Functions for PyDUBEVEG
+Model Functions for BEEM
 
-Python version of the DUne, BEach, and VEGetation (DUBEVEG) model from Keijsers et al. (2016) and Galiforni Silva et al. (2018, 2019)
+Barrier Explicit Evolution Model
 
-Translated from Matlab by IRB Reeves
+IRB Reeves
 
-Last update: 9 February 2023
+Last update: 11 February 2023
 
 __________________________________________________________________________________________________________________________________"""
 import matplotlib.pyplot as plt
