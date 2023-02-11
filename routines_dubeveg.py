@@ -1512,14 +1512,12 @@ def overwash_processes(
 
     longshore, crossshore = topof.shape
     topof_prestorm = copy.deepcopy(topof)
-    dune_crest_loc_prestorm = crestline  # Cross-shore location of pre-storm dune crest  # TODO: Adjust crestline over course of storm
+    dune_crest_loc_prestorm = crestline  # Cross-shore location of pre-storm dune crest
     dune_crest_height_prestorm_m = topof_prestorm[np.arange(len(topof_prestorm)), dune_crest_loc_prestorm] * slabheight_m  # [m] Height of dune crest alongshore
     MHT_m = MHT * slabheight_m  # Convert from slabs to meters
 
     # --------------------------------------
     # DUNE EROSION
-
-    # TODO: Adjust dune height/shape over course of storm
 
     # --------------------------------------
     # OVERWASH
@@ -1542,7 +1540,7 @@ def overwash_processes(
 
         # Determine Sediment And Water Routing Rules Based on Overwash Regime
         if inundation_regime_count / (inundation_regime_count + runup_regime_count) >= threshold_in:  # If greater than threshold % of overtopped dune cells are inunundation regime -> inundation overwash regime
-            inundation = True  # TODO: Inundation regime parameterization needs work...
+            inundation = True
             substep = substep_i
             Rin = Rin_i
             C = Cx * AvgSlope  # Momentum constant
@@ -1567,7 +1565,7 @@ def overwash_processes(
         Elevation = np.zeros([iterations, longshore, domain_width])
         # Bay = np.ones([bay_routing_width, longshore]) * -BayDepth
         domain_topo_start = (topof[:, domain_width_start:] + topof_change_remainder[:, domain_width_start:]) * slabheight_m  # [m] Incorporate leftover topochange from PREVIOUS storm)
-        Elevation[0, :, :] = domain_topo_start  # np.vstack([Dunes, self._InteriorDomain, Bay])  # TODO: Allow for open boundary conditions?
+        Elevation[0, :, :] = domain_topo_start  # np.vstack([Dunes, self._InteriorDomain, Bay])
 
         # Initialize Memory Storage Arrays
         Discharge = np.zeros([iterations, longshore, domain_width])
@@ -1575,14 +1573,13 @@ def overwash_processes(
         SedFluxOut = np.zeros([iterations, longshore, domain_width])
 
         # Set Discharge at Dune Crest
-        Discharge[:, np.arange(longshore), dune_crest_loc_prestorm - domain_width_start] = Qdune  # TODO: Vary Rhigh over storm duration; potentially: vary discharge set location?
+        Discharge[:, np.arange(longshore), dune_crest_loc_prestorm - domain_width_start] = Qdune
 
         # Run Flow Routing Algorithm
         for TS in range(iterations):
 
             if TS > 0:
                 Elevation[TS, :, :] = Elevation[TS - 1, :, :]  # Begin timestep with elevation from end of last
-                # Elevation[TS, 0, :] = Dunes - (Hd_TSloss / substep * TS)  # TODO: Reduce dune in height over course of storm
 
             Rin_eff = 1
 
