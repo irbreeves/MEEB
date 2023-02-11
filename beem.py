@@ -33,7 +33,7 @@ class BEEM:
             # GENERAL
             name="default",
             simnum=1,  # Reference number of the simulation. Used for personal reference.
-            MHT=0,  # [m] Mean high tide
+            MHW=0,  # [m] Mean high water
             RSLR=0.000,  # [m/yr] Relative sea-level rise rate
             qpotseries=2,  # Number reference to calculate how many iterations represent one year. 4 is standard year of 100 iterations, corresponds to qpot (#1 = 25 it, #2 = 50 it, #3 = 75 it, #4 = 100 it, #5 = 125 it) (*25 = qpot)
             writeyear=1,  # Write results to disc every n years
@@ -58,8 +58,8 @@ class BEEM:
             direction4=1,  # Direction 4 (from) of the slab movement. 1 = west, 2 = north, 3 = east and 4 = south
             direction5=1,  # Direction 5 (from) of the slab movement. 1 = west, 2 = north, 3 = east and 4 = south
             p_dep_sand=0.1,  # [0-1] Probability of deposition of sandy cells
-            p_dep_bare=0.1,  # [0-1] Probability of deposition of base cells
-            p_ero_bare=0.5,  # [0-1] Probability of erosion of bare/sandy cells
+            p_dep_base=0.1,  # [0-1] Probability of deposition of base cells
+            p_ero_sand=0.5,  # [0-1] Probability of erosion of bare/sandy cells
             shadowangle=15,  # [deg]
             repose_bare=20,  # [deg] - orig:30
             repose_veg=30,  # [deg] - orig:35
@@ -107,8 +107,8 @@ class BEEM:
 
             maxvegeff=1.0,  # [0-1] Value of maximum vegetation effectiveness allowed
 
-            Spec1_elev_min=0.25,  # [m MHT] Minimum elevation for species 1 (1 m MHW for A. brevigulata from Young et al., 2011)
-            Spec2_elev_min=0.25,  # [m MHT] Minimum elevation for species 2
+            Spec1_elev_min=0.25,  # [m MHW] Minimum elevation for species 1 (1 m MHW for A. brevigulata from Young et al., 2011)
+            Spec2_elev_min=0.25,  # [m MHW] Minimum elevation for species 2
 
             # STORM OVERWASH AND DUNE EROSION
             storm_list_filename="VCRStormList.npy",
@@ -133,7 +133,7 @@ class BEEM:
 
         self._name = name
         self._simnum = simnum
-        self._MHT = MHT * slabheight  # [slabs]
+        self._MHW = MHW * slabheight  # [slabs]
         self._RSLR = RSLR
         self._qpotseries = qpotseries
         self._writeyear = writeyear
@@ -146,8 +146,8 @@ class BEEM:
         self._save_data = save_data
         self._groundwater_depth = groundwater_depth
         self._p_dep_sand = p_dep_sand
-        self._p_dep_bare = p_dep_bare
-        self._p_ero_bare = p_ero_bare
+        self._p_dep_base = p_dep_base
+        self._p_ero_sand = p_ero_sand
         self._shadowangle = shadowangle
         self._repose_bare = repose_bare
         self._repose_veg = repose_veg
@@ -347,19 +347,19 @@ class BEEM:
         year = math.ceil(it / self._iterations_per_cycle)
 
         # Update sea level
-        self._MHT += self._RSLR / self._iterations_per_cycle / self._slabheight_m  # [slabs]
+        self._MHW += self._RSLR / self._iterations_per_cycle / self._slabheight_m  # [slabs]
 
         # --------------------------------------
         # SAND TRANSPORT
 
         before = copy.deepcopy(self._topo)
         self._gw = self._eqtopo * self._groundwater_depth
-        sandmap = self._topo > self._MHT  # Boolean array, Returns True (1) for sandy cells
+        sandmap = self._topo > self._MHW  # Boolean array, Returns True (1) for sandy cells
 
         shadowmap = routine.shadowzones2(self._topo, self._slabheight, self._shadowangle, self._longshore, self._crossshore, direction=self._direction[it])  # Returns map of True (1) for in shadow, False (2) not in shadow
 
-        erosmap = routine.erosprobs2(self._veg, shadowmap, sandmap, self._topo, self._gw, self._p_ero_bare)  # Returns map of erosion probabilities
-        deposmap = routine.depprobs(self._veg, shadowmap, sandmap, self._p_dep_bare, self._p_dep_sand)  # Returns map of deposition probabilities
+        erosmap = routine.erosprobs2(self._veg, shadowmap, sandmap, self._topo, self._gw, self._p_ero_sand)  # Returns map of erosion probabilities
+        deposmap = routine.depprobs(self._veg, shadowmap, sandmap, self._p_dep_base, self._p_dep_sand)  # Returns map of deposition probabilities
 
         if self._direction[it] == 1 or self._direction[it] == 3:  # East or west wind direction
             contour = np.linspace(0, round(self._crossshore) - 1, self._n_contour + 1)  # Contours to account for transport
@@ -380,9 +380,9 @@ class BEEM:
         # STORMS - UPDATE BEACH, DUNE, AND INTERIOR
 
         if it % self._beachreset == 0:  # Update the inundated part of the beach
-            veg_elev_limit = np.argmax(min(self._Spec1_elev_min, self._Spec2_elev_min) / self._slabheight_m + self._MHT < self._topo, axis=1)
+            veg_elev_limit = np.argmax(min(self._Spec1_elev_min, self._Spec2_elev_min) / self._slabheight_m + self._MHW < self._topo, axis=1)
             dune_crest = routine.foredune_crest(self._topo, self._eqtopo_initial, self._veg)
-            slopes = routine.beach_slopes(self._eqtopo, self._MHT, dune_crest, self._slabheight_m)
+            slopes = routine.beach_slopes(self._eqtopo, self._MHW, dune_crest, self._slabheight_m)
 
             # # TEMP: DEBUGGING DUNE CREST LOCATION
             # if it % 50 == 0:
@@ -396,8 +396,8 @@ class BEEM:
 
             # Generate storm stats stochastically
             storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, slopes, self._RNG)  # [m MSL]
-            Rhigh += self._MHT * self._slabheight_m  # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
-            Rlow += self._MHT * self._slabheight_m  # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
+            Rhigh += self._MHW * self._slabheight_m  # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
+            Rlow += self._MHW * self._slabheight_m  # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
 
             if storm:
                 inundatedold = copy.deepcopy(self._inundated)  # Make a copy for later use
@@ -442,7 +442,7 @@ class BEEM:
                     self._K_ru,
                     self._K_in,
                     self._mm,
-                    self._MHT,
+                    self._MHW,
                     self._Cbb_in,
                     self._Cbb_ru,
                     self._Qs_bb_min,
@@ -456,7 +456,7 @@ class BEEM:
                 self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
                 inundatedold = copy.deepcopy(self._inundated)
                 self._inundated = np.zeros(self._topo.shape)  # Reset
-                self._inundated[self._topo <= self._MHT] = 1  # Cells below MHW are always considered inundated TODO: problem if bay cells are marked as inundated here?
+                self._inundated[self._topo <= self._MHW] = 1  # Cells below MHW are always considered inundated TODO: problem if bay cells are marked as inundated here?
                 pbeachupdate = np.zeros(self._topo.shape)  # Reset
                 before1 = copy.deepcopy(self._topo)
                 topo_change_overwash = np.zeros(self._topo.shape)
@@ -490,7 +490,7 @@ class BEEM:
                 self._DuneLoss,
                 self._x_s,
                 self._x_t,
-                self._MHT,
+                self._MHW,
                 self._cellsize,
                 self._slabheight_m,
             )
@@ -517,7 +517,7 @@ class BEEM:
                 sc_ls = int(shoreline_change[ls])
                 self._eqtopo[ls, :] = np.roll(self._eqtopo[ls, :], sc_ls)  # Shift laterally
                 if sc_ls >= 0:
-                    shoreline_ls = routine.ocean_shoreline(self._topo, self._MHT)[ls]  # Ocean shoreline location
+                    shoreline_ls = routine.ocean_shoreline(self._topo, self._MHW)[ls]  # Ocean shoreline location
                     shoreface = np.floor(np.arange(-shoreline_ls, 0, 1) * self._s_sf_eq / self._slabheight_m)
                     self._eqtopo[ls, :shoreline_ls] = shoreface
                 else:
@@ -541,13 +541,13 @@ class BEEM:
             # Lateral Expansion & Veg Establishment
             lateral1 = routine.lateral_expansion(spec1_old, 1, self._lateral_probability * veg_multiplier, self._RNG)  # Species 1
             lateral2 = routine.lateral_expansion(spec2_old, 1, self._lateral_probability * veg_multiplier, self._RNG)  # Species 1
-            pioneer1 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHT, self._pioneer_probability * veg_multiplier, self._RNG) * (spec1_old <= 0)
-            pioneer2 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHT, self._pioneer_probability * veg_multiplier, self._RNG) * (spec2_old <= 0) * (self._stability == 0)
+            pioneer1 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHW, self._pioneer_probability * veg_multiplier, self._RNG) * (spec1_old <= 0)
+            pioneer2 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHW, self._pioneer_probability * veg_multiplier, self._RNG) * (spec2_old <= 0) * (self._stability == 0)
 
-            lateral1[self._topo <= self._MHT] = False
-            lateral2[self._topo <= self._MHT] = False
-            pioneer1[self._topo <= self._MHT] = False
-            pioneer2[self._topo <= self._MHT] = False
+            lateral1[self._topo <= self._MHW] = False
+            lateral2[self._topo <= self._MHW] = False
+            pioneer1[self._topo <= self._MHW] = False
+            pioneer2[self._topo <= self._MHW] = False
 
             spec1_diff = self._spec1 - spec1_old  # Determine changes in vegetation cover
             spec2_diff = self._spec2 - spec2_old  # Determine changes in vegetation cover
@@ -567,8 +567,8 @@ class BEEM:
             self._spec1 = self._spec1 * (1 - self._pbeachupdatecum)  # Remove species where beach is reset
             self._spec2 = self._spec2 * (1 - self._pbeachupdatecum)  # Remove species where beach is reset
 
-            Spec1_elev_min_mht = self._Spec1_elev_min / self._slabheight_m + self._MHT  # [m MHT]
-            Spec2_elev_min_mht = self._Spec1_elev_min / self._slabheight_m + self._MHT  # [m MHT]
+            Spec1_elev_min_mht = self._Spec1_elev_min / self._slabheight_m + self._MHW  # [m MHW]
+            Spec2_elev_min_mht = self._Spec1_elev_min / self._slabheight_m + self._MHW  # [m MHW]
             self._spec1[self._topo <= Spec1_elev_min_mht] = 0  # Remove species where below elevation minimum
             self._spec2[self._topo <= Spec2_elev_min_mht] = 0  # Remove species where below elevation minimum
 
@@ -689,7 +689,7 @@ beem = BEEM(
     RSLR=0.000,
     seeded_random_numbers=True,
     p_dep_sand=0.5,  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr
-    p_ero_bare=0.5,
+    p_ero_sand=0.5,
     direction2=2,
     direction4=4,
     substep_ru=1,

@@ -78,7 +78,7 @@ def erosprobs2(vegf, shade, sand, topof, groundw, p_er):
     - sand: logical map of sandy cells [sandmap]
     - topof: topography map [topo]
     - groundw: groundwater map [gw]
-    - p_er: probability of erosion of bare cell"""
+    - p_er: probability of erosion of base/sandy cell"""
 
     # r = np.logical_not(shade) * sand * (1 - vegf) * (topof > groundw) * p_er
     r = np.logical_not(shade) * sand * (p_er - vegf) * (topof > groundw)  # IRBR 30Nov22: Fixed to follow Keijsers paper
@@ -92,13 +92,13 @@ def depprobs(vegf, shade, sand, dep0, dep1):
     - vegf: map of combined vegetation effectiveness [veg] [0,1]
     - shade: logical map of shadowzones [shadowmap]
     - sand: logical map of sanded sites [sandmap]
-    - dep0: deposition probability on bare cell [p_dep_bare]
+    - dep0: deposition probability on base cell [p_dep_base]
     - dep1: deposition probability on sandy cell [p_dep_sand]"""
 
-    # For bare cells
-    # temp1 = vegf * (1 - dep0) + dep0  # Deposition probabilities on bare cells
-    temp1 = vegf * dep0 + dep0  # Deposition probabilities on bare cells  # IRBR 30Nov22: Fixed to follow Keijsers paper
-    temp2 = np.logical_not(sand) * np.logical_not(shade) * temp1  # Apply to bare cells outside shadows only
+    # For base cells
+    # temp1 = vegf * (1 - dep0) + dep0  # Deposition probabilities on base cells
+    temp1 = vegf * dep0 + dep0  # Deposition probabilities on base cells  # IRBR 30Nov22: Fixed to follow Keijsers paper
+    temp2 = np.logical_not(sand) * np.logical_not(shade) * temp1  # Apply to base cells outside shadows only
 
     # For sandy cells
     # temp3 = vegf * (1 - dep1) + dep1  # Deposition probabilities on sandy cells
@@ -985,7 +985,7 @@ def shoreline_change(
         DuneLoss,
         x_s,
         x_t,
-        MHT,
+        MHW,
         cellsize,
         slabheight,
 ):
@@ -1017,8 +1017,8 @@ def shoreline_change(
         [m] Cross-shore shoreline position relative to start of simulation
     x_t : float
         [m] Cross-shore shoreface toe position relative to start of simulation
-    MHT : float
-        [slabs] Present mean high tide
+    MHW : float
+        [slabs] Present mean high water
     cellsize : float
         [m] Horizontal dimension of model grid cells
     slabheight : float
@@ -1042,7 +1042,7 @@ def shoreline_change(
         Qow = 0  # Assumes all sediment deposited on barrier interior came from the dunes and therefore nothing came from shoreface/beach; excess DuneLoss assumed lost offshore/downshore
 
     # DefineParams
-    h_b = np.average(topof[topof >= MHT]) * slabheight  # [m] Average height of barrier
+    h_b = np.average(topof[topof >= MHW]) * slabheight  # [m] Average height of barrier
 
     # Shoreface Flux
     s_sf = d_sf / (x_s - x_t)
@@ -1071,7 +1071,7 @@ def shoreline_change2(
         DuneLoss,
         x_s,
         x_t,
-        MHT,
+        MHW,
         cellsize,
         slabheight,
 ):
@@ -1101,8 +1101,8 @@ def shoreline_change2(
         [m] Cross-shore shoreline position relative to start of simulation
     x_t : ndarray
         [m] Cross-shore shoreface toe position relative to start of simulation
-    MHT : float
-        [slabs] Present mean high tide
+    MHW : float
+        [slabs] Present mean high water
     cellsize : float
         [m] Horizontal dimension of model grid cells
     slabheight : float
@@ -1123,7 +1123,7 @@ def shoreline_change2(
     DuneLoss[DuneLoss >= Qow] = 0  # Assumes all sediment deposited on barrier interior came from the dunes and therefore nothing came from shoreface/beach; excess DuneLoss assumed lost offshore/downshore
 
     # DefineParams
-    h_b = np.average(topof[topof >= MHT], axis=0) * slabheight  # [m] Average height of barrier
+    h_b = np.average(topof[topof >= MHW], axis=0) * slabheight  # [m] Average height of barrier
 
     # Shoreface Flux
     s_sf = d_sf / (x_s - x_t)
@@ -1266,15 +1266,15 @@ def foredune_heel(topof, crestline, threshold, slabheight_m):
     return heelline.astype(int)
 
 
-def find_peak(profile, MHT, threshold, crest_pct):
+def find_peak(profile, MHW, threshold, crest_pct):
     """Finds foredune peak of profile following Automorph (Itzkin et al., 2021). Returns Nan if no dune peak found on profile."""
 
     # Find peaks on the profile. The indices increase landwards
     pks_idx, _ = scipy.signal.find_peaks(profile)
 
-    # Remove peaks below MHT
+    # Remove peaks below MHW
     if len(pks_idx) > 0:
-        pks_idx = pks_idx[profile[pks_idx] > MHT]
+        pks_idx = pks_idx[profile[pks_idx] > MHW]
 
     # If there aren't any peaks just take the maximum value
     if len(pks_idx) == 0:
@@ -1327,15 +1327,15 @@ def find_peak(profile, MHT, threshold, crest_pct):
     return idx
 
 
-def beach_slopes(eqtopo, MHT, crestline, slabheight_m):
+def beach_slopes(eqtopo, MHW, crestline, slabheight_m):
     """Finds beach slope based on EQ beach profile for each cell alongshore, from MHW to location of dune crest.
 
     Parameters
     ----------
     eqtopo : ndarray
         [slabs] Current equilibrium beach topography.
-    MHT : float
-        [slabs] Current mean high tide water level.
+    MHW : float
+        [slabs] Current mean high water level.
     crestline : ndarray
         Location of the foredune crest for each cell alongshore
     slabheight_m : float
@@ -1353,7 +1353,7 @@ def beach_slopes(eqtopo, MHT, crestline, slabheight_m):
     # Derive gradient of eqtopo as an approximation of foreshore slope
     for ls in range(longshore):
         loc_upper_slope = crestline[ls]
-        loc_lower_slope = np.argmax(eqtopo[ls, :] >= MHT)
+        loc_lower_slope = np.argmax(eqtopo[ls, :] >= MHW)
         slopes[ls] = np.nanmean(np.gradient(eqtopo[ls, loc_lower_slope: loc_upper_slope] * slabheight_m))
 
     return slopes
@@ -1438,7 +1438,7 @@ def overwash_processes(
         Kr,
         Ki,
         mm,
-        MHT,
+        MHW,
         Cbb_i,
         Cbb_r,
         Qs_bb_min,
@@ -1485,8 +1485,8 @@ def overwash_processes(
         Sediment transport coefficient for inundation overwash regime.
     mm : float
         Inundation overwash constant.
-    MHT : float
-        [slabs] Mean high tide.
+    MHW : float
+        [slabs] Mean high water.
     Cbb_i : float
         [%] Coefficient for exponential decay of sediment load entering back-barrier bay, inundation regime.
     Cbb_r : float
@@ -1514,7 +1514,7 @@ def overwash_processes(
     topof_prestorm = copy.deepcopy(topof)
     dune_crest_loc_prestorm = crestline  # Cross-shore location of pre-storm dune crest
     dune_crest_height_prestorm_m = topof_prestorm[np.arange(len(topof_prestorm)), dune_crest_loc_prestorm] * slabheight_m  # [m] Height of dune crest alongshore
-    MHT_m = MHT * slabheight_m  # Convert from slabs to meters
+    MHW_m = MHW * slabheight_m  # Convert from slabs to meters
 
     # --------------------------------------
     # DUNE EROSION
@@ -1764,7 +1764,7 @@ def overwash_processes(
                         Qs3 = np.nan_to_num(Qs3)
 
                         # Calculate Net Erosion/Accretion
-                        if Elevation[TS, i, d] > MHT_m or any(z > MHT_m for z in Elevation[TS, i, d + 1: d + 10]):  # If cell is subaerial, elevation change is determined by difference between flux in vs. flux out
+                        if Elevation[TS, i, d] > MHW_m or any(z > MHW_m for z in Elevation[TS, i, d + 1: d + 10]):  # If cell is subaerial, elevation change is determined by difference between flux in vs. flux out
                             if i > 0:
                                 SedFluxIn[TS, i - 1, d + 1] += Qs1
 
@@ -1871,7 +1871,7 @@ def storm_processes(
         Kr,
         Ki,
         mm,
-        MHT,
+        MHW,
         Cbb_i,
         Cbb_r,
         Qs_bb_min,
@@ -1922,8 +1922,8 @@ def storm_processes(
         Sediment transport coefficient for inundation overwash regime.
     mm : float
         Inundation overwash constant.
-    MHT : float
-        [slabs] Mean high tide.
+    MHW : float
+        [slabs] Mean high water.
     Cbb_i : float
         [%] Coefficient for exponential decay of sediment load entering back-barrier bay, inundation regime.
     Cbb_r : float
@@ -1953,7 +1953,7 @@ def storm_processes(
     topof_prestorm = copy.deepcopy(topof)
     dune_crest_loc = foredune_crest(topof, eqtopof, vegf)  # Cross-shore location of pre-storm dune crest
     dune_crest_height_prestorm_m = topof_prestorm[np.arange(len(topof_prestorm)), dune_crest_loc] * slabheight_m  # [m] Height of dune crest alongshore
-    MHT_m = MHT * slabheight_m  # Convert from slabs to meters
+    MHW_m = MHW * slabheight_m  # Convert from slabs to meters
 
     # --------------------------------------
     # OVERWASH
@@ -2205,7 +2205,7 @@ def storm_processes(
                         Qs3 = np.nan_to_num(Qs3)
 
                         # Calculate Net Erosion/Accretion
-                        if Elevation[TS, i, d] > MHT_m or any(z > MHT_m for z in Elevation[TS, i, d + 1: d + 10]):  # If cell is subaerial, elevation change is determined by difference between flux in vs. flux out
+                        if Elevation[TS, i, d] > MHW_m or any(z > MHW_m for z in Elevation[TS, i, d + 1: d + 10]):  # If cell is subaerial, elevation change is determined by difference between flux in vs. flux out
                             if i > 0:
                                 SedFluxIn[TS, i - 1, d + 1] += Qs1
 
@@ -2275,7 +2275,7 @@ def storm_processes(
             Elevation[TS, :, :],
             1,
             dune_crest_loc,
-            MHT_m,
+            MHW_m,
             Rhigh,
             1 / substep)
 
