@@ -6,7 +6,7 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 11 February 2023
+Last update: 15 February 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -42,7 +42,7 @@ class BEEM:
             slabheight=0.1,  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
             inputloc="Input/",  # Input file directory
             outputloc="Output/",  # Output file directory
-            topo_filename="topo_small_dune.npy",
+            topo_filename="Init_NCB_20190830_500m_20200_LinearRidge.npy",
             eqtopo_filename="eqtopo_small_dune.npy",
             waterlevel_filename="wl_max_texel.mat",
             veg_spec1_filename="spec1_small_dune.npy",
@@ -114,19 +114,19 @@ class BEEM:
             storm_list_filename="VCRStormList.npy",
             threshold_in=0.25,  # [%] Threshold percentage of overtopped dune cells exceeded by Rlow needed to be in inundation overwash regime
             Rin_in=5,  # [m^3/hr] Flow infiltration and drag parameter, inundation overwash regime
-            Rin_ru=40,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
-            Cx=10,  # Constant for representing flow momentum for sediment transport in inundation overwash regime
+            Rin_ru=50,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
+            Cx=15,  # Constant for representing flow momentum for sediment transport in inundation overwash regime
             nn=0.5,  # Flow routing constant
-            MaxUpSlope=2,  # Maximum slope water can flow uphill
+            MaxUpSlope=1,  # Maximum slope water can flow uphill
             Qs_min=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
-            K_ru=7.5e-05,  # Sediment transport coefficient for run-up overwash regime
-            K_in=7.5e-06,  # Sediment transport coefficient for inundation overwash regime
-            mm=2.0,  # Inundation overwash constant
+            K_ru=1e-04,  # Sediment transport coefficient for run-up overwash regime
+            K_in=5e-04,  # Sediment transport coefficient for inundation overwash regime
+            mm=1.0,  # Inundation overwash constant
             Cbb_in=0.85,  # [%] Coefficient for exponential decay of sediment load entering back-barrier bay, inundation regime
             Cbb_ru=0.7,  # [%] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
             Qs_bb_min=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
-            substep_in=2,  # Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
-            substep_ru=2,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+            substep_in=3,  # Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+            substep_ru=3,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
 
     ):
         """BEEM: Barrier Explicit Evolution Model"""
@@ -213,28 +213,31 @@ class BEEM:
         # TIME
         self._vegetationupdate = round(self._qpotseries * 25)
         self._iterations_per_cycle = round(self._qpotseries * 25)  # Number of iterations that is regarded as 1 year (was 50) [iterations/year]
-        self._beachreset = round(self._qpotseries * 1)
+        self._stormreset = round(self._qpotseries * 1)
         self._iterations = self._iterations_per_cycle * self._simulation_time_yr  # Number of iterations
 
         # TOPOGRAPHY
-        # self._topo_initial = scipy.io.loadmat(inputloc + topo_filename)["topo_final"]  # [m] 2D-matrix with initial topography
-        # self._eqtopo_initial = scipy.io.loadmat(inputloc + eqtopo_filename)["topo_final"]  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
-        self._topo_initial = np.load(inputloc + topo_filename)  # [m] 2D-matrix with initial topography
-        self._eqtopo_initial = np.load(inputloc + eqtopo_filename)  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
+        Init = np.load(inputloc + topo_filename)
+        xmin = 0
+        xmax = 100
+        self._topo_initial = Init[0, xmin: xmax, :]  # [m] 2D-matrix with initial topography
+        self._eqtopo_initial = Init[1, xmin: xmax, :]  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
+        # self._topo_initial = np.load(inputloc + topo_filename)  # [m] 2D-matrix with initial topography
+        # self._eqtopo_initial = np.load(inputloc + eqtopo_filename)  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
 
         topo0 = self._topo_initial / self._slabheight_m  # [slabs] Transform from m into number of slabs
-        self._topo = np.round(topo0)  # [slabs] Initialise the topography map
+        self._topo = topo0  # [slabs] Initialise the topography map
 
         self._longshore, self._crossshore = topo0.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
 
         if self._eqtopo_initial.ndim == 3:
-            self._eqtopo = np.round(np.squeeze(self._eqtopo_initial[:, :, 0]) / self._slabheight_m)  # [slabs] Transform from m into number of slabs
+            self._eqtopo = np.squeeze(self._eqtopo_initial[:, :, 0]) / self._slabheight_m  # [slabs] Transform from m into number of slabs
         else:
-            self._eqtopo = np.round(self._eqtopo_initial / self._slabheight_m)  # [slabs] Transform from m into number of slabs
+            self._eqtopo = self._eqtopo_initial / self._slabheight_m  # [slabs] Transform from m into number of slabs
 
         eqtopo_i = copy.deepcopy(self._eqtopo)
 
-        self._gw = np.round(eqtopo_i * self._groundwater_depth)  # GW lies under beach with less steep angle
+        self._gw = eqtopo_i * self._groundwater_depth  # GW lies under beach with less steep angle
         self._gw[self._gw >= self._topo] = self._topo[self._gw >= self._topo]
 
         self._beachslopeslabs = (eqtopo_i[0, -1] - eqtopo_i[0, 0]) / self._crossshore  # [slabs/m] Slope of equilibrium beach
@@ -250,10 +253,10 @@ class BEEM:
         self._waterlevels = np.concatenate([self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0]])
 
         # VEGETATION
-        # self._spec1 = scipy.io.loadmat(inputloc + veg_spec1_filename)["vegf"]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
-        # self._spec2 = scipy.io.loadmat(inputloc + veg_spec2_filename)["vegf"]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
-        self._spec1 = np.load(inputloc + veg_spec1_filename)  # [0-1] 2D-matrix of vegetation effectiveness for spec1
-        self._spec2 = np.load(inputloc + veg_spec2_filename)  # [0-1] 2D-matrix of vegetation effectiveness for spec2
+        self._spec1 = Init[2, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
+        self._spec2 = Init[3, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
+        # self._spec1 = np.load(inputloc + veg_spec1_filename)  # [0-1] 2D-matrix of vegetation effectiveness for spec1
+        # self._spec2 = np.load(inputloc + veg_spec2_filename)  # [0-1] 2D-matrix of vegetation effectiveness for spec2
 
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
@@ -274,8 +277,8 @@ class BEEM:
         #                 0.0232558139534884, 0.0465116279069767, 0.255813953488372, 0.255813953488372, 0.116279069767442, 0.139534883720930, 0.0697674418604651, 0.0465116279069767, 0.0697674418604651, 0.0697674418604651, 0.0930232558139535]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 NCB storm record
 
         # TEMP! Adjust beach towards equilibrium profile before sim begins
-        dune_crest = routine.foredune_crest(self._topo, self._eqtopo_initial, self._veg)
-        self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave, crestline_change = routine.marine_processes_Rhigh(
+        dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._veg)
+        self._topo, inun, pbeachupdate, diss, cumdiss, pwave, crestline_change = routine.marine_processes_Rhigh(
             2.5 / self._slabheight_m,  # Convert to slabs
             self._slabheight_m,
             self._cellsize,
@@ -294,7 +297,7 @@ class BEEM:
 
         # MODEL PARAMETERS
         self._direction = self._RNG.choice(np.tile([direction1, direction2, direction3, direction4, direction5], (1, 2000))[0, :], 10000, replace=False)
-        self._timewaterlev = np.linspace(self._beachreset / self._iterations_per_cycle, len(self._waterlevels) * self._beachreset / self._iterations_per_cycle, num=len(self._waterlevels))
+        self._timewaterlev = np.linspace(self._stormreset / self._iterations_per_cycle, len(self._waterlevels) * self._stormreset / self._iterations_per_cycle, num=len(self._waterlevels))
         self._waterlevels = (self._timewaterlev * self._RSLR + self._waterlevels) / self._slabheight_m  # [slabs]
         self._slabheight = round(self._slabheight_m * 100) / 100
         self._balance = self._topo * 0  # Initialise the sedimentation balance map [slabs]
@@ -304,8 +307,6 @@ class BEEM:
         self._sp1_peak_at0 = copy.deepcopy(self._sp1_peak)  # Store initial peak growth of sp. 1
         self._sp2_peak_at0 = copy.deepcopy(self._sp2_peak)  # Store initial peak growth of sp. 2
         self._inundated = np.zeros([self._longshore, self._crossshore])  # Initial area of wave/current action
-        self._inundatedcum = np.zeros([self._longshore, self._crossshore])  # Initial area of sea action
-        self._pbeachupdatecum = np.zeros([self._longshore, self._crossshore])  # Matrix for cumulative effect of hydrodynamics
         self._beachcount = 0
         self._vegcount = 0
         self._shoreline_change_aggregate = np.zeros([self._longshore])
@@ -313,8 +314,6 @@ class BEEM:
         self._OWflux = np.zeros([self._longshore])  # [m^3]
         self._DuneLoss = np.zeros([self._longshore])  # Need to convert from slabs to m
         self._StormRecord = np.empty([5])  # Record of each storm that occurs in model: Year, iteration, Rhigh, Rlow, duration
-        self._topo_change_leftover = np.zeros(self._topo.shape)
-        self._TWLexcursion = np.zeros([self._longshore, int(self._iterations / self._beachreset)])
 
         # __________________________________________________________________________________________________________________________________
         # MODEL OUPUT CONFIGURATION
@@ -379,9 +378,9 @@ class BEEM:
         # --------------------------------------
         # STORMS - UPDATE BEACH, DUNE, AND INTERIOR
 
-        if it % self._beachreset == 0:  # Update the inundated part of the beach
+        if it % self._stormreset == 0:
             veg_elev_limit = np.argmax(min(self._Spec1_elev_min, self._Spec2_elev_min) / self._slabheight_m + self._MHW < self._topo, axis=1)
-            dune_crest = routine.foredune_crest(self._topo, self._eqtopo_initial, self._veg)
+            dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._veg)
             slopes = routine.beach_slopes(self._eqtopo, self._MHW, dune_crest, self._slabheight_m)
 
             # # TEMP: DEBUGGING DUNE CREST LOCATION
@@ -400,33 +399,13 @@ class BEEM:
             Rlow += self._MHW * self._slabheight_m  # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
 
             if storm:
-                inundatedold = copy.deepcopy(self._inundated)  # Make a copy for later use
                 before1 = copy.deepcopy(self._topo)  # Copy of topo before it is changed
 
-                #  Update Beach
-                self._topo, self._inundated, pbeachupdate, diss, cumdiss, pwave, crestline_change = routine.marine_processes_Rhigh(
-                    Rhigh / self._slabheight_m,  # Convert to slabs
-                    self._slabheight_m,
-                    self._cellsize,
-                    self._topo,
-                    self._eqtopo,
-                    self._veg,
-                    self._m26,
-                    self._wave_energy,
-                    self._m28f,
-                    self._pwavemaxf,
-                    self._pwaveminf,
-                    self._depth_limit,
-                    self._shelterf,
-                    dune_crest,
-                )
-
-                # Overwash
+                # Storm Processes: Beach/duneface change, overwash
                 self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
-                self._topo, topo_change_overwash, self._topo_change_leftover, self._OWflux = routine.overwash_processes(
+                self._topo, topo_change_overwash, self._OWflux, netDischarge, self._inundated = routine.storm_processes(
                     self._topo,
-                    self._topo_change_leftover,
-                    dune_crest,
+                    self._veg,
                     Rhigh,
                     Rlow,
                     dur,
@@ -435,9 +414,9 @@ class BEEM:
                     self._Rin_in,
                     self._Rin_ru,
                     self._Cx,
-                    np.max(self._eqtopo_initial) * self._slabheight_m / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
+                    2 / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
                     self._nn,
-                    self._MaxUpSlope,  # was 0.25
+                    self._MaxUpSlope,
                     self._Qs_min,
                     self._K_ru,
                     self._K_in,
@@ -454,31 +433,27 @@ class BEEM:
 
             else:
                 self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
-                inundatedold = copy.deepcopy(self._inundated)
-                self._inundated = np.zeros(self._topo.shape)  # Reset
-                self._inundated[self._topo <= self._MHW] = 1  # Cells below MHW are always considered inundated TODO: problem if bay cells are marked as inundated here?
-                pbeachupdate = np.zeros(self._topo.shape)  # Reset
+                self._inundated = np.zeros(self._topo.shape).astype(bool)  # Reset
+                self._inundated[self._topo <= self._MHW] = True  # Cells below MHW are always considered inundated
                 before1 = copy.deepcopy(self._topo)
                 topo_change_overwash = np.zeros(self._topo.shape)
 
             seainput = self._topo - before1  # Sand added to the beach by the sea
 
-            self._inundated = np.logical_or(self._inundated, inundatedold)  # Combine updated area from individual loops
-            self._pbeachupdatecum = pbeachupdate + self._pbeachupdatecum  # Cumulative beachupdate probabilities
             self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again
             balance_ts = self._topo - before1
             self._balance = self._balance + balance_ts + topo_change_overwash
             self._stability = self._stability + abs(self._topo - before1)
-            self._TWLexcursion[:, int(it / self._beachreset)] = np.argmax(self._inundated < 1, axis=1)  # Will return 0 if whole column is inundated
 
             self._beachcount += 1  # Update counter
 
             # --------------------------------------
-            # SHORELINE CHANGE & EQUILIBRIUM BEACH PROFILE
+            # SHORELINE CHANGE
 
             Qbe = np.sum(seainput, axis=1) * self._slabheight_m / self._cellsize  # [m^3/m/ts] Volume of sediment imported from (+) or exported to (-) the upper shoreface by beach change
 
-            self._x_s, self._x_t = routine.shoreline_change2(
+            # Update Shoreline Position from Cross-Shore Sediment Transport (i.e., RSLR, overwash, beach/dune change)
+            self._x_s, self._x_t, shoreface_slope = routine.shoreline_change_from_CST(
                 self.topo,
                 self._DShoreface,
                 self._k_sf,
@@ -495,7 +470,13 @@ class BEEM:
                 self._slabheight_m,
             )
 
-            # LTA14 Row-by-Row
+            # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)
+            self._x_s = routine.shoreline_change_from_AST(self._x_s,
+                                                          wave_asymetry=0.85,
+                                                          wave_high_angle_fraction=0,  # TODO: High-angle waves create problems, needs to be fixed
+                                                          dy=self._cellsize,
+                                                          time_step=self._iterations_per_cycle * self._stormreset)
+
             shoreline_change = (self._x_s - self._x_s_TS[-1]) * self._cellsize  # [cellsize] Shoreline change from last time step
 
             self._shoreline_change_aggregate += shoreline_change
@@ -511,17 +492,28 @@ class BEEM:
             self._x_s_TS = np.vstack((self._x_s_TS, self._x_s))  # Store
             self._x_t_TS = np.vstack((self._x_t_TS, self._x_t))  # Store
 
-            # Adjust equilibrium beach profile upward (downward) acording to sea-level rise (fall), and landward (seaward) and according to net loss (gain) of sediment at the upper shoreface
-            self._eqtopo += self._RSLR * self._beachreset / self._iterations_per_cycle / self._slabheight_m  # [slabs] Raise vertically by amount of SLR over this substep
+            # Adjust topography domain to according to shoreline change
+            prev_shoreline = routine.ocean_shoreline(self._topo, self._MHW).astype(int)  # Previous ocean shoreline location
             for ls in range(self._longshore):
-                sc_ls = int(shoreline_change[ls])
-                self._eqtopo[ls, :] = np.roll(self._eqtopo[ls, :], sc_ls)  # Shift laterally
-                if sc_ls >= 0:
-                    shoreline_ls = routine.ocean_shoreline(self._topo, self._MHW)[ls]  # Ocean shoreline location
-                    shoreface = np.floor(np.arange(-shoreline_ls, 0, 1) * self._s_sf_eq / self._slabheight_m)
-                    self._eqtopo[ls, :shoreline_ls] = shoreface
-                else:
-                    self._eqtopo[ls, sc_ls:] = self._eqtopo[ls, sc_ls * 2: sc_ls]
+                sc_ls = int(shoreline_change[ls])  # [m] Amount of shoreline change for this location alongshore
+                new_shoreline = prev_shoreline[ls] + sc_ls
+                if sc_ls > 0:  # Shoreline erosion
+                    # Adjust shoreline
+                    Bl = (self._topo[ls, new_shoreline + 1] - self._MHW) / (sc_ls + 1)  # Local slope between previous shoreline and new shoreline at MHW
+                    remove = np.arange(1, 1 + sc_ls) * Bl + self._MHW
+                    self._topo[ls, prev_shoreline[ls] + 1: new_shoreline + 1] = remove
+                    # Adjust shoreface
+                    shoreface = np.arange(-new_shoreline + 1, 1) * shoreface_slope[ls] / self._slabheight_m  # New shoreface cells
+                    self._topo[ls, :new_shoreline] = shoreface  # Insert into domain
+                elif sc_ls < 0:  # Shoreline progradation
+                    # Adjust shoreline
+                    Bl = (self._topo[ls, prev_shoreline[ls]] - self._MHW) / (abs(sc_ls) + 1)  # Local slope between previous shoreline and new shoreline at MHW
+                    add = np.arange(1, 1 + abs(sc_ls)) * Bl
+                    self._topo[ls, new_shoreline: prev_shoreline[ls]] = add
+                    # Adjust shoreface
+                    shoreface = np.arange(-new_shoreline + 1, 1) * shoreface_slope[ls] / self._slabheight_m  # New shoreface cells
+                    self._topo[ls, :new_shoreline] = shoreface  # Insert into domain
+
         else:
             seainput = np.zeros([self._longshore, self._crossshore])
 
@@ -561,11 +553,8 @@ class BEEM:
             self._spec1 = spec1_old + spec1_change_allowed + spec1_loss  # Re-assemble gain and loss and add to original vegetation cover
             self._spec2 = spec2_old + spec2_change_allowed + spec2_loss  # Re-assemble gain and loss and add to original vegetation cover
 
-            self._pbeachupdatecum[self._pbeachupdatecum < 0] = 0
-            self._pbeachupdatecum[self._pbeachupdatecum > 1] = 1
-
-            self._spec1 = self._spec1 * (1 - self._pbeachupdatecum)  # Remove species where beach is reset
-            self._spec2 = self._spec2 * (1 - self._pbeachupdatecum)  # Remove species where beach is reset
+            self._spec1[self._inundated] = 0  # Remove species where beach is inundated TODO: Apply elevation change threshold here too
+            self._spec2[self._inundated] = 0  # Remove species where beach is inundated
 
             Spec1_elev_min_mht = self._Spec1_elev_min / self._slabheight_m + self._MHW  # [m MHW]
             Spec2_elev_min_mht = self._Spec1_elev_min / self._slabheight_m + self._MHW  # [m MHW]
@@ -609,7 +598,6 @@ class BEEM:
 
         self._balance[:] = 0  # Reset the balance map
         self._inundated[:] = 0  # Reset part of beach with wave/current action
-        self._pbeachupdatecum[:] = 0
         self._stability[:] = 0  # Reset the balance map
 
     @property
@@ -684,20 +672,16 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 beem = BEEM(
-    name="30 yr, SLR 0 mm/yr, Rhigh < 1.5",
-    simulation_time_yr=30,
+    name="5 yr, SLR 0 mm/yr",
+    simulation_time_yr=5,
     RSLR=0.000,
     seeded_random_numbers=True,
     p_dep_sand=0.5,  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr
     p_ero_sand=0.5,
     direction2=2,
     direction4=4,
-    substep_ru=1,
     # storm_list_filename="NCB_SimStorms.npy",
-    topo_filename="Topo_NCB_20190830_100m_23980.npy",
-    eqtopo_filename="EQTopo_NCB_20190830_100m_23980.npy",
-    veg_spec1_filename="Spec1_NCB_20190830_100m_23980.npy",
-    veg_spec2_filename="Spec2_NCB_20190830_100m_23980.npy",
+    # topo_filename="Topo_NCB_20190830_100m_23980.npy",
 )
 
 print(beem.name)
