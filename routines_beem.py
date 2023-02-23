@@ -6,11 +6,12 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 15 February 2023
+Last update: 23 February 2023
 
 __________________________________________________________________________________________________________________________________"""
 
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import numpy as np
 import math
 import copy
@@ -1144,7 +1145,7 @@ def foredune_crest(topo, veg):
                 crestline[r] = int(mini + loc)
         else:
             crestline[r] = int(np.argmax(topo[r, :]))
-        # TODO: Set secondary for cases in which pre-existing dunes or vegetation are minimal/nonexistant
+        # TODO: Set secondary for cases in which pre-existing dunes or vegetation are minimal/nonexistant; also, set maximum distance that crest can be from shoreline
 
     # Step 4: Apply smoothening to crestline
     crestline = np.round(scipy.signal.savgol_filter(crestline, 25, 1)).astype(int)
@@ -1804,6 +1805,9 @@ def storm_processes(
         Qs_bb_min,
         substep_i,
         substep_r,
+        beach_equilibrium_slope,
+        beach_erosiveness,
+        beach_substeps,
 ):
     """Resolves topographical change from storm events. Landward of dune crest: overwashes barrier interior where storm water levels exceed
     pre-storm dune crests following Barrier3D (Reeves et al., 2021) flow routing. Seaward of dune crest: determines topographic change of beach
@@ -1857,6 +1861,12 @@ def storm_processes(
         Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
     substep_r : int
         Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+    beach_equilibrium_slope : float
+        Beach equilibrium slope.
+    beach_erosiveness : float
+        Beach erosiveness timescale constant: larger (smaller) Et == lesser (greater) storm erosiveness
+    beach_substeps : int
+        Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
 
     Returns
     ----------
@@ -1875,7 +1885,6 @@ def storm_processes(
     longshore, crossshore = topof.shape
     MHW_m = MHW * slabheight_m  # Convert from slabs to meters
     inundated = np.zeros(topof.shape).astype(bool)  # Initialize
-    not_inundated = np.ones(topof.shape).astype(bool)
 
     # --------------------------------------
     # OVERWASH
@@ -1911,7 +1920,7 @@ def storm_processes(
 
         # Find dune crest locations and heights for this storm iteration
         dune_crest_loc = foredune_crest(Elevation[TS, :, :], vegf)  # Cross-shore location of pre-storm dune crest
-        # dune_crest_loc[75: 128] = 153  # for 1685-1885 TEMP!!!
+        # dune_crest_loc[245: 299] = 171  # 2000-2600 TEMP !!!
         dune_crest_height_m = Elevation[TS, :, :][np.arange(len(dune_crest_loc)), dune_crest_loc]  # [m] Height of dune crest alongshore
         overwash = Rhigh > dune_crest_height_m  # [bool] Identifies rows alongshore where dunes crest is overwashed
 
@@ -1936,7 +1945,7 @@ def storm_processes(
                 inundation = False
                 Rin = Rin_r
                 C = Cx * AvgSlope  # Momentum constant
-                print("  RUN-UP OVERWASH")
+                # print("  RUN-UP OVERWASH")
 
             # Set Discharge at Dune Crest
             Discharge[TS, np.arange(longshore), dune_crest_loc - domain_width_start] = Qdune  # TODO: Vary Rhigh over storm duration
@@ -2197,7 +2206,11 @@ def storm_processes(
             dune_crest_loc,
             MHW_m,
             Rhigh,
-            1 / substep)
+            1 / substep,
+            beach_equilibrium_slope,
+            beach_erosiveness,
+            beach_substeps,
+        )
 
         inundated = np.logical_or(inundated, wetMap)  # Update inundated map with cells seaward of dune crest
 
@@ -2221,6 +2234,9 @@ def calc_dune_erosion_TS(topo,
                          MHW,
                          Rhigh,
                          dT,
+                         Beq,
+                         Et,
+                         substeps,
                          ):
     """Dune erosion model from CDM v2.0 (Duran Vinent & Moore, 2015). Returns updated topography for one storm iteration.
 
@@ -2238,6 +2254,12 @@ def calc_dune_erosion_TS(topo,
         [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
     dT : float
         [hr] Time step length.
+    Beq : float
+        Beach equilibrium slope.
+    Et : float
+        Beach erosiveness timescale constant: larger (smaller) Et == lesser (greater) storm erosiveness
+    substeps : int
+        Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
 
     Returns
     ----------
@@ -2249,12 +2271,7 @@ def calc_dune_erosion_TS(topo,
         [bool] Map of beach/duneface cells inundated this storm iteration
     """
 
-    # TODO: Move these to main model inputs
-    Beq = 0.02  # Equilibrium beach slope
-    Tc = 1  # Timescale constant: larger Tc = lesser erosion
-    # Time
-    substeps = 8
-    Q = dT / Tc  # Timescale
+    Q = dT / Et  # Fraction of time erosive action occurs for single iteration
 
     # Initialize
     longshore, crossshore = topo.shape  # Domain dimensions
@@ -2341,7 +2358,7 @@ def shoreline_change_from_AST(x_s,
     wave_asymetry : float
         Fraction of waves approaching from the left, looking offshore (Ashton & Murray, 2006).
     wave_high_angle_fraction : ndarray
-        Fraction of waves approaching at angles higher than 45 degrees from shore normal (Ashton & Murray, 2006). Value typically 0.2.
+        Fraction of waves approaching at angles higher than 45 degrees from shore normal (Ashton & Murray, 2006).
     dy : float
         [m] Cell dimension for alongshore axis
     time_step : ndarray
@@ -2367,3 +2384,41 @@ def shoreline_change_from_AST(x_s,
     transporter.update()
 
     return transporter.shoreline_x
+
+
+def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=-1):
+    if n == -1:
+        n = cmap.N
+    new_cmap = mcolors.LinearSegmentedColormap.from_list(
+        'trunc({name},{a:.2f},{b:.2f})'.format(name=cmap.name, a=minval, b=maxval),
+        cmap(np.linspace(minval, maxval, n)))
+    return new_cmap
+
+
+def brier_skill_score(simulated, observed, baseline, mask):
+    """Computes a Brier Skill Score for simulated and observed variables.
+
+    Parameters
+    ----------
+    simulated : ndarray
+        Array of simulated data.
+    observed : ndarray
+        Matching array of observed data.
+    baseline : ndarray
+        Assumption of no norphological change (i.e., and array of zeros if considering the variable of elevation change)
+    mask : ndarray
+        [bool] Map of cells to perform analysis for. If no mask, use np.ones(simulated.shape).astype(bool)
+
+    Returns
+    ----------
+    BSS
+        Brier Skill Score.
+
+    """
+
+    MSE = np.square(np.abs(np.subtract(simulated[mask], observed[mask]))).mean()
+    MSEref = np.square(np.abs(np.subtract(baseline[mask], observed[mask]))).mean()
+
+    BSS = 1 - MSE / MSEref
+
+    return BSS

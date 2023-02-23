@@ -6,7 +6,7 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 15 February 2023
+Last update: 23 February 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -42,7 +42,7 @@ class BEEM:
             slabheight=0.1,  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
             inputloc="Input/",  # Input file directory
             outputloc="Output/",  # Output file directory
-            topo_filename="Init_NCB_20190830_500m_20200_LinearRidge.npy",
+            topo_filename="Init_NCB_20190830_500m_20200_LinearRidge.npy",  # "Init_NCB_2017_2000m_12000_GapsPreFlorence.npy", #
             eqtopo_filename="eqtopo_small_dune.npy",
             waterlevel_filename="wl_max_texel.mat",
             veg_spec1_filename="spec1_small_dune.npy",
@@ -78,12 +78,17 @@ class BEEM:
             pwaveminf=0.1,  # In area with waves always potential for action (this can never be 0, otherwise the beachupdate is shut down)
             shelterf=1.0,  # Exposure of sheltered cells: 0 = no shelter, 1 = full shelter
 
-            # SHOREFACE & SHORELINE CHANGE
+            # SHOREFACE, BEACH, & SHORELINE
+            beach_equilibrium_slope=0.02,  # Equilibrium slope of the beach
+            beach_erosiveness=1,  # Beach erosiveness timescale constant: larger (smaller) Et == lesser (greater) storm erosiveness
+            beach_substeps=8,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
             shoreface_flux_rate=5000,  # [m3/m/yr] Shoreface flux rate coefficient
             shoreface_equilibrium_slope=0.02,  # Equilibrium slope of the shoreface
             shoreface_depth=10,  # [m] Depth to shoreface toe (i.e. depth of ‘closure’)
             shoreface_length_init=500,  # [m] Initial length of shoreface
-            shoreface_toe_init=0,  # [m] [m] Start location of shoreface toe
+            shoreface_toe_init=0,  # [m] Start location of shoreface toe
+            wave_asymetry=0.5,  # Fraction of waves approaching from the left (when looking offshore)
+            wave_high_angle_fraction=0,  # Fraction of waves approaching at angles higher than 45 degrees from shore normal
 
             # VEGETATION
             sp1_a=-1.4,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
@@ -91,22 +96,17 @@ class BEEM:
             sp1_c=0.6,  # Vertice c, spec1. vegetation growth based on Nield and Baas (2008)
             sp1_d=2.0,  # Vertice d, spec1. vegetation growth based on Nield and Baas (2008)
             sp1_e=2.2,  # Vertice e, spec1. vegetation growth based on Nield and Baas (2008)
-
             sp2_a=-1.4,  # Vertice a, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_b=-0.65,  # Vertice b, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_c=0.0,  # Vertice c, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_d=0.2,  # Vertice d, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_e=2.8,  # Vertice e, spec2. vegetation growth based on Nield and Baas (2008)
-
             sp1_peak=0.2,  # Growth peak, spec1
             sp2_peak=0.05,  # Growth peak, spec2
-
             VGR=0,  # [%] Growth reduction by end of period
             lateral_probability=0.2,  # Probability of lateral expansion of existing vegetation
             pioneer_probability=0.05,  # Probability of occurrence of new pioneering vegetation
-
             maxvegeff=1.0,  # [0-1] Value of maximum vegetation effectiveness allowed
-
             Spec1_elev_min=0.25,  # [m MHW] Minimum elevation for species 1 (1 m MHW for A. brevigulata from Young et al., 2011)
             Spec2_elev_min=0.25,  # [m MHW] Minimum elevation for species 2
 
@@ -163,10 +163,15 @@ class BEEM:
         self._pwavemaxf = pwavemaxf
         self._pwaveminf = pwaveminf
         self._shelterf = shelterf
+        self._beach_equilibrium_slope = beach_equilibrium_slope
+        self._beach_erosiveness = beach_erosiveness
+        self._beach_substeps = beach_substeps
         self._k_sf = shoreface_flux_rate
         self._s_sf_eq = shoreface_equilibrium_slope
         self._DShoreface = shoreface_depth
         self._LShoreface = shoreface_length_init
+        self._wave_asymetry = wave_asymetry
+        self._wave_high_angle_fraction = wave_high_angle_fraction
         self._sp1_a = sp1_a
         self._sp1_b = sp1_b
         self._sp1_c = sp1_c
@@ -240,17 +245,8 @@ class BEEM:
         self._gw = eqtopo_i * self._groundwater_depth  # GW lies under beach with less steep angle
         self._gw[self._gw >= self._topo] = self._topo[self._gw >= self._topo]
 
-        self._beachslopeslabs = (eqtopo_i[0, -1] - eqtopo_i[0, 0]) / self._crossshore  # [slabs/m] Slope of equilibrium beach
-        self._offbeachslabs = eqtopo_i[0, 0] - self._beachslopeslabs * self._cellsize  # [slabs] Offset for calculating moving equilibirum beach
-
         self._x_t = shoreface_toe_init * np.ones([self._longshore])  # Start locations of shoreface toe
         self._x_s = (self._x_t + self._LShoreface) * np.ones([self._longshore])  # [m] Start locations of shoreline
-
-        # HYDRODYNAMIC
-        self._wl_timeseries = scipy.io.loadmat(inputloc + waterlevel_filename)["wl_max_texel"]  # [m] Waterlevel time-series. Length and frequency in relation to "simulation_time_yr" and "qpotseries"
-
-        # TEMP extend WL time series
-        self._waterlevels = np.concatenate([self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0], self._wl_timeseries[:, 0]])
 
         # VEGETATION
         self._spec1 = Init[2, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
@@ -297,8 +293,6 @@ class BEEM:
 
         # MODEL PARAMETERS
         self._direction = self._RNG.choice(np.tile([direction1, direction2, direction3, direction4, direction5], (1, 2000))[0, :], 10000, replace=False)
-        self._timewaterlev = np.linspace(self._stormreset / self._iterations_per_cycle, len(self._waterlevels) * self._stormreset / self._iterations_per_cycle, num=len(self._waterlevels))
-        self._waterlevels = (self._timewaterlev * self._RSLR + self._waterlevels) / self._slabheight_m  # [slabs]
         self._slabheight = round(self._slabheight_m * 100) / 100
         self._balance = self._topo * 0  # Initialise the sedimentation balance map [slabs]
         self._stability = self._topo * 0  # Initialise the stability map [slabs]
@@ -306,7 +300,6 @@ class BEEM:
         self._x_t_TS = [self._x_t]  # Initialize storage array for shoreface toe position
         self._sp1_peak_at0 = copy.deepcopy(self._sp1_peak)  # Store initial peak growth of sp. 1
         self._sp2_peak_at0 = copy.deepcopy(self._sp2_peak)  # Store initial peak growth of sp. 2
-        self._inundated = np.zeros([self._longshore, self._crossshore])  # Initial area of wave/current action
         self._beachcount = 0
         self._vegcount = 0
         self._shoreline_change_aggregate = np.zeros([self._longshore])
@@ -374,7 +367,6 @@ class BEEM:
         self._stability = self._stability + abs(self._topo - before)
         stability_init = self._stability + abs(self._topo - before)
 
-
         # --------------------------------------
         # STORMS - UPDATE BEACH, DUNE, AND INTERIOR
 
@@ -384,12 +376,16 @@ class BEEM:
             slopes = routine.beach_slopes(self._eqtopo, self._MHW, dune_crest, self._slabheight_m)
 
             # # TEMP: DEBUGGING DUNE CREST LOCATION
-            # if it % 50 == 0:
+            # if it % 4 == 0 and 152 < it < 207:
             #     tempfig = plt.figure(figsize=(14, 4.5))
-            #     tempfig.suptitle(beem.name, fontsize=13)
-            #     ax_1 = tempfig.add_subplot(111)
+            #     ax_1 = tempfig.add_subplot(211)
             #     cax_1 = ax_1.matshow(beem.topo * beem.slabheight, cmap='terrain', vmin=-1.1, vmax=4.0)
             #     ax_1.plot(dune_crest, np.arange(len(dune_crest)))
+            #     # ===
+            #     ax_2 = tempfig.add_subplot(212)
+            #     cax_2 = ax_2.matshow(beem.veg * beem.slabheight, cmap='YlGn', vmin=0, vmax=1)
+            #     ax_2.plot(dune_crest, np.arange(len(dune_crest)))
+            #     plt.show()
 
             iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
 
@@ -400,10 +396,11 @@ class BEEM:
 
             if storm:
                 before1 = copy.deepcopy(self._topo)  # Copy of topo before it is changed
+                before1veg = copy.deepcopy(self._veg)  # Copy of veg before it is changed
 
                 # Storm Processes: Beach/duneface change, overwash
                 self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
-                self._topo, topo_change_overwash, self._OWflux, netDischarge, self._inundated = routine.storm_processes(
+                self._topo, topo_change_overwash, self._OWflux, netDischarge, inundated = routine.storm_processes(
                     self._topo,
                     self._veg,
                     Rhigh,
@@ -427,14 +424,20 @@ class BEEM:
                     self._Qs_bb_min,
                     self._substep_in,
                     self._substep_ru,
+                    self._beach_equilibrium_slope,
+                    self._beach_erosiveness,
+                    self._beach_substeps,
                 )
 
-                self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again after overwash; TODO: Investigate whether slope enforcement after overwash is necessary; remove if not
+                # Enforce angles of repose again after overwash
+                self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # TODO: Investigate whether slope enforcement after overwash is necessary; remove if not
+
+                # Update vegetation from storm effects
+                self._spec1[inundated] = 0  # Remove species where beach is inundated - Why is this not working? TODO: Apply elevation change threshold here too
+                self._spec2[inundated] = 0  # Remove species where beach is inundated
 
             else:
                 self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
-                self._inundated = np.zeros(self._topo.shape).astype(bool)  # Reset
-                self._inundated[self._topo <= self._MHW] = True  # Cells below MHW are always considered inundated
                 before1 = copy.deepcopy(self._topo)
                 topo_change_overwash = np.zeros(self._topo.shape)
 
@@ -472,10 +475,11 @@ class BEEM:
 
             # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)
             self._x_s = routine.shoreline_change_from_AST(self._x_s,
-                                                          wave_asymetry=0.85,
-                                                          wave_high_angle_fraction=0,  # TODO: High-angle waves create problems, needs to be fixed
-                                                          dy=self._cellsize,
-                                                          time_step=self._iterations_per_cycle * self._stormreset)
+                                                          self._wave_asymetry,
+                                                          self._wave_high_angle_fraction,  # TODO: High-angle waves create problems, needs to be fixed
+                                                          self._cellsize,
+                                                          self._stormreset / self._iterations_per_cycle
+                                                          )
 
             shoreline_change = (self._x_s - self._x_s_TS[-1]) * self._cellsize  # [cellsize] Shoreline change from last time step
 
@@ -553,9 +557,6 @@ class BEEM:
             self._spec1 = spec1_old + spec1_change_allowed + spec1_loss  # Re-assemble gain and loss and add to original vegetation cover
             self._spec2 = spec2_old + spec2_change_allowed + spec2_loss  # Re-assemble gain and loss and add to original vegetation cover
 
-            self._spec1[self._inundated] = 0  # Remove species where beach is inundated TODO: Apply elevation change threshold here too
-            self._spec2[self._inundated] = 0  # Remove species where beach is inundated
-
             Spec1_elev_min_mht = self._Spec1_elev_min / self._slabheight_m + self._MHW  # [m MHW]
             Spec2_elev_min_mht = self._Spec1_elev_min / self._slabheight_m + self._MHW  # [m MHW]
             self._spec1[self._topo <= Spec1_elev_min_mht] = 0  # Remove species where below elevation minimum
@@ -597,7 +598,6 @@ class BEEM:
         # RESET DOMAINS
 
         self._balance[:] = 0  # Reset the balance map
-        self._inundated[:] = 0  # Reset part of beach with wave/current action
         self._stability[:] = 0  # Reset the balance map
 
     @property
@@ -661,6 +661,10 @@ class BEEM:
         return self._simulation_time_yr
 
     @property
+    def RSLR(self):
+        return self._RSLR
+
+    @property
     def StormRecord(self):
         return self._StormRecord
 
@@ -681,7 +685,6 @@ beem = BEEM(
     direction2=2,
     direction4=4,
     # storm_list_filename="NCB_SimStorms.npy",
-    # topo_filename="Topo_NCB_20190830_100m_23980.npy",
 )
 
 print(beem.name)
@@ -705,24 +708,34 @@ if beem.save_data:
     filename = beem.outputloc + "Sim_" + str(beem.simnum)
     dill.dump_module(filename)  # To re-load data: dill.load_session(filename)
 
-# Plot
+
+# __________________________________________________________________________________________________________________________________
+# PLOT RESULTS
+
+# Final Elevation & Vegetation
 Fig = plt.figure(figsize=(14, 9.5))
 Fig.suptitle(beem.name, fontsize=13)
+MHW = beem.RSLR * beem.simulation_time_yr
+topo = beem.topo * beem.slabheight
+topo = np.ma.masked_where(topo < MHW, topo)  # Mask cells below MHW
+cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
+cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 ax1 = Fig.add_subplot(211)
-cax1 = ax1.matshow(beem.topo * beem.slabheight, cmap='terrain', vmin=-1.2, vmax=5.0)
+cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=5.0)
 cbar = Fig.colorbar(cax1)
 cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
 ax2 = Fig.add_subplot(212)
-cax2 = ax2.matshow(beem.veg, cmap='YlGn', vmin=0, vmax=1)
+veg = beem.veg
+veg = np.ma.masked_where(topo < MHW, veg)  # Mask cells below MHW
+cmap2 = copy.copy(plt.cm.get_cmap("YlGn"))
+cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
+cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
 cbar = Fig.colorbar(cax2)
 cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
 plt.tight_layout()
 
-# plt.figure()
-# plt.hist(beem.StormRecord[1:, 1], bins=50, range=(0, beem.iterations_per_cycle))
-# plt.title("Model Storm Occurance by Week")
 
-# # Plot 3D Elevation
+# # 3D Elevation
 # fig = plt.figure(figsize=(12, 8))
 # ax = fig.add_subplot(111, projection="3d")
 # scale_x = 1
@@ -745,24 +758,35 @@ plt.tight_layout()
 #     vmax=4.5,
 # )
 
-# Elevation Animation
+# Animation: Elevation and Vegetation Over Time
 for t in range(0, beem.simulation_time_yr + 1):
-    Fig = plt.figure(figsize=(14, 9.5))
+    Fig = plt.figure(figsize=(14, 8))
+
+    MHW = beem.RSLR * t
+    topo = beem.topo_TS[:, :, t] * beem.slabheight  # [m]
+    topo = np.ma.masked_where(topo < MHW, topo)  # Mask cells below MHW
+    cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
+    cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
     ax1 = Fig.add_subplot(211)
-    cax1 = ax1.matshow(beem.topo_TS[:, :, t] * beem.slabheight, cmap='terrain', vmin=-1.2, vmax=5.0)  # TODO: Plot relative to sea level
+    cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=5.0)
     cbar = Fig.colorbar(cax1)
     cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
     timestr = "Year " + str(t)
     plt.text(2, beem.topo.shape[0] - 2, timestr, c='white')
+
+    veg = beem.veg_TS[:, :, t]
+    veg = np.ma.masked_where(topo < MHW, veg)  # Mask cells below MHW
+    cmap2 = copy.copy(plt.cm.get_cmap("YlGn"))
+    cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
     ax2 = Fig.add_subplot(212)
-    cax2 = ax2.matshow(beem.veg_TS[:, :, t], cmap='YlGn', vmin=0, vmax=1)
+    cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
     cbar = Fig.colorbar(cax2)
     cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
     timestr = "Year " + str(t)
     plt.text(2, beem.veg.shape[0] - 2, timestr, c='darkblue')
+    plt.tight_layout()
     if not os.path.exists("Output/SimFrames/"):
         os.makedirs("Output/SimFrames/")
-    plt.tight_layout()
     name = "Output/SimFrames/beem_elev_" + str(t)
     plt.savefig(name)  # dpi=200
     plt.close()
