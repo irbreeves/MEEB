@@ -1,6 +1,6 @@
 """
 Script for testing BEEM overwash function.
-IRBR 9 Feb 2023
+IRBR 13 Feb 2023
 """
 
 import numpy as np
@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import routines_beem as routine
 import copy
 import time
+from matplotlib import colors
 
 start_time = time.time()  # Record time at start of run
 
@@ -18,16 +19,16 @@ Rhigh = 3.3
 Rlow = 0.9
 dur = 35
 slabheight_m = 0.1
-MHT = 0
+MHW = 0
 
 # Initial Observed Topo
-Init = np.load("Input/Init_NCB_2017_2000m_12000_GapsPreFlorence.npy")
+Init = np.load("Input/Init_NorthernNCB_2017_PreFlorence.npy")
 # Final Observed
-End = np.load("Input/Init_NCB_2018_2000m_12000_GapsPostFlorence.npy")
+End = np.load("Input/Init_NorthernNCB_2018_PostFlorence.npy")
 
 # Define Alongshore Coordinates of Domain
-xmin = 1550  # 1685  # 85  # 1550
-xmax = 1675  # 1885  # 385  # 1675
+xmin = 575  # 575, 2000, 2150, 2000, 3800
+xmax = 825  # 825, 2125, 2350, 2600, 4450
 
 
 # _____________________________________________
@@ -39,14 +40,7 @@ topo0 = topo_init / slabheight_m  # [slabs] Transform from m into number of slab
 topo = copy.deepcopy(topo0)  # np.round(topo0)  # [slabs] Initialise the topography map
 
 # Transform Final Observed Topo
-topo_final = End[0, xmin:xmax, :]  # [m]
-topox = topo_final / slabheight_m  # [slabs] Transform from m into number of slabs
-obs_change = topox - topo0  # [slabs] Observed change
-
-# Equilibrium Topo (Temp)
-eqtopo_init = Init[1, xmin: xmax, :]  # [m]
-eqtopo0 = eqtopo_init / slabheight_m  # [slabs] Transform from m into number of slabs
-eqtopo = copy.deepcopy(eqtopo0)  # np.round(eqtopo0)  # [slabs] Initialise the topography map
+topo_final = End[0, xmin:xmax, :] / slabheight_m  # [slabs] Transform from m into number of slabs
 
 # Set Veg Domain
 spec1 = Init[2, xmin: xmax, :]
@@ -56,25 +50,23 @@ veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or la
 veg[veg < 0] = 0
 
 # Find Dune Crest, Beach Slopes
-dune_crest = routine.foredune_crest(topo, eqtopo, veg)
+dune_crest = routine.foredune_crest(topo * slabheight_m, veg)
+# dune_crest[245: 299] = 171  # 1715-1845  # 2000-2600 TEMP!!!
 
-# TEMP
-# dune_crest[75: 128] = 153  # for 1685-1885
-# dune_crest[77 + 135: 127 + 135] = 157  # for 1685-1885
-# dune_crest[77 - 30: 127 - 30] = 157  # 1715-1845
+# Transform water levels to vectors
+Rhigh = Rhigh * np.ones(topo_final.shape[0])
+Rlow = Rlow * np.ones(topo_final.shape[0])
 
 
 # _____________________________________________
 # Overwash, Beach, & Dune Change
 topo_prestorm = copy.deepcopy(topo)
 
-name = "ss=3, Rin=50, MaxUpSlope=1, Kr=1e-04, fluxlimit=1, Q"
+name = "ss=3, Rin=75, MaxUpSlope=1, Kr=1e-04, fluxlimit=1, Q"
 print(name)
 
-sim_topo_final, topo_change_overwash, topo_change_leftover, OWflux, netDischarge = routine.storm_processes(
+sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated = routine.storm_processes(
     topo,
-    np.zeros(topo.shape),
-    eqtopo,
     veg,
     Rhigh,
     Rlow,
@@ -82,7 +74,7 @@ sim_topo_final, topo_change_overwash, topo_change_leftover, OWflux, netDischarge
     slabheight_m,
     threshold_in=0.25,
     Rin_i=5,
-    Rin_r=50,  # was 1.2
+    Rin_r=75,  # was 1.2
     Cx=15,  # was 10
     AvgSlope=2/200,
     nn=0.5,
@@ -91,12 +83,15 @@ sim_topo_final, topo_change_overwash, topo_change_leftover, OWflux, netDischarge
     Kr=1e-04,  # was 7.5e-05   1e-4
     Ki=1e-06,  # was 7.5e-06
     mm=2,
-    MHT=MHT,
+    MHW=MHW,
     Cbb_i=0.85,
     Cbb_r=0.7,
     Qs_bb_min=1,
     substep_i=6,
     substep_r=3,  # 6 seems ideal
+    beach_equilibrium_slope=0.02,
+    beach_erosiveness=1,
+    beach_substeps=8,
 )
 
 topo_change_prestorm = sim_topo_final - topo_prestorm
@@ -107,81 +102,168 @@ print("Elapsed Time: ", SimDuration, "sec")
 
 
 # _____________________________________________
-# NSE
+# Model Skill: Comparisons to Observations
 
-Florence_Overwash_Mask = np.load("Input/FlorenceOverwashMask.npy")
-OW_Mask = Florence_Overwash_Mask[xmin: xmax, :]
-
-obs_change_masked = obs_change * slabheight_m * OW_Mask  # [m]
-sim_change_masked = topo_change_prestorm * slabheight_m * OW_Mask  # [m]
-
-A = 0
-B = 0
 longshore, crossshore = sim_topo_final.shape
 
-obs_masked_sum = 0
-count = 0
-for y in range(longshore):
-    crest = dune_crest[y]
-    for x in range(crest + 1, crossshore):
-        obs_masked_sum += obs_change_masked[y, x]
-        count += 1
-obs_change_mean = obs_masked_sum / count
-
-for y in range(longshore):
-    crest = dune_crest[y]
-    for x in range(crest + 1, crossshore):
-        A += (obs_change_masked[y, x] - sim_change_masked[y, x]) ** 2
-        B += (obs_change_masked[y, x] - obs_change_mean) ** 2
-
-NSE = 1 - A / B
-print("  --> NSE", NSE)
-
-# _____________________________________________
-# Objective Function
-
-OW_Mask_NoBeach = copy.deepcopy(OW_Mask)
+beach_duneface_mask = np.zeros(sim_topo_final.shape).astype(bool)  # [bool] Map of every cell seaward of dune crest
 for l in range(longshore):
-    for c in range(crossshore):
-        if c < dune_crest[l]:
-            OW_Mask_NoBeach[l, c] = False
+    beach_duneface_mask[l, :dune_crest[l]] = True
 
+subaerial_mask = sim_topo_final > MHW  # [bool] Map of every cell above water
+
+Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  # Load observed overwash mask
+OW_Mask = Florence_Overwash_Mask[xmin: xmax, :]
+
+Sim_Obs_OW_Mask = np.logical_or(OW_Mask, inundated) * (~beach_duneface_mask)  # [bool] Map of every cell landward of dune crest that was inundated in simulation or observation or both
+
+# Final Elevations
 obs_final_m = topo_final * slabheight_m  # [m] Observed final topo
 sim_final_m = sim_topo_final * slabheight_m  # [m] Simulated final topo
+obs_mean_m = np.mean(obs_final_m[Sim_Obs_OW_Mask])
 
-wi = 1 / (1 ** 2 * sim_final_m.size)  # Weight factor for model misfit score; Barnhart et al. (2020a) Eqn 3
-OF = np.sum(wi * (obs_final_m - sim_final_m) ** 2) ** 2  # Model misfit score; Barnhart et al. (2020a) Eqn 4
+# Final Elevation Changes
+obs_change_m = (topo_final - topo_prestorm) * slabheight_m  # [m] Observed change
+sim_change_m = topo_change_prestorm * slabheight_m  # [m] Simulated change
+obs_change_masked = obs_change_m * OW_Mask * ~beach_duneface_mask  # [m]
+sim_change_masked = sim_change_m * ~beach_duneface_mask  # [m]
+obs_change_masked_beach = obs_change_m * OW_Mask * subaerial_mask  # [m] Includes beach, exclues water
+obs_change_mean_masked = np.mean(obs_change_m[Sim_Obs_OW_Mask])  # [m] Average change of observations, masked
+obs_change_mean = np.mean(obs_change_m)  # [m] Average change of observations
 
-print("  --> OF", OF)
+# _____________________________________________
+# Nash-Sutcliffe Model Efficiency
+A = np.mean(np.square(np.subtract(obs_change_masked[Sim_Obs_OW_Mask], sim_change_masked[Sim_Obs_OW_Mask])))
+B = np.mean(np.square(np.subtract(obs_change_masked[Sim_Obs_OW_Mask], obs_change_mean_masked)))
+NSE = 1 - A / B
+print("  --> NSE mask", NSE)
 
-wi_masked = np.sum(OW_Mask_NoBeach)
-# obs_final_m_masked = obs_final_m * OW_Mask  # [m] Observed final topo
-# sim_final_m_masked = sim_final_m * OW_Mask  # [m] Simulated final topo
+A2 = np.mean(np.square(np.subtract(obs_change_m, sim_change_m)))
+B2 = np.mean(np.square(np.subtract(obs_change_m, obs_change_mean)))
+NSE2 = 1 - A2 / B2
+print("  --> NSE no mask", NSE2)
 
-OF_masked = np.sum(wi_masked * (obs_final_m[OW_Mask_NoBeach] - sim_final_m[OW_Mask_NoBeach]) ** 2) ** 2  # Model misfit score; Barnhart et al. (2020a) Eqn 4
+# _____________________________________________
+# Root Mean Square Error
+RMSE = np.sqrt(np.mean(np.square(sim_change_masked[Sim_Obs_OW_Mask] - obs_change_masked[Sim_Obs_OW_Mask])))
+print("  --> RMSE mask", RMSE)
 
-print("  --> OF_masked", OF_masked)
+RMSE2 = np.sqrt(np.mean(np.square(sim_change_m - obs_change_m)))
+print("  --> RMSE no mask", RMSE2)
+
+# _____________________________________________
+# Brier Skill Score
+BSS = routine.brier_skill_score(sim_change_masked, obs_change_masked, np.zeros(sim_change_m.shape), Sim_Obs_OW_Mask)
+print("  --> BSS mask", BSS)
+
+BSS2 = routine.brier_skill_score(sim_change_m, obs_change_m, np.zeros(sim_change_m.shape), np.ones(sim_change_m.shape).astype(bool))
+print("  --> BSS no mask", BSS2)
+
+# _____________________________________________
+# Categorical
+
+# ----------
+# No Mask
+threshold = 0.02
+sim_erosion = sim_change_m < -threshold
+sim_deposition = sim_change_m > threshold
+sim_no_change = np.logical_and(sim_change_m <= threshold, -threshold <= sim_change_m)
+obs_erosion = obs_change_m < -threshold
+obs_deposition = obs_change_m > threshold
+obs_no_change = np.logical_and(obs_change_m <= threshold, -threshold <= obs_change_m)
+
+cat_NoMask = np.zeros(obs_change_m.shape)
+cat_NoMask[np.logical_and(sim_erosion, obs_erosion)] = 1          # Hit
+cat_NoMask[np.logical_and(sim_deposition, obs_deposition)] = 1    # Hit
+cat_NoMask[np.logical_and(sim_erosion, ~obs_erosion)] = 2         # False Alarm
+cat_NoMask[np.logical_and(sim_deposition, ~obs_deposition)] = 2   # False Alarm
+cat_NoMask[np.logical_and(sim_no_change, obs_no_change)] = 3      # Correct Reject
+cat_NoMask[np.logical_and(sim_no_change, ~obs_no_change)] = 4     # Miss
+
+hits = np.count_nonzero(cat_NoMask == 1)
+false_alarms = np.count_nonzero(cat_NoMask == 2)
+correct_rejects = np.count_nonzero(cat_NoMask == 3)
+misses = np.count_nonzero(cat_NoMask == 4)
+J = hits + false_alarms + correct_rejects + misses
+
+# ----------
+# Mask
+threshold = 0.02
+sim_erosion = sim_change_m < -threshold
+sim_deposition = sim_change_m > threshold
+sim_no_change = np.logical_and(sim_change_m <= threshold, -threshold <= sim_change_m)
+obs_erosion = obs_change_masked_beach < -threshold
+obs_deposition = obs_change_masked_beach > threshold
+obs_no_change = np.logical_and(obs_change_masked_beach <= threshold, -threshold <= obs_change_masked_beach)
+
+cat_Mask = np.zeros(obs_change_m.shape)
+cat_Mask[np.logical_and(sim_erosion, obs_erosion)] = 1          # Hit
+cat_Mask[np.logical_and(sim_deposition, obs_deposition)] = 1    # Hit
+cat_Mask[np.logical_and(sim_erosion, ~obs_erosion)] = 2         # False Alarm
+cat_Mask[np.logical_and(sim_deposition, ~obs_deposition)] = 2   # False Alarm
+cat_Mask[np.logical_and(sim_no_change, obs_no_change)] = 3      # Correct Reject
+cat_Mask[np.logical_and(sim_no_change, ~obs_no_change)] = 4     # Miss
+
+hits_m = np.count_nonzero(cat_Mask[Sim_Obs_OW_Mask] == 1)
+false_alarms_m = np.count_nonzero(cat_Mask[Sim_Obs_OW_Mask] == 2)
+correct_rejects_m = np.count_nonzero(cat_Mask[Sim_Obs_OW_Mask] == 3)
+misses_m = np.count_nonzero(cat_Mask[Sim_Obs_OW_Mask] == 4)
+J_m = hits_m + false_alarms_m + correct_rejects_m + misses_m
+
+# ----------
+# Percentage Correct
+PC = (hits + correct_rejects) / J
+PC_m = (hits_m + correct_rejects_m) / J_m
+
+# Heidke Skill Score
+G_m = ((hits_m + false_alarms_m) * (hits_m + misses_m) / J_m ** 2) + ((misses_m + correct_rejects_m) * (false_alarms_m + correct_rejects_m) / J_m ** 2)  # Fraction of predictions of the correct categories (H and C) that would be expected from a random choice
+HSS2 = (PC_m - G_m) / (1 - G_m)   # The percentage correct, corrected for the number expected to be correct by chance
+print("  --> HSS mask", HSS2)
+
+G = ((hits + false_alarms) * (hits + misses) / J ** 2) + ((misses + correct_rejects) * (false_alarms + correct_rejects) / J ** 2)  # Fraction of predictions of the correct categories (H and C) that would be expected from a random choice
+HSS = (PC - G) / (1 - G)   # The percentage correct, corrected for the number expected to be correct by chance
+print("  --> HSS no mask", HSS)
 
 # _____________________________________________
 # Plot
 
 pxmin = 0
-pxmax = 500
+pxmax = 600
+
+# Categorical
+catfig = plt.figure(figsize=(14, 7.5))
+cmap2 = colors.ListedColormap(['green', 'yellow', 'gray', 'red'])
+bounds = [0.5, 1.5, 2.5, 3.5, 4.5]
+norm = colors.BoundaryNorm(bounds, cmap2.N)
+ax1 = catfig.add_subplot(211)
+cax1 = ax1.matshow(cat_Mask[:, pxmin: pxmax], cmap=cmap2, norm=norm)
+cbar1 = plt.colorbar(cax1, boundaries=bounds, ticks=[1, 2, 3, 4])
+cbar1.set_ticklabels(['Hit', 'False Alarm', 'Correct Reject', 'Miss'])
+ax2 = catfig.add_subplot(212)
+cax2 = ax2.matshow(cat_NoMask[:, pxmin: pxmax], cmap=cmap2, norm=norm)
+cbar2 = plt.colorbar(cax2, boundaries=bounds, ticks=[1, 2, 3, 4])
+cbar2.set_ticklabels(['Hit', 'False Alarm', 'Correct Reject', 'Miss'])
+
+# Change Comparisons
+cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
+cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 
 # Pre Storm (Observed) Topo
 Fig = plt.figure(figsize=(14, 7.5))
 ax1 = Fig.add_subplot(221)
-cax1 = ax1.matshow(topo_prestorm[:, pxmin: pxmax] * 0.1, cmap='terrain', vmin=-1.2, vmax=5.0)
+topo1 = topo_prestorm[:, pxmin: pxmax] * 0.1  # [m]
+topo1 = np.ma.masked_where(topo1 < MHW, topo1)  # Mask cells below MHW
+cax1 = ax1.matshow(topo1, cmap=cmap1, vmin=0, vmax=5.0)
 ax1.plot(dune_crest, np.arange(len(dune_crest)), c='black', alpha=0.6)
-# cbar = Fig.colorbar(cax1)
-# cbar.set_label('Start Elevation [m MHW]', rotation=270, labelpad=20)
 plt.title(name)
 
 # Post-Storm (Simulated) Topo
 ax2 = Fig.add_subplot(222)
-cax2 = ax2.matshow(sim_topo_final[:, pxmin: pxmax] * 0.1, cmap='terrain', vmin=-1.2, vmax=5.0)
+topo2 = sim_topo_final[:, pxmin: pxmax] * 0.1  # [m]
+topo2 = np.ma.masked_where(topo2 < MHW, topo2)  # Mask cells below MHW
+cax2 = ax2.matshow(topo2, cmap=cmap1, vmin=0, vmax=5.0)
 # cbar = Fig.colorbar(cax2)
-# cbar.set_label('End Elevation [m MHW]', rotation=270, labelpad=20)
+# cbar.set_label('Elevation [m MHW]', rotation=270, labelpad=20)
 
 # Simulated Topo Change
 maxx = max(abs(np.min(obs_change_masked)), abs(np.max(obs_change_masked)))
@@ -198,13 +280,17 @@ ax4 = Fig.add_subplot(224)
 cax4 = ax4.matshow(obs_change_masked[:, pxmin: pxmax], cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
 ax4.plot(dune_crest, np.arange(len(dune_crest)), c='black', alpha=0.6)
 # cbar = Fig.colorbar(cax4)
-# cbar.set_label('Net Discharge [m^3]', rotation=270, labelpad=20)
+# cbar.set_label('Elevation Change [m]', rotation=270, labelpad=20)
 plt.tight_layout()
 
 # Cumulative Discharge
 plt.figure(figsize=(14, 7.5))
 plt.plot(np.sum(netDischarge, axis=0))
 plt.ylabel("Cumulative Discharge")
+
+# Cumulative Discharge
+plt.matshow(inundated)
+plt.title("Inundated")
 
 print()
 print("Complete.")
