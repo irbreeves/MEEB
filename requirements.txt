@@ -5,3 +5,4 @@ dill
 setuptools
 imageio
 rasterio
+numba

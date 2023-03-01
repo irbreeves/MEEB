@@ -20,6 +20,7 @@ import imageio
 import os
 import copy
 from mpl_toolkits.mplot3d import Axes3D
+import cProfile
 
 import routines_beem as routine
 
@@ -43,7 +44,6 @@ class BEEM:
             inputloc="Input/",  # Input file directory
             outputloc="Output/",  # Output file directory
             topo_filename="Init_NCB_20190830_500m_20200_LinearRidge.npy",  # "Init_NCB_2017_2000m_12000_GapsPreFlorence.npy", #
-            eqtopo_filename="eqtopo_small_dune.npy",
             waterlevel_filename="wl_max_texel.mat",
             veg_spec1_filename="spec1_small_dune.npy",
             veg_spec2_filename="spec2_small_dune.npy",
@@ -226,33 +226,18 @@ class BEEM:
         xmin = 0
         xmax = 100
         self._topo_initial = Init[0, xmin: xmax, :]  # [m] 2D-matrix with initial topography
-        self._eqtopo_initial = Init[1, xmin: xmax, :]  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
-        # self._topo_initial = np.load(inputloc + topo_filename)  # [m] 2D-matrix with initial topography
-        # self._eqtopo_initial = np.load(inputloc + eqtopo_filename)  # [m] 2D-matrix or 3D-matrix with equilibrium profile. For 3D-matrix, the third matrix relates to time
-
         topo0 = self._topo_initial / self._slabheight_m  # [slabs] Transform from m into number of slabs
         self._topo = topo0  # [slabs] Initialise the topography map
-
         self._longshore, self._crossshore = topo0.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
+        self._gw = np.zeros(self._topo.shape)  # Initialize
 
-        if self._eqtopo_initial.ndim == 3:
-            self._eqtopo = np.squeeze(self._eqtopo_initial[:, :, 0]) / self._slabheight_m  # [slabs] Transform from m into number of slabs
-        else:
-            self._eqtopo = self._eqtopo_initial / self._slabheight_m  # [slabs] Transform from m into number of slabs
-
-        eqtopo_i = copy.deepcopy(self._eqtopo)
-
-        self._gw = eqtopo_i * self._groundwater_depth  # GW lies under beach with less steep angle
-        self._gw[self._gw >= self._topo] = self._topo[self._gw >= self._topo]
-
+        # SHOREFACE & SHORELINE
         self._x_t = shoreface_toe_init * np.ones([self._longshore])  # Start locations of shoreface toe
         self._x_s = (self._x_t + self._LShoreface) * np.ones([self._longshore])  # [m] Start locations of shoreline
 
         # VEGETATION
         self._spec1 = Init[2, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
         self._spec2 = Init[3, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
-        # self._spec1 = np.load(inputloc + veg_spec1_filename)  # [0-1] 2D-matrix of vegetation effectiveness for spec1
-        # self._spec2 = np.load(inputloc + veg_spec2_filename)  # [0-1] 2D-matrix of vegetation effectiveness for spec2
 
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
@@ -271,25 +256,6 @@ class BEEM:
                         0.272727272727273, 0.484848484848485, 0.484848484848485]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1980-2013 VCR storm record
         # self._pstorm = [0.232558139534884, 0.0697674418604651, 0.116279069767442, 0.186046511627907, 0.0930232558139535, 0.0465116279069767, 0.139534883720930, 0.0697674418604651, 0.0232558139534884, 0, 0, 0, 0.0232558139534884, 0,
         #                 0.0232558139534884, 0.0465116279069767, 0.255813953488372, 0.255813953488372, 0.116279069767442, 0.139534883720930, 0.0697674418604651, 0.0465116279069767, 0.0697674418604651, 0.0697674418604651, 0.0930232558139535]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 NCB storm record
-
-        # TEMP! Adjust beach towards equilibrium profile before sim begins
-        dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._veg)
-        self._topo, inun, pbeachupdate, diss, cumdiss, pwave, crestline_change = routine.marine_processes_Rhigh(
-            2.5 / self._slabheight_m,  # Convert to slabs
-            self._slabheight_m,
-            self._cellsize,
-            self._topo,
-            self._eqtopo,
-            self._veg,
-            self._m26,
-            self._wave_energy,
-            self._m28f,
-            self._pwavemaxf,
-            self._pwaveminf,
-            self._depth_limit,
-            self._shelterf,
-            dune_crest,
-        )
 
         # MODEL PARAMETERS
         self._direction = self._RNG.choice(np.tile([direction1, direction2, direction3, direction4, direction5], (1, 2000))[0, :], 10000, replace=False)
@@ -345,14 +311,22 @@ class BEEM:
         # SAND TRANSPORT
 
         before = copy.deepcopy(self._topo)
-        self._gw = self._eqtopo * self._groundwater_depth
-        sandmap = self._topo > self._MHW  # Boolean array, Returns True (1) for sandy cells
 
+        # Get present groundwater elevations
+        dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._veg)
+        eqtopo = routine.equilibrium_topography(self._topo, self._s_sf_eq, self._beach_equilibrium_slope, self._MHW, dune_crest)
+        self._gw = eqtopo * self._groundwater_depth
+        self._gw[self._gw >= self._topo] = self._topo[self._gw >= self._topo]
+
+        # Find sandy and shadowed cells
+        sandmap = self._topo > self._MHW  # Boolean array, Returns True (1) for sandy cells
         shadowmap = routine.shadowzones2(self._topo, self._slabheight, self._shadowangle, self._longshore, self._crossshore, direction=self._direction[it])  # Returns map of True (1) for in shadow, False (2) not in shadow
 
+        # Erosion/Deposition Probabilities
         erosmap = routine.erosprobs2(self._veg, shadowmap, sandmap, self._topo, self._gw, self._p_ero_sand)  # Returns map of erosion probabilities
         deposmap = routine.depprobs(self._veg, shadowmap, sandmap, self._p_dep_base, self._p_dep_sand)  # Returns map of deposition probabilities
 
+        # Move sand slabs
         if self._direction[it] == 1 or self._direction[it] == 3:  # East or west wind direction
             contour = np.linspace(0, round(self._crossshore) - 1, self._n_contour + 1)  # Contours to account for transport
             changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
@@ -360,6 +334,7 @@ class BEEM:
             contour = np.linspace(0, round(self._longshore) - 1, self._n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This may produce slightly different results than Matlab version - need to verify
             changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
 
+        # Apply changes, make calculations
         self._topo = self._topo + changemap  # Changes applied to the topography
         self._topo, aval = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)  # Enforce angles of repose: avalanching
         self._balance = self._balance + (self._topo - before)  # Update the sedimentation balance map
@@ -373,7 +348,7 @@ class BEEM:
         if it % self._stormreset == 0:
             veg_elev_limit = np.argmax(min(self._Spec1_elev_min, self._Spec2_elev_min) / self._slabheight_m + self._MHW < self._topo, axis=1)
             dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._veg)
-            slopes = routine.beach_slopes(self._eqtopo, self._MHW, dune_crest, self._slabheight_m)
+            slopes = routine.beach_slopes(self._topo, self._beach_equilibrium_slope, self._MHW, dune_crest, self._slabheight_m)
 
             # # TEMP: DEBUGGING DUNE CREST LOCATION
             # if it % 4 == 0 and 152 < it < 207:
@@ -441,7 +416,7 @@ class BEEM:
                 before1 = copy.deepcopy(self._topo)
                 topo_change_overwash = np.zeros(self._topo.shape)
 
-            seainput = self._topo - before1  # Sand added to the beach by the sea
+            seainput = self._topo - before1  # Sand added to the beach by the sea  TODO: This includes overwash, but it shouldnt. Use dV calculated in calc_dune_erosion instead!
 
             self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again
             balance_ts = self._topo - before1
@@ -473,13 +448,13 @@ class BEEM:
                 self._slabheight_m,
             )
 
-            # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)
-            self._x_s = routine.shoreline_change_from_AST(self._x_s,
-                                                          self._wave_asymetry,
-                                                          self._wave_high_angle_fraction,  # TODO: High-angle waves create problems, needs to be fixed
-                                                          self._cellsize,
-                                                          self._stormreset / self._iterations_per_cycle
-                                                          )
+            # # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)        # <<< This AST is not presently working!
+            # self._x_s = routine.shoreline_change_from_AST(self._x_s,
+            #                                               self._wave_asymetry,
+            #                                               self._wave_high_angle_fraction,  # TODO: High-angle waves create problems, needs to be fixed; need to check rest of it too
+            #                                               self._cellsize,
+            #                                               self._stormreset / self._iterations_per_cycle
+            #                                               )
 
             shoreline_change = (self._x_s - self._x_s_TS[-1]) * self._cellsize  # [cellsize] Shoreline change from last time step
 
@@ -498,25 +473,14 @@ class BEEM:
 
             # Adjust topography domain to according to shoreline change
             prev_shoreline = routine.ocean_shoreline(self._topo, self._MHW).astype(int)  # Previous ocean shoreline location
-            for ls in range(self._longshore):
-                sc_ls = int(shoreline_change[ls])  # [m] Amount of shoreline change for this location alongshore
-                new_shoreline = prev_shoreline[ls] + sc_ls
-                if sc_ls > 0:  # Shoreline erosion
-                    # Adjust shoreline
-                    Bl = (self._topo[ls, new_shoreline + 1] - self._MHW) / (sc_ls + 1)  # Local slope between previous shoreline and new shoreline at MHW
-                    remove = np.arange(1, 1 + sc_ls) * Bl + self._MHW
-                    self._topo[ls, prev_shoreline[ls] + 1: new_shoreline + 1] = remove
-                    # Adjust shoreface
-                    shoreface = np.arange(-new_shoreline + 1, 1) * shoreface_slope[ls] / self._slabheight_m  # New shoreface cells
-                    self._topo[ls, :new_shoreline] = shoreface  # Insert into domain
-                elif sc_ls < 0:  # Shoreline progradation
-                    # Adjust shoreline
-                    Bl = (self._topo[ls, prev_shoreline[ls]] - self._MHW) / (abs(sc_ls) + 1)  # Local slope between previous shoreline and new shoreline at MHW
-                    add = np.arange(1, 1 + abs(sc_ls)) * Bl
-                    self._topo[ls, new_shoreline: prev_shoreline[ls]] = add
-                    # Adjust shoreface
-                    shoreface = np.arange(-new_shoreline + 1, 1) * shoreface_slope[ls] / self._slabheight_m  # New shoreface cells
-                    self._topo[ls, :new_shoreline] = shoreface  # Insert into domain
+            self._topo = routine.adjust_ocean_shoreline(
+                self._topo,
+                shoreline_change,
+                prev_shoreline,
+                self._MHW,
+                shoreface_slope,
+                self._slabheight_m
+            )
 
         else:
             seainput = np.zeros([self._longshore, self._crossshore])
@@ -621,10 +585,6 @@ class BEEM:
         return self._topo_TS
 
     @property
-    def eqtopo(self):
-        return self._eqtopo
-
-    @property
     def slabheight(self):
         return self._slabheight
 
@@ -684,7 +644,7 @@ beem = BEEM(
     p_ero_sand=0.5,
     direction2=2,
     direction4=4,
-    # storm_list_filename="NCB_SimStorms.npy",
+    wave_asymetry=0.5,
 )
 
 print(beem.name)
