@@ -19,7 +19,7 @@ import scipy
 from scipy import signal, stats
 from AST.alongshore_transporter import AlongshoreTransporter
 from AST.waves import ashton
-from numba import njit, prange, float64
+from numba import njit, prange
 
 
 def shadowzones2(topof, sh, lee, longshore, crossshore, direction):
@@ -74,6 +74,7 @@ def shadowzones2(topof, sh, lee, longshore, crossshore, direction):
         inshade = np.bitwise_or(inshade, tempinshade)  # Merge with previous inshade zones
 
     return inshade
+
 
 @njit
 def erosprobs2(vegf, shade, sand, topof, groundw, p_er):
@@ -1392,7 +1393,7 @@ def storm_processes(
     beach_equilibrium_slope : float
         Beach equilibrium slope.
     beach_erosiveness : float
-        Beach erosiveness timescale constant: larger (smaller) Et == lesser (greater) storm erosiveness
+        Beach erosiveness timescale constant: larger (smaller) Et == greater (lesser) storm erosiveness
     beach_substeps : int
         Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
 
@@ -1439,6 +1440,9 @@ def storm_processes(
     Qs_min /= substep
     Qs_bb_min /= substep
 
+    TWL = Rhigh.copy()
+    twl_step = (TWL - Rlow) / (iterations / 2)
+
     # Run Storm
     for TS in range(iterations):
 
@@ -1446,273 +1450,16 @@ def storm_processes(
         if TS > 0:
             Elevation[TS, :, :] = Elevation[TS - 1, :, :]
 
+        # Find TWL for this timestep
+        if TS < iterations / 2:
+            Rhigh = Rlow + twl_step * TS
+        else:
+            Rhigh = TWL - (twl_step * (TS - iterations / 2))
+
+
         # Find dune crest locations and heights for this storm iteration
         dune_crest_loc = foredune_crest(Elevation[TS, :, :], vegf)  # Cross-shore location of pre-storm dune crest
         # dune_crest_loc[245: 299] = 171  # 2000-2600 TEMP !!!
-
-    #     dune_crest_height_m = Elevation[TS, :, :][np.arange(len(dune_crest_loc)), dune_crest_loc]  # [m] Height of dune crest alongshore
-    #     overwash = Rhigh > dune_crest_height_m  # [bool] Identifies rows alongshore where dunes crest is overwashed
-    #
-    #     if np.any(overwash):  # Determine if there is any overwash for this storm iteration
-    #
-    #         # Calculate discharge through each dune cell for this storm iteration
-    #         Rexcess = (Rhigh - dune_crest_height_m) * overwash  # [m] Height of storm water level above dune crest cells
-    #         Vdune = np.sqrt(2 * 9.8 * Rexcess)  # [m/s] Velocity of water over each dune crest cell (Larson et al., 2004)
-    #         Qdune = Vdune * Rexcess * 3600  # [m^3/hr] Discharge at each overtopped dune crest cell
-    #
-    #         # Determine Sediment And Water Routing Rules Based on Overwash Regime
-    #         inundation_regime = Rlow > dune_crest_height_m  # [bool] Identifies rows alongshore where dunes crest is overwashed in inundation regime
-    #         runup_regime = np.logical_and(Rlow <= dune_crest_height_m, Rhigh > dune_crest_height_m)  # [bool] Identifies rows alongshore where dunes crest is overwashed in run-up regime
-    #         inundation_regime_count = np.count_nonzero(inundation_regime)
-    #         runup_regime_count = np.count_nonzero(runup_regime)
-    #         if inundation_regime_count / (inundation_regime_count + runup_regime_count) >= threshold_in:  # If greater than threshold % of overtopped dune cells are inunundation regime -> inundation overwash regime
-    #             inundation = True  # TODO: Inundation regime parameterization needs work...
-    #             Rin = Rin_i
-    #             C = Cx * AvgSlope  # Momentum constant
-    #             print("  INUNDATION OVERWASH")
-    #         else:  # Run-up overwash regime
-    #             inundation = False
-    #             Rin = Rin_r
-    #             C = Cx * AvgSlope  # Momentum constant
-    #             print("  RUN-UP OVERWASH")
-    #
-    #         # Set Discharge at Dune Crest
-    #         Discharge[TS, np.arange(longshore), dune_crest_loc - domain_width_start] = Qdune  # TODO: Vary Rhigh over storm duration
-    #
-    #         Rin_eff = 1  # TEMP
-    #
-    #         for d in range(domain_width - 1):
-    #
-    #             # Reduce discharge across row via infiltration
-    #             if d > 0:
-    #                 Discharge[TS, :, d][Discharge[TS, :, d] > 0] -= Rin  # Constant Rin, old method
-    #                 # Rin_r = 0.075   # [1/m] Logistic growth rate
-    #                 # Rin_eff += Rin_r * Rin_eff * (1 - (Rin_eff / Rin))  # Increase Rin logistically with distance across domain
-    #                 # Discharge[TS, :, d][Discharge[TS, :, d] > 0] -= Rin_eff  # New logistic growth of Rin parameter towards maximum, limits deposition where discharge is introduced
-    #             Discharge[TS, :, d][Discharge[TS, :, d] < 0] = 0
-    #
-    #             for i in range(longshore):
-    #                 if Discharge[TS, i, d] > 0:
-    #
-    #                     Q0 = Discharge[TS, i, d]
-    #
-    #                     # Calculate Slopes
-    #                     if i > 0:
-    #                         S1 = (Elevation[TS, i, d] - Elevation[TS, i - 1, d + 1]) / (math.sqrt(2))
-    #                         S1 = np.nan_to_num(S1)
-    #                     else:
-    #                         S1 = float('NaN')
-    #
-    #                     S2 = Elevation[TS, i, d] - Elevation[TS, i, d + 1]
-    #                     S2 = np.nan_to_num(S2)
-    #
-    #                     if i < (longshore - 1):
-    #                         S3 = (Elevation[TS, i, d] - Elevation[TS, i + 1, d + 1]) / (math.sqrt(2))
-    #                         S3 = np.nan_to_num(S3)
-    #                     else:
-    #                         S3 = float('NaN')
-    #
-    #                     # Calculate Discharge To Downflow Neighbors
-    #
-    #                     # One or more slopes positive
-    #                     if S1 > 0 or S2 > 0 or S3 > 0:
-    #
-    #                         S1e = np.nan_to_num(S1)
-    #                         S2e = np.nan_to_num(S2)
-    #                         S3e = np.nan_to_num(S3)
-    #
-    #                         if S1e < 0:
-    #                             S1e = 0
-    #                         if S2e < 0:
-    #                             S2e = 0
-    #                         if S3e < 0:
-    #                             S3e = 0
-    #
-    #                         Q1 = (Q0 * S1e ** nn / (S1e ** nn + S2e ** nn + S3e ** nn))
-    #                         Q2 = (Q0 * S2e ** nn / (S1e ** nn + S2e ** nn + S3e ** nn))
-    #                         Q3 = (Q0 * S3e ** nn / (S1e ** nn + S2e ** nn + S3e ** nn))
-    #
-    #                         Q1 = np.nan_to_num(Q1)
-    #                         Q2 = np.nan_to_num(Q2)
-    #                         Q3 = np.nan_to_num(Q3)
-    #
-    #                     # No slopes positive, one or more equal to zero
-    #                     elif S1 == 0 or S2 == 0 or S3 == 0:
-    #
-    #                         pos = 0
-    #                         if S1 == 0:
-    #                             pos += 1
-    #                         if S2 == 0:
-    #                             pos += 1
-    #                         if S3 == 0:
-    #                             pos += 1
-    #
-    #                         Qx = Q0 / pos
-    #                         Qx = np.nan_to_num(Qx)
-    #
-    #                         if S1 == 0 and i > 0:
-    #                             Q1 = Qx
-    #                         else:
-    #                             Q1 = 0
-    #                         if S2 == 0:
-    #                             Q2 = Qx
-    #                         else:
-    #                             Q2 = 0
-    #                         if S3 == 0 and i < (longshore - 1):
-    #                             Q3 = Qx
-    #                         else:
-    #                             Q3 = 0
-    #
-    #                     # All slopes negative
-    #                     else:
-    #
-    #                         if np.isnan(S1):
-    #                             Q1 = 0
-    #                             Q2 = (Q0 * abs(S2) ** (-nn) / (abs(S2) ** (-nn) + abs(S3) ** (-nn)))
-    #                             Q3 = (Q0 * abs(S3) ** (-nn) / (abs(S2) ** (-nn) + abs(S3) ** (-nn)))
-    #                         elif np.isnan(S3):
-    #                             Q1 = (Q0 * abs(S1) ** (-nn) / (abs(S1) ** (-nn) + abs(S2) ** (-nn)))
-    #                             Q2 = (Q0 * abs(S2) ** (-nn) / (abs(S1) ** (-nn) + abs(S2) ** (-nn)))
-    #                             Q3 = 0
-    #                         else:
-    #                             Q1 = (Q0 * abs(S1) ** (-nn) / (abs(S1) ** (-nn) + abs(S2) ** (-nn) + abs(S3) ** (-nn)))
-    #                             Q2 = (Q0 * abs(S2) ** (-nn) / (abs(S1) ** (-nn) + abs(S2) ** (-nn) + abs(S3) ** (-nn)))
-    #                             Q3 = (Q0 * abs(S3) ** (-nn) / (abs(S1) ** (-nn) + abs(S2) ** (-nn) + abs(S3) ** (-nn)))
-    #
-    #                         Q1 = np.nan_to_num(Q1)
-    #                         Q2 = np.nan_to_num(Q2)
-    #                         Q3 = np.nan_to_num(Q3)
-    #
-    #                         if abs(S1) > MaxUpSlope:
-    #                             Q1 = 0
-    #                         else:
-    #                             Q1 = Q1 * (1 - (abs(S1) / MaxUpSlope))
-    #
-    #                         if abs(S2) > MaxUpSlope:
-    #                             Q2 = 0
-    #                         else:
-    #                             Q2 = Q2 * (1 - (abs(S2) / MaxUpSlope))
-    #
-    #                         if abs(S3) > MaxUpSlope:
-    #                             Q3 = 0
-    #                         else:
-    #                             Q3 = Q3 * (1 - (abs(S3) / MaxUpSlope))
-    #
-    #                     # Save Discharge
-    #                     # if Shrubs:  # Reduce Overwash Through Shrub Cells
-    #                     #     # Insert shrub effects here
-    #                     # else:
-    #                     # Cell 1
-    #                     if i > 0:
-    #                         Discharge[TS, i - 1, d + 1] += Q1
-    #
-    #                     # Cell 2
-    #                     Discharge[TS, i, d + 1] += Q2
-    #
-    #                     # Cell 3
-    #                     if i < (longshore - 1):
-    #                         Discharge[TS, i + 1, d + 1] += Q3
-    #
-    #                     # Calculate Sed Movement
-    #
-    #                     # Run-up Regime
-    #                     if not inundation:
-    #                         if Q1 > Qs_min:  # and S1 >= 0:
-    #                             # Qs1 = max(0, Kr * Q1)
-    #                             Qs1 = max(0, Kr * Q1 * (S1 + C))
-    #                         else:
-    #                             Qs1 = 0
-    #
-    #                         if Q2 > Qs_min:  # and S2 >= 0:
-    #                             # Qs2 = max(0, Kr * Q2)
-    #                             Qs2 = max(0, Kr * Q2 * (S2 + C))
-    #                         else:
-    #                             Qs2 = 0
-    #
-    #                         if Q3 > Qs_min:  # and S3 >= 0:
-    #                             # Qs3 = max(0, Kr * Q3)
-    #                             Qs3 = max(0, Kr * Q3 * (S3 + C))
-    #                         else:
-    #                             Qs3 = 0
-    #
-    #                     # Inundation Regime - Murray and Paola (1994, 1997) Rule 3 with flux limiter
-    #                     else:
-    #                         if Q1 > Qs_min:
-    #                             Qs1 = Ki * (Q1 * (S1 + C)) ** mm
-    #                             if Qs1 < 0:
-    #                                 Qs1 = 0
-    #                         else:
-    #                             Qs1 = 0
-    #
-    #                         if Q2 > Qs_min:
-    #                             Qs2 = Ki * (Q2 * (S2 + C)) ** mm
-    #                             if Qs2 < 0:
-    #                                 Qs2 = 0
-    #                         else:
-    #                             Qs2 = 0
-    #
-    #                         if Q3 > Qs_min:
-    #                             Qs3 = Ki * (Q3 * (S3 + C)) ** mm
-    #                             if Qs3 < 0:
-    #                                 Qs3 = 0
-    #                         else:
-    #                             Qs3 = 0
-    #
-    #                     Qs1 = np.nan_to_num(Qs1)
-    #                     Qs2 = np.nan_to_num(Qs2)
-    #                     Qs3 = np.nan_to_num(Qs3)
-    #
-    #                     # Calculate Net Erosion/Accretion
-    #                     if Elevation[TS, i, d] > MHW_m or any(z > MHW_m for z in Elevation[TS, i, d + 1: d + 10]):  # If cell is subaerial, elevation change is determined by difference between flux in vs. flux out
-    #                         if i > 0:
-    #                             SedFluxIn[TS, i - 1, d + 1] += Qs1
-    #
-    #                         SedFluxIn[TS, i, d + 1] += Qs2
-    #
-    #                         if i < (longshore - 1):
-    #                             SedFluxIn[TS, i + 1, d + 1] += Qs3
-    #
-    #                         Qs_out = Qs1 + Qs2 + Qs3
-    #                         SedFluxOut[TS, i, d] = Qs_out
-    #
-    #                     else:  # If cell is subaqeous, exponentially decay dep. of remaining sed across bay
-    #
-    #                         if inundation:
-    #                             Cbb = Cbb_r
-    #                         else:
-    #                             Cbb = Cbb_i
-    #
-    #                         Qs0 = SedFluxIn[TS, i, d] * Cbb
-    #
-    #                         Qs1 = Qs0 * Q1 / (Q1 + Q2 + Q3)
-    #                         Qs2 = Qs0 * Q2 / (Q1 + Q2 + Q3)
-    #                         Qs3 = Qs0 * Q3 / (Q1 + Q2 + Q3)
-    #
-    #                         Qs1 = np.nan_to_num(Qs1)
-    #                         Qs2 = np.nan_to_num(Qs2)
-    #                         Qs3 = np.nan_to_num(Qs3)
-    #
-    #                         if Qs1 < Qs_bb_min:
-    #                             Qs1 = 0
-    #                         if Qs2 < Qs_bb_min:
-    #                             Qs2 = 0
-    #                         if Qs3 < Qs_bb_min:
-    #                             Qs3 = 0
-    #
-    #                         if i > 0:
-    #                             SedFluxIn[TS, i - 1, d + 1] += Qs1
-    #
-    #                         SedFluxIn[TS, i, d + 1] += Qs2
-    #
-    #                         if i < (longshore - 1):
-    #                             SedFluxIn[TS, i + 1, d + 1] += Qs3
-    #
-    #                         Qs_out = Qs1 + Qs2 + Qs3
-    #                         SedFluxOut[TS, i, d] = Qs_out
-    #
-    #                     # # Shrub Saline Flooding
-    #                     # if Shrubs:
-    #                     #     # Insert shrub saline flooding here
 
         Elevation, Discharge, SedFluxIn, SedFluxOut = route_overwash(
             TS,
@@ -1757,18 +1504,24 @@ def storm_processes(
         # if Shrubs:
         #     # Insert calculation of burial/erosion for each shrub
 
-        # Beach and Duneface Change
-        Elevation[TS, :, :], dV, wetMap = calc_dune_erosion_TS(  # TODO: Use dV in shoreline change calculations
-            Elevation[TS, :, :],
-            1,
-            dune_crest_loc,
-            MHW_m,
-            Rhigh,
-            1 / substep,
-            beach_equilibrium_slope,
-            beach_erosiveness,
-            beach_substeps,
-        )
+
+        if TS % substep == 0:
+            # Beach and Duneface Change
+            Elevation[TS, :, :], dV, wetMap = calc_dune_erosion_TS(  # TODO: Use dV in shoreline change calculations
+                Elevation[TS, :, :],
+                1,
+                dune_crest_loc,
+                MHW_m,
+                Rhigh,
+                beach_equilibrium_slope,
+                beach_erosiveness,
+                beach_substeps,
+            )
+
+            if np.isnan(np.sum(Elevation)):
+                print("  > Beach/Dune Model Instability Failure")
+                Elevation[-1, :, :] = np.nan
+                break
 
         inundated = np.logical_or(inundated, wetMap)  # Update inundated map with cells seaward of dune crest
 
@@ -1853,7 +1606,7 @@ def route_overwash(
 
         Rin_eff = 1  # TEMP
 
-        for d in range(domain_width - 1):
+        for d in range(domain_width - 1):  # TODO: Start this at first row with discharge, not at first row of domain
 
             # Reduce discharge across row via infiltration
             if d > 0:
@@ -1967,20 +1720,21 @@ def route_overwash(
                         if np.isnan(Q3):
                             Q3 = 0
 
-                        if abs(S1) > MaxUpSlope:
-                            Q1 = 0
-                        else:
-                            Q1 = Q1 * (1 - (abs(S1) / MaxUpSlope))
+                        if Elevation[TS, i, d] > MHW_m:  # If subaerial
+                            if abs(S1) > MaxUpSlope:
+                                Q1 = 0
+                            else:
+                                Q1 = Q1 * (1 - (abs(S1) / MaxUpSlope))
 
-                        if abs(S2) > MaxUpSlope:
-                            Q2 = 0
-                        else:
-                            Q2 = Q2 * (1 - (abs(S2) / MaxUpSlope))
+                            if abs(S2) > MaxUpSlope:
+                                Q2 = 0
+                            else:
+                                Q2 = Q2 * (1 - (abs(S2) / MaxUpSlope))
 
-                        if abs(S3) > MaxUpSlope:
-                            Q3 = 0
-                        else:
-                            Q3 = Q3 * (1 - (abs(S3) / MaxUpSlope))
+                            if abs(S3) > MaxUpSlope:
+                                Q3 = 0
+                            else:
+                                Q3 = Q3 * (1 - (abs(S3) / MaxUpSlope))
 
                     # Save Discharge
                     # if Shrubs:  # Reduce Overwash Through Shrub Cells
@@ -2051,7 +1805,7 @@ def route_overwash(
 
                     # Calculate Net Erosion/Accretion
                     # If cell is subaerial, elevation change is determined by difference between flux in vs. flux out
-                    if Elevation[TS, i, d] > MHW_m:  # or np.any(z > MHW_m for z in Elevation[TS, i, d + 1: d + 10]):
+                    if Elevation[TS, i, d] > MHW_m or np.sum(np.greater(Elevation[TS, i, d + 1: d + 10], MHW_m)) > 0:
                         if i > 0:
                             SedFluxIn[TS, i - 1, d + 1] += Qs1
 
@@ -2097,13 +1851,12 @@ def route_overwash(
     return Elevation, Discharge, SedFluxIn, SedFluxOut
 
 
-@njit(fastmath=True)
+@njit
 def calc_dune_erosion_TS(topo,
                          dx,
                          crestline,
                          MHW,
                          Rhigh,
-                         dT,
                          Beq,
                          Et,
                          substeps,
@@ -2122,12 +1875,10 @@ def calc_dune_erosion_TS(topo,
         [m] Mean high water
     Rhigh : ndarray
         [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
-    dT : float
-        [hr] Time step length.
     Beq : float
         Beach equilibrium slope.
     Et : float
-        Beach erosiveness timescale constant: larger (smaller) Et == lesser (greater) storm erosiveness
+        Beach erosiveness timescale constant: larger (smaller) Et == greater (lesser) storm erosiveness
     substeps : int
         Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
 
@@ -2140,8 +1891,6 @@ def calc_dune_erosion_TS(topo,
     wetMap
         [bool] Map of beach/duneface cells inundated this storm iteration
     """
-
-    Q = dT / Et  # Fraction of time erosive action occurs for single iteration
 
     # Initialize
     longshore, crossshore = topo.shape  # Domain dimensions
@@ -2197,7 +1946,7 @@ def calc_dune_erosion_TS(topo,
                 divq = Rexcess * (hxx * Rexcess + 2 * (Beq - Bl) * Bl)
 
                 # Evolve topography
-                topo[y, x] += Q * divq / substeps
+                topo[y, x] += Et * divq / substeps
 
                 # Break if next cell not inundated
                 if not cont:
