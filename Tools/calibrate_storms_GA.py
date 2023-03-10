@@ -1,0 +1,289 @@
+"""
+Script for calibrating storm parameters using genetic algorithm.
+IRBR 9 Mar 2023
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+import routines_beem as routine
+import copy
+import time
+from tabulate import tabulate
+import pygad
+
+
+def model_skill(obs_change, sim_change, obs_change_mean, mask):
+    """Perform suite of model skill assesments and return scores."""
+
+    # _____________________________________________
+    # Nash-Sutcliffe Model Efficiency
+    """The closer the score is to 1, the better the agreement. If the score is below 0, the mean observed value is a better predictor than the model."""
+    A = np.mean(np.square(np.subtract(obs_change[mask], sim_change[mask])))
+    B = np.mean(np.square(np.subtract(obs_change[mask], obs_change_mean)))
+    nse = 1 - A / B
+
+    # _____________________________________________
+    # Root Mean Square Error
+    rmse = np.sqrt(np.mean(np.square(sim_change[mask] - obs_change[mask])))
+
+    # _____________________________________________
+    # Brier Skill Score
+    """A skill score value of zero means that the score for the predictions is merely as good as that of a set of baseline or reference or default predictions, 
+    while a skill score value of one (100%) represents the best possible score. A skill score value less than zero means that the performance is even worse than 
+    that of the baseline or reference predictions (i.e., the baseline matches the final field profile more closely than the simulation output)."""
+    bss = routine.brier_skill_score(sim_change, obs_change, np.zeros(sim_change.shape), mask)
+
+    # _____________________________________________
+    # Categorical
+    threshold = 0.02
+    sim_erosion = sim_change < -threshold
+    sim_deposition = sim_change > threshold
+    sim_no_change = np.logical_and(sim_change <= threshold, -threshold <= sim_change)
+    obs_erosion = obs_change < -threshold
+    obs_deposition = obs_change > threshold
+    obs_no_change = np.logical_and(obs_change <= threshold, -threshold <= obs_change)
+
+    cat_Mask = np.zeros(obs_change.shape)
+    cat_Mask[np.logical_and(sim_erosion, obs_erosion)] = 1  # Hit
+    cat_Mask[np.logical_and(sim_deposition, obs_deposition)] = 1  # Hit
+    cat_Mask[np.logical_and(sim_erosion, ~obs_erosion)] = 2  # False Alarm
+    cat_Mask[np.logical_and(sim_deposition, ~obs_deposition)] = 2  # False Alarm
+    cat_Mask[np.logical_and(sim_no_change, obs_no_change)] = 3  # Correct Reject
+    cat_Mask[np.logical_and(sim_no_change, ~obs_no_change)] = 4  # Miss
+
+    hits = np.count_nonzero(cat_Mask[mask] == 1)
+    false_alarms = np.count_nonzero(cat_Mask[mask] == 2)
+    correct_rejects = np.count_nonzero(cat_Mask[mask] == 3)
+    misses = np.count_nonzero(cat_Mask[mask] == 4)
+    J = hits + false_alarms + correct_rejects + misses
+
+    if J > 0:
+        # Percentage Correct
+        """Ratio of correct predictions as a fraction of the total number of forecasts. Scores closer to 1 (100%) are better."""
+        pc = (hits + correct_rejects) / J
+
+        # Heidke Skill Score
+        """The percentage correct, corrected for the number expected to be correct by chance. Scores closer to 1 (100%) are better."""
+        G = ((hits + false_alarms) * (hits + misses) / J ** 2) + ((misses + correct_rejects) * (false_alarms + correct_rejects) / J ** 2)  # Fraction of predictions of the correct categories (H and C) that would be expected from a random choice
+        hss = (pc - G) / (1 - G)  # The percentage correct, corrected for the number expected to be correct by chance
+
+    else:
+        pc = np.nan
+        hss = np.nan
+
+    return nse, rmse, bss, pc, hss
+
+
+def storm_fitness(solution, solution_idx):
+    """Run a storm with this particular combintion of parameter values, and return fitness value of simulated to observed."""
+
+    topof = copy.deepcopy(topo_prestorm)
+
+    topof, topo_change_overwash, OWflux, netDischarge, inundated = routine.storm_processes(
+        topof,
+        veg,
+        Rhigh,
+        Rlow,
+        dur,
+        slabheight_m=slabheight_m,
+        threshold_in=0.25,
+        Rin_i=5,
+        Rin_r=solution[0],
+        Cx=solution[1],
+        AvgSlope=2 / 200,
+        nn=0.5,
+        MaxUpSlope=solution[2],
+        fluxLimit=solution[3],
+        Qs_min=1,
+        Kr=solution[4],
+        Ki=5e-06,
+        mm=solution[5],
+        MHW=MHW,
+        Cbb_i=0.85,
+        Cbb_r=0.7,
+        Qs_bb_min=1,
+        substep_i=6,
+        substep_r=int(solution[6]),
+        beach_equilibrium_slope=0.02,
+        beach_erosiveness=2,
+        beach_substeps=20,
+    )
+
+    sim_topo_final = topof * slabheight_m  # [m]
+    obs_topo_final_m = topo_final * slabheight_m  # [m]
+    topo_pre_m = topo_prestorm * slabheight_m  # [m]
+    topo_change_prestorm = sim_topo_final - topo_pre_m
+
+    # _____________________________________________
+    # Model Skill: Comparisons to Observations
+
+    subaerial_mask = sim_topo_final > MHW  # [bool] Map of every cell above water
+
+    beach_duneface_mask = np.zeros(sim_topo_final.shape)
+    for l in range(topo_prestorm.shape[0]):
+        beach_duneface_mask[l, :dune_crest[l]] = True
+    beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
+
+    Sim_Obs_OW_Mask = np.logical_or(OW_Mask, inundated) * (~beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell landward of dune crest that was inundated in simulation or observation or both
+
+    # Final Elevation Changes
+    obs_change_m = (obs_topo_final_m - topo_pre_m)  # [m] Observed change
+    sim_change_m = topo_change_prestorm  # [m] Simulated change
+
+    # Beach Mask
+    obs_change_bmasked = obs_change_m * beach_duneface_mask  # [m]
+    sim_change_bmasked = sim_change_m * beach_duneface_mask  # [m]
+    obs_change_mean_bmasked = np.mean(obs_change_m[beach_duneface_mask])  # [m] Average beach change of observations, masked
+
+    # Overwash Mask
+    obs_change_omasked = obs_change_m * OW_Mask * ~beach_duneface_mask  # [m]
+    sim_change_omasked = sim_change_m * ~beach_duneface_mask  # [m]
+    obs_change_mean_omasked = np.mean(obs_change_m[Sim_Obs_OW_Mask])  # [m] Average beach change of observations, masked
+
+    # ------
+    # Beach
+
+    # Calculate Skill Scores
+    NSEb, RMSEb, BSSb, PCb, HSSb = model_skill(obs_change_bmasked, sim_change_bmasked, obs_change_mean_bmasked, beach_duneface_mask)
+
+    # --------
+    # Overwash
+
+    # Calculate Skill Scores
+    NSEo, RMSEo, BSSo, PCo, HSSo = model_skill(obs_change_omasked, sim_change_omasked, obs_change_mean_omasked, Sim_Obs_OW_Mask)
+
+    return BSSo
+
+
+
+
+start_time = time.time()  # Record time at start of calibration
+
+# _____________________________________________
+# Define Variables
+Rhigh = 3.32
+Rlow = 0.9  # Actual Florence: 1.93
+dur = 70
+slabheight_m = 0.1
+MHW = 0
+
+# Initial Observed Topo
+Init = np.load("Input/Init_NorthernNCB_2017_PreFlorence.npy")
+# Final Observed
+End = np.load("Input/Init_NorthernNCB_2018_PostFlorence.npy")
+
+# Observed Overwash Mask
+Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  # Load observed overwash mask
+
+# Define Alongshore Coordinates of Domain
+xmin = 575  # 575, 2000, 2150, 2000, 3800  # 2650
+xmax = 825  # 825, 2125, 2350, 2600, 4450  # 2850
+
+name = '575-825, KQ(S+C)'
+
+
+# _____________________________________________
+# Conversions & Initializations
+
+# Transform Initial Observed Topo
+topo_init = Init[0, xmin: xmax, :]  # [m]
+topo0 = topo_init / slabheight_m  # [slabs] Transform from m into number of slabs
+topo = copy.deepcopy(topo0)  # [slabs] Initialise the topography map
+
+# Transform Final Observed Topo
+topo_final = End[0, xmin:xmax, :] / slabheight_m  # [slabs] Transform from m into number of slabs
+OW_Mask = Florence_Overwash_Mask[xmin: xmax, :]  # [bool]
+
+# Set Veg Domain
+spec1 = Init[2, xmin: xmax, :]
+spec2 = Init[3, xmin: xmax, :]
+veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
+veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or larger than one
+veg[veg < 0] = 0
+
+# Find Dune Crest, Beach Slopes
+dune_crest = routine.foredune_crest(topo * slabheight_m, veg)
+# dune_crest[245: 299] = 171  # 1715-1845  # 2000-2600 TEMP!!!
+
+# Transform water levels to vectors
+Rhigh = Rhigh * np.ones(topo_final.shape[0])
+Rlow = Rlow * np.ones(topo_final.shape[0])
+
+topo_prestorm = copy.deepcopy(topo)
+
+
+# _____________________________________________
+# Prepare other GA parameters
+
+num_generations = 25
+num_parents_mating = 4
+
+fitness_function = storm_fitness
+
+sol_per_pop = 5
+
+num_genes = 7
+gene_type = [int,
+             int,
+             [float, 2],
+             [float, 2],
+             [float, 7],
+             [float, 2],
+             int]
+gene_space = [{'low': 10, 'high': 400},  # Rin
+              {'low': 1, 'high': 75},  # Cx
+              {'low': 0.5, 'high': 3},  # MaxUpSlope
+              {'low': 0.2, 'high': 5},  # fluxLimit
+              {'low': 1e-05, 'high': 1e-04},  # Kr
+              {'low': 1, 'high': 2.5},  # mm
+              {'low': 1, 'high': 20}]  # OW Substep
+
+parent_selection_type = "sss"
+keep_parents = 1
+
+crossover_type = "single_point"
+
+mutation_type = "random"
+mutation_percent_genes = 10
+
+
+# _____________________________________________
+# Find Best Set of Parameter Values With GA
+
+# Create instance of GA class
+ga_instance = pygad.GA(num_generations=num_generations,
+                       num_parents_mating=num_parents_mating,
+                       fitness_func=fitness_function,
+                       sol_per_pop=sol_per_pop,
+                       num_genes=num_genes,
+                       gene_type=gene_type,
+                       gene_space=gene_space,
+                       parent_selection_type=parent_selection_type,
+                       keep_parents=keep_parents,
+                       crossover_type=crossover_type,
+                       mutation_type=mutation_type,
+                       mutation_percent_genes=mutation_percent_genes)
+
+# Run genetic algorithm
+ga_instance.run()
+
+
+# _____________________________________________
+SimDuration = time.time() - start_time
+print()
+print("Elapsed Time: ", SimDuration, "sec")
+
+
+# _____________________________________________
+# Plot & Record
+
+solution, solution_fitness, solution_idx = ga_instance.best_solution()
+print()
+print("Parameters of the best solution : {solution}".format(solution=solution))
+print("Fitness value of the best solution = {solution_fitness}".format(solution_fitness=solution_fitness))
+
+ga_instance.plot_fitness()
+ga_instance.plot_genes()
+
+print()
+print("Complete.")
