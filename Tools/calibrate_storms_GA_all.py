@@ -161,7 +161,6 @@ def storm_fitness(solution, solution_idx):
 
 start_time = time.time()  # Record time at start of calibration
 
-
 # _____________________________________________
 # Define Variables
 Rhigh = 3.32
@@ -182,7 +181,7 @@ Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  
 xmin = 575  # 575, 2000, 2150, 2000, 3800  # 2650
 xmax = 825  # 825, 2125, 2350, 2600, 4450  # 2850
 
-name = '575-825, KQ(S+C), Beach'
+name = '575-825, KQ(S+C)'
 
 
 # _____________________________________________
@@ -216,7 +215,7 @@ topo_prestorm = copy.deepcopy(topo)
 
 
 # _____________________________________________
-# Prepare other GA parameters
+# Prepare Genetic Algoritm Parameters
 
 # Genes: Free parameters
 num_genes = 10
@@ -245,14 +244,17 @@ gene_space = [{'low': 50, 'high': 450},  # Rin
 num_generations = 75
 sol_per_pop = 5  # Solutions for each population
 
-mutation_type = "random"
-mutation_percent_genes = 10
+mutation_type = "adaptive"
+mutation_percent_genes = [15, 5]
 
 num_parents_mating = 4
 parent_selection_type = "sss"
 keep_parents = 1
 crossover_type = "single_point"
 
+
+# ___________________________________________________________________________________________________________________________________
+# ___________________________________________________________________________________________________________________________________
 
 # _____________________________________________
 # Find Best Set of Parameter Values With PyGAD
@@ -270,9 +272,13 @@ ga_instance = pygad.GA(num_generations=num_generations,
                        crossover_type=crossover_type,
                        mutation_type=mutation_type,
                        mutation_percent_genes=mutation_percent_genes,
-                       save_solutions=True)
+                       suppress_warnings=True,
+                       parallel_processing=3)
 
 # Run genetic algorithm
+print(name)
+print()
+print("  Working...")
 ga_instance.run()
 
 
@@ -280,6 +286,8 @@ ga_instance.run()
 SimDuration = time.time() - start_time
 print()
 print("Elapsed Time: ", SimDuration, "sec")
+print()
+print("Complete.")
 
 
 # _____________________________________________
@@ -301,13 +309,7 @@ print(tabulate({
     "Et": [best_solution[8]],
     "SSb": [best_solution[9]],
     "Score": [solution_fitness]
-    }, headers="keys", floatfmt=(None, ".0f", ".0f", ".2f", ".2f", ".7f", ".2f", ".0f", ".4f", ".2f", ".0f", ".4f"))
+    }, headers="keys", floatfmt=(None, ".0f", ".0f", ".2f", ".2f", ".7f", ".2f", ".0f", ".3f", ".2f", ".0f", ".4f"))
 )
 
-print()
-print("Complete.")
-
-ga_instance.plot_fitness()
-ga_instance.plot_genes()
-
-
+ga_instance.plot_fitness(title=name)
