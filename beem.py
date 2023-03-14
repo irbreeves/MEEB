@@ -6,12 +6,11 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 23 February 2023
+Last update: 14 March 2023
 
 __________________________________________________________________________________________________________________________________"""
 
 import numpy as np
-import scipy.io
 import math
 import dill
 import matplotlib.pyplot as plt
@@ -19,7 +18,6 @@ import time
 import imageio
 import os
 import copy
-from mpl_toolkits.mplot3d import Axes3D
 import cProfile
 
 import routines_beem as routine
@@ -118,6 +116,7 @@ class BEEM:
             Cx=15,  # Constant for representing flow momentum for sediment transport in inundation overwash regime
             nn=0.5,  # Flow routing constant
             MaxUpSlope=1,  # Maximum slope water can flow uphill
+            fluxLimit=1,  # [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
             Qs_min=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
             K_ru=1e-04,  # Sediment transport coefficient for run-up overwash regime
             K_in=5e-04,  # Sediment transport coefficient for inundation overwash regime
@@ -196,6 +195,7 @@ class BEEM:
         self._Cx = Cx
         self._nn = nn
         self._MaxUpSlope = MaxUpSlope
+        self._fluxLimit = fluxLimit
         self._Qs_min = Qs_min
         self._K_ru = K_ru
         self._K_in = K_in
@@ -389,6 +389,7 @@ class BEEM:
                     2 / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
                     self._nn,
                     self._MaxUpSlope,
+                    self._fluxLimit,
                     self._Qs_min,
                     self._K_ru,
                     self._K_in,
@@ -405,7 +406,7 @@ class BEEM:
                 )
 
                 # Enforce angles of repose again after overwash
-                self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # TODO: Investigate whether slope enforcement after overwash is necessary; remove if not
+                self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]
 
                 # Update vegetation from storm effects
                 self._spec1[inundated] = 0  # Remove species where beach is inundated - Why is this not working? TODO: Apply elevation change threshold here too
@@ -418,7 +419,6 @@ class BEEM:
 
             seainput = self._topo - before1  # Sand added to the beach by the sea  TODO: This includes overwash, but it shouldnt. Use dV calculated in calc_dune_erosion instead!
 
-            self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # Enforce angles of repose again
             balance_ts = self._topo - before1
             self._balance = self._balance + balance_ts + topo_change_overwash
             self._stability = self._stability + abs(self._topo - before1)
@@ -693,30 +693,6 @@ cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
 cbar = Fig.colorbar(cax2)
 cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
 plt.tight_layout()
-
-
-# # 3D Elevation
-# fig = plt.figure(figsize=(12, 8))
-# ax = fig.add_subplot(111, projection="3d")
-# scale_x = 1
-# L, C = beem.topo.shape
-# scale_y = L / C
-# scale_z = 10 / L
-# ax.get_proj = lambda: np.dot(
-#     Axes3D.get_proj(ax), np.diag([scale_x, scale_y, scale_z, 1])
-# )
-# X, Y = np.meshgrid(np.arange(C), np.arange(L))
-# ax.plot_surface(
-#     X,
-#     Y,
-#     beem.topo * beem.slabheight,
-#     cmap="terrain",
-#     alpha=1,
-#     linewidth=0,
-#     shade=True,
-#     vmin=0,
-#     vmax=4.5,
-# )
 
 # Animation: Elevation and Vegetation Over Time
 for t in range(0, beem.simulation_time_yr + 1):
