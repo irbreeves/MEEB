@@ -6,3 +6,5 @@ setuptools
 imageio
 rasterio
 numba
+tabulate
+pygad
