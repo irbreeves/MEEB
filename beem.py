@@ -313,7 +313,7 @@ class BEEM:
         before = copy.deepcopy(self._topo)
 
         # Get present groundwater elevations
-        dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._veg)
+        dune_crest = routine.foredune_crest(self._topo * self._slabheight_m)
         eqtopo = routine.equilibrium_topography(self._topo, self._s_sf_eq, self._beach_equilibrium_slope, self._MHW, dune_crest)
         self._gw = eqtopo * self._groundwater_depth
         self._gw[self._gw >= self._topo] = self._topo[self._gw >= self._topo]
@@ -347,20 +347,8 @@ class BEEM:
 
         if it % self._stormreset == 0:
             veg_elev_limit = np.argmax(min(self._Spec1_elev_min, self._Spec2_elev_min) / self._slabheight_m + self._MHW < self._topo, axis=1)
-            dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._veg)
+            dune_crest = routine.foredune_crest(self._topo * self._slabheight_m)
             slopes = routine.beach_slopes(self._topo, self._beach_equilibrium_slope, self._MHW, dune_crest, self._slabheight_m)
-
-            # # TEMP: DEBUGGING DUNE CREST LOCATION
-            # if it % 4 == 0 and 152 < it < 207:
-            #     tempfig = plt.figure(figsize=(14, 4.5))
-            #     ax_1 = tempfig.add_subplot(211)
-            #     cax_1 = ax_1.matshow(beem.topo * beem.slabheight, cmap='terrain', vmin=-1.1, vmax=4.0)
-            #     ax_1.plot(dune_crest, np.arange(len(dune_crest)))
-            #     # ===
-            #     ax_2 = tempfig.add_subplot(212)
-            #     cax_2 = ax_2.matshow(beem.veg * beem.slabheight, cmap='YlGn', vmin=0, vmax=1)
-            #     ax_2.plot(dune_crest, np.arange(len(dune_crest)))
-            #     plt.show()
 
             iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
 
@@ -377,7 +365,6 @@ class BEEM:
                 self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
                 self._topo, topo_change_overwash, self._OWflux, netDischarge, inundated = routine.storm_processes(
                     self._topo,
-                    self._veg,
                     Rhigh,
                     Rlow,
                     dur,

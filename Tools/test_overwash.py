@@ -9,15 +9,16 @@ import routines_beem as routine
 import copy
 import time
 from matplotlib import colors
+import math
 
 start_time = time.time()  # Record time at start of run
 
 
 # _____________________________________________
 # Define Variables
-Rhigh = 3.3
-Rlow = 0.9
-dur = 35
+Rhigh = 3.32
+Rlow = 0.9  # 1.93
+dur = 70
 slabheight_m = 0.1
 MHW = 0
 
@@ -27,8 +28,8 @@ Init = np.load("Input/Init_NorthernNCB_2017_PreFlorence.npy")
 End = np.load("Input/Init_NorthernNCB_2018_PostFlorence.npy")
 
 # Define Alongshore Coordinates of Domain
-xmin = 575  # 575, 2000, 2150, 2000, 3800
-xmax = 825  # 825, 2125, 2350, 2600, 4450
+xmin = 4000  # 575, 2000, 2150, 2000, 3800
+xmax = 4500  # 825, 2125, 2350, 2600, 4450
 
 
 # _____________________________________________
@@ -50,7 +51,7 @@ veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or la
 veg[veg < 0] = 0
 
 # Find Dune Crest, Beach Slopes
-dune_crest = routine.foredune_crest(topo * slabheight_m, veg)
+dune_crest = routine.foredune_crest(topo * slabheight_m)
 # dune_crest[245: 299] = 171  # 1715-1845  # 2000-2600 TEMP!!!
 
 # Transform water levels to vectors
@@ -62,36 +63,36 @@ Rlow = Rlow * np.ones(topo_final.shape[0])
 # Overwash, Beach, & Dune Change
 topo_prestorm = copy.deepcopy(topo)
 
-name = "ss=3, Rin=75, MaxUpSlope=1, Kr=1e-04, fluxlimit=1, Q"
+name = "2150-2350, KQ(S+C)"
 print(name)
 
 sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated = routine.storm_processes(
     topo,
-    veg,
     Rhigh,
     Rlow,
     dur,
     slabheight_m,
     threshold_in=0.25,
     Rin_i=5,
-    Rin_r=75,  # was 1.2
-    Cx=15,  # was 10
+    Rin_r=339,
+    Cx=24,
     AvgSlope=2/200,
     nn=0.5,
-    MaxUpSlope=1,  # was 0.25
+    MaxUpSlope=0.89,
+    fluxLimit=1,
     Qs_min=1,
-    Kr=1e-04,  # was 7.5e-05   1e-4
-    Ki=1e-06,  # was 7.5e-06
+    Kr=5.15e-05,
+    Ki=5e-06,
     mm=2,
     MHW=MHW,
     Cbb_i=0.85,
     Cbb_r=0.7,
     Qs_bb_min=1,
     substep_i=6,
-    substep_r=3,  # 6 seems ideal
+    substep_r=5,
     beach_equilibrium_slope=0.02,
-    beach_erosiveness=1,
-    beach_substeps=8,
+    beach_erosiveness=1.74,
+    beach_substeps=17,
 )
 
 topo_change_prestorm = sim_topo_final - topo_prestorm
@@ -141,7 +142,7 @@ print("  --> NSE mask", NSE)
 A2 = np.mean(np.square(np.subtract(obs_change_m, sim_change_m)))
 B2 = np.mean(np.square(np.subtract(obs_change_m, obs_change_mean)))
 NSE2 = 1 - A2 / B2
-print("  --> NSE no mask", NSE2)
+# print("  --> NSE no mask", NSE2)
 
 # _____________________________________________
 # Root Mean Square Error
@@ -149,7 +150,7 @@ RMSE = np.sqrt(np.mean(np.square(sim_change_masked[Sim_Obs_OW_Mask] - obs_change
 print("  --> RMSE mask", RMSE)
 
 RMSE2 = np.sqrt(np.mean(np.square(sim_change_m - obs_change_m)))
-print("  --> RMSE no mask", RMSE2)
+# print("  --> RMSE no mask", RMSE2)
 
 # _____________________________________________
 # Brier Skill Score
@@ -157,7 +158,7 @@ BSS = routine.brier_skill_score(sim_change_masked, obs_change_masked, np.zeros(s
 print("  --> BSS mask", BSS)
 
 BSS2 = routine.brier_skill_score(sim_change_m, obs_change_m, np.zeros(sim_change_m.shape), np.ones(sim_change_m.shape).astype(bool))
-print("  --> BSS no mask", BSS2)
+# print("  --> BSS no mask", BSS2)
 
 # _____________________________________________
 # Categorical
@@ -214,6 +215,7 @@ J_m = hits_m + false_alarms_m + correct_rejects_m + misses_m
 # Percentage Correct
 PC = (hits + correct_rejects) / J
 PC_m = (hits_m + correct_rejects_m) / J_m
+print("  --> PC mask", PC_m)
 
 # Heidke Skill Score
 G_m = ((hits_m + false_alarms_m) * (hits_m + misses_m) / J_m ** 2) + ((misses_m + correct_rejects_m) * (false_alarms_m + correct_rejects_m) / J_m ** 2)  # Fraction of predictions of the correct categories (H and C) that would be expected from a random choice
@@ -222,7 +224,7 @@ print("  --> HSS mask", HSS2)
 
 G = ((hits + false_alarms) * (hits + misses) / J ** 2) + ((misses + correct_rejects) * (false_alarms + correct_rejects) / J ** 2)  # Fraction of predictions of the correct categories (H and C) that would be expected from a random choice
 HSS = (PC - G) / (1 - G)   # The percentage correct, corrected for the number expected to be correct by chance
-print("  --> HSS no mask", HSS)
+# print("  --> HSS no mask", HSS)
 
 # _____________________________________________
 # Plot
@@ -266,18 +268,18 @@ cax2 = ax2.matshow(topo2, cmap=cmap1, vmin=0, vmax=5.0)
 # cbar.set_label('Elevation [m MHW]', rotation=270, labelpad=20)
 
 # Simulated Topo Change
-maxx = max(abs(np.min(obs_change_masked)), abs(np.max(obs_change_masked)))
-maxxx = max(abs(np.min(sim_change_masked)), abs(np.max(sim_change_masked)))
+maxx = max(abs(np.min(obs_change_m)), abs(np.max(obs_change_m)))
+maxxx = max(abs(np.min(sim_change_m)), abs(np.max(sim_change_m)))
 maxxxx = 1  # max(maxx, maxxx)
 ax3 = Fig.add_subplot(223)
-cax3 = ax3.matshow(sim_change_masked[:, pxmin: pxmax], cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
+cax3 = ax3.matshow(sim_change_m[:, pxmin: pxmax], cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
 ax3.plot(dune_crest, np.arange(len(dune_crest)), c='black', alpha=0.6)
 # cbar = Fig.colorbar(cax3)
 # cbar.set_label('Change [m]', rotation=270, labelpad=20)
 
 # Observed Topo Change
 ax4 = Fig.add_subplot(224)
-cax4 = ax4.matshow(obs_change_masked[:, pxmin: pxmax], cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
+cax4 = ax4.matshow(obs_change_masked_beach[:, pxmin: pxmax], cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
 ax4.plot(dune_crest, np.arange(len(dune_crest)), c='black', alpha=0.6)
 # cbar = Fig.colorbar(cax4)
 # cbar.set_label('Elevation Change [m]', rotation=270, labelpad=20)
