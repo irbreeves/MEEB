@@ -95,7 +95,6 @@ def storm_fitness(solution, solution_idx):
 
     topof, topo_change_overwash, OWflux, netDischarge, inundated = routine.storm_processes(
         topof,
-        veg,
         Rhigh,
         Rlow,
         dur,
@@ -204,8 +203,7 @@ veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or la
 veg[veg < 0] = 0
 
 # Find Dune Crest, Beach Slopes
-dune_crest = routine.foredune_crest(topo * slabheight_m)
-# dune_crest[245: 299] = 171  # 1715-1845  # 2000-2600 TEMP!!!
+dune_crest = routine.foredune_crest(topo * slabheight_m, MHW)
 
 # Transform water levels to vectors
 Rhigh = Rhigh * np.ones(topo_final.shape[0])

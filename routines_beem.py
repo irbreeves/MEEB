@@ -538,13 +538,15 @@ def backbarrier_shoreline(topof, MHW):
     return BBshoreline
 
 
-def foredune_crest(topo):
+def foredune_crest(topo, MHW):
     """Finds and returns the location of the foredune crest for each grid column alongshore.
 
     Parameters
     ----------
     topo : ndarray
         [m] Present elevation domain.
+    MHW : ndarray
+        [m] Mean high water.
 
     Returns
     ----------
@@ -565,7 +567,7 @@ def foredune_crest(topo):
     crestline = np.round(scipy.signal.savgol_filter(crestline, window_large, 1)).astype(int)
 
     # Step 3: Find peaks with buffer of broadly-smoothened line. If no peak is found, location is marked as gap
-    crestline, not_gap = find_crest_buffer(topo, crestline, crestline, buff)
+    crestline, not_gap = find_crest_buffer(topo, crestline, crestline, buff, MHW)
 
     # Step 4: Fill in gaps with linear interpolation
     x = np.arange(len(crestline))
@@ -587,16 +589,19 @@ def foredune_crest(topo):
 
 
 @njit
-def find_crest_buffer(topo, line_init, crestline, buffer):
+def find_crest_buffer(topo, line_init, crestline, buffer, MHW):
     """Find peaks within buffer of location of line_init; return new crestline."""
 
-    not_gap = np.ones(line_init.shape)
+    threshold = 0.6  # [m] Threshold backshore drop for peak detection
+    crest_pct = 0.1
+
+    not_gap = np.ones(line_init.shape)  # Array indicating which cells in crestline returned an index for an actual peak (i.e., not gap, [1]) and which cells for which no peak was found (i.e., gap, [0])
 
     for r in range(len(topo)):
         if line_init[r] > 0:
             mini = max(0, line_init[r] - buffer)
             maxi = min(topo.shape[1] - 1, line_init[r] + buffer)
-            loc = find_crests(topo[r, mini: maxi], 0, 0.6, 0.1)  # TODO: Replace second input with MHW
+            loc = find_crests(topo[r, mini: maxi], MHW, threshold, crest_pct)
             if np.isnan(loc):
                 crestline[r] = crestline[r - 1]
                 not_gap[r] = 0  # Gap
@@ -925,7 +930,7 @@ def storm_processes(
     domain_width = domain_width_end - domain_width_start
     Elevation = np.zeros([iterations, longshore, domain_width])
     domain_topo_start = topof[:, domain_width_start:] * slabheight_m  # [m]
-    Elevation[0, :, :] = domain_topo_start  # TODO: Allow for open boundary conditions?
+    Elevation[0, :, :] = domain_topo_start
 
     # Initialize Memory Storage Arrays
     Discharge = np.zeros([iterations, longshore, domain_width])
@@ -957,7 +962,7 @@ def storm_processes(
         Rhigh_TS = Rhigh.copy()  # This line prescribes a static TWL over course of storm
 
         # Find dune crest locations and heights for this storm iteration
-        dune_crest_loc = foredune_crest(Elevation[TS, :, :])  # Cross-shore location of pre-storm dune crest
+        dune_crest_loc = foredune_crest(Elevation[TS, :, :], MHW_m)  # Cross-shore location of pre-storm dune crest
 
         Elevation, Discharge, SedFluxIn, SedFluxOut = route_overwash(
             TS,

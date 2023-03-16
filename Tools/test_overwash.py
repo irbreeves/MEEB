@@ -28,8 +28,8 @@ Init = np.load("Input/Init_NorthernNCB_2017_PreFlorence.npy")
 End = np.load("Input/Init_NorthernNCB_2018_PostFlorence.npy")
 
 # Define Alongshore Coordinates of Domain
-xmin = 4000  # 575, 2000, 2150, 2000, 3800
-xmax = 4500  # 825, 2125, 2350, 2600, 4450
+xmin = 575  # 575, 2000, 2150, 2000, 3800
+xmax = 825  # 825, 2125, 2350, 2600, 4450
 
 
 # _____________________________________________
@@ -51,8 +51,7 @@ veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or la
 veg[veg < 0] = 0
 
 # Find Dune Crest, Beach Slopes
-dune_crest = routine.foredune_crest(topo * slabheight_m)
-# dune_crest[245: 299] = 171  # 1715-1845  # 2000-2600 TEMP!!!
+dune_crest = routine.foredune_crest(topo * slabheight_m, MHW)
 
 # Transform water levels to vectors
 Rhigh = Rhigh * np.ones(topo_final.shape[0])
@@ -63,7 +62,7 @@ Rlow = Rlow * np.ones(topo_final.shape[0])
 # Overwash, Beach, & Dune Change
 topo_prestorm = copy.deepcopy(topo)
 
-name = "2150-2350, KQ(S+C)"
+name = "2150-2350, KQ(S+C), flow_start"
 print(name)
 
 sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated = routine.storm_processes(

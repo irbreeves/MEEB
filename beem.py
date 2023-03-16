@@ -292,7 +292,7 @@ class BEEM:
         before = copy.deepcopy(self._topo)
 
         # Get present groundwater elevations
-        dune_crest = routine.foredune_crest(self._topo * self._slabheight_m)
+        dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._MHW * self._slabheight_m)
         eqtopo = routine.equilibrium_topography(self._topo, self._s_sf_eq, self._beach_equilibrium_slope, self._MHW, dune_crest)
         self._gw = eqtopo * self._groundwater_depth
         self._gw[self._gw >= self._topo] = self._topo[self._gw >= self._topo]
@@ -326,7 +326,7 @@ class BEEM:
 
         if it % self._stormreset == 0:
             veg_elev_limit = np.argmax(min(self._Spec1_elev_min, self._Spec2_elev_min) / self._slabheight_m + self._MHW < self._topo, axis=1)
-            dune_crest = routine.foredune_crest(self._topo * self._slabheight_m)
+            dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._MHW * self._slabheight_m)
             slopes = routine.beach_slopes(self._topo, self._beach_equilibrium_slope, self._MHW, dune_crest, self._slabheight_m)
 
             iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
