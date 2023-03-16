@@ -42,9 +42,6 @@ class BEEM:
             inputloc="Input/",  # Input file directory
             outputloc="Output/",  # Output file directory
             topo_filename="Init_NCB_20190830_500m_20200_LinearRidge.npy",  # "Init_NCB_2017_2000m_12000_GapsPreFlorence.npy", #
-            waterlevel_filename="wl_max_texel.mat",
-            veg_spec1_filename="spec1_small_dune.npy",
-            veg_spec2_filename="spec2_small_dune.npy",
             seeded_random_numbers=True,
             save_data=False,
 
@@ -66,20 +63,10 @@ class BEEM:
             clim=0.5,  # Vegetation cover that limits erosion
             n_contour=10,  # Number of contours to be used to calculate fluxes. Multiples of 10
 
-            # HYDRODYNAMIC
-            m26=0.012,  # Parameter for dissipation strength ~[0.01 - 0.02], AKA Fdiss
-            wave_energy=1.0,  # Parameter for initial wave strength ~[1 - 10]
-            depth_limit=0.01,  # Depth limit up to where dissipation is calculated. For depths smaller than "depth_limit", the program sets the value as "pwaveminf"
-            pcurr=0,  # Probability of erosion due to any hydrodynamic forcing rather that waves
-            m28f=0.8,  # Resistance of vegetation: 1 = full, 0 = none
-            pwavemaxf=1.0,  # Maximum erosive strenght of waves (if >1: overrules vegetation)
-            pwaveminf=0.1,  # In area with waves always potential for action (this can never be 0, otherwise the beachupdate is shut down)
-            shelterf=1.0,  # Exposure of sheltered cells: 0 = no shelter, 1 = full shelter
-
             # SHOREFACE, BEACH, & SHORELINE
             beach_equilibrium_slope=0.02,  # Equilibrium slope of the beach
-            beach_erosiveness=1,  # Beach erosiveness timescale constant: larger (smaller) Et == lesser (greater) storm erosiveness
-            beach_substeps=8,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
+            beach_erosiveness=1.75,  # Beach erosiveness timescale constant: larger (smaller) Et == lesser (greater) storm erosiveness
+            beach_substeps=20,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
             shoreface_flux_rate=5000,  # [m3/m/yr] Shoreface flux rate coefficient
             shoreface_equilibrium_slope=0.02,  # Equilibrium slope of the shoreface
             shoreface_depth=10,  # [m] Depth to shoreface toe (i.e. depth of ‘closure’)
@@ -112,20 +99,20 @@ class BEEM:
             storm_list_filename="VCRStormList.npy",
             threshold_in=0.25,  # [%] Threshold percentage of overtopped dune cells exceeded by Rlow needed to be in inundation overwash regime
             Rin_in=5,  # [m^3/hr] Flow infiltration and drag parameter, inundation overwash regime
-            Rin_ru=50,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
-            Cx=15,  # Constant for representing flow momentum for sediment transport in inundation overwash regime
+            Rin_ru=325,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
+            Cx=25,  # Constant for representing flow momentum for sediment transport in inundation overwash regime
             nn=0.5,  # Flow routing constant
             MaxUpSlope=1,  # Maximum slope water can flow uphill
             fluxLimit=1,  # [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
             Qs_min=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
-            K_ru=1e-04,  # Sediment transport coefficient for run-up overwash regime
+            K_ru=5.15e-05,  # Sediment transport coefficient for run-up overwash regime
             K_in=5e-04,  # Sediment transport coefficient for inundation overwash regime
             mm=1.0,  # Inundation overwash constant
             Cbb_in=0.85,  # [%] Coefficient for exponential decay of sediment load entering back-barrier bay, inundation regime
             Cbb_ru=0.7,  # [%] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
             Qs_bb_min=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
             substep_in=3,  # Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
-            substep_ru=3,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+            substep_ru=5,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
 
     ):
         """BEEM: Barrier Explicit Evolution Model"""
@@ -154,14 +141,6 @@ class BEEM:
         self._jumplength = jumplength
         self._clim = clim
         self._n_contour = n_contour
-        self._m26 = m26
-        self._wave_energy = wave_energy
-        self._depth_limit = depth_limit
-        self._pcurr = pcurr
-        self._m28f = m28f
-        self._pwavemaxf = pwavemaxf
-        self._pwaveminf = pwaveminf
-        self._shelterf = shelterf
         self._beach_equilibrium_slope = beach_equilibrium_slope
         self._beach_erosiveness = beach_erosiveness
         self._beach_substeps = beach_substeps

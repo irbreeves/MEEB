@@ -255,95 +255,6 @@ def enforceslopes2(topof, vegf, sh, anglesand, angleveg, th, RNG):
     return topof, total
 
 
-def marine_processes_Rhigh(Rhigh, slabheight, cellsizef, topof, eqtopof, vegf, m26f, m27af, m28f, pwavemaxf, pwaveminf, depthlimitf, shelterf, crestline):
-    """Calculates the effects of high tide levels on the beach and foredune (with stochastic element) - IRBR 1Dec22: This version takes already-computed TWL as direct input.
-    % Beachupdate in cellular automata fashion
-    % Sets back a certain length of the profile to the equilibrium;
-    % if waterlevel exceeds dunefoot, this lead to dune erosion;
-    % otherwise, only the beach is reset.
-    %
-    % Rhigh: height of total water level [slabs]
-    % slabheight: slabheight in m [slabheightm] [m]
-    % cellsizef: interpreted cell size [cellsize] [m]
-    % topof: topography map [topo] [slabs]
-    % eqtopof: equilibrium beach topography map [eqtopo] [slabs]
-    % vegf: map of combined vegetation effectiveness [veg] [0-1]
-    % m26f: parameter for dissipation strength ~[0.01 - 0.02]
-    % m27af: wave energy factor
-    % m28f: resistance of vegetation: 1 = full, 0 = none.
-    % pwavemaxf: maximum erosive strenght of waves (if >1: overrules vegetation)
-    % pwaveminf: in area with waves always potential for action
-    % depthlimitf: no erosive strength in very shallow water
-    % shelterf: exposure of sheltered cells: 1 = full shelter, 0 = no shelter.
-    % phydro: probability of erosion due to any other hydrodynamic process rather than waves"""
-
-    totalwater = np.mean(Rhigh)
-
-    # --------------------------------------
-    # IDENTIFY CELLS EXPOSED TO WAVES
-    # by dunes and embryodunes, analogous to shadowzones but no angle
-
-    # toolow = topof < totalwater  # [0 1] Give matrix with cells that are potentially under water
-    pexposed = np.ones(topof.shape)  # Initialise matrix
-    for m20 in range(len(topof[:, 0])):  # Run along all the rows
-        twlloc = np.argmax(topof[m20, :] >= totalwater)  # Finds for every row the first instance where the topography exceeds the total water level
-        if twlloc > 0:  # If there are any sheltered cells
-            m21 = twlloc
-            pexposed[m20, m21:] = 1 - shelterf  # Subtract shelter from exposedness: sheltered cells are less exposed
-
-    # --------------------------------------
-    # FILL TOPOGRAPHY TO EQUILIBRIUM
-
-    inundatedf = copy.deepcopy(pexposed)  # Inundated is the area that really receives sea water
-
-    # --------------------------------------
-    # WAVES
-
-    waterdepth = (totalwater - topof) * pexposed * slabheight  # [m] Exposed is used to avoid negative waterdepths
-    waterdepth[waterdepth <= depthlimitf] = depthlimitf  # This limits high dissipitation when depths are limited; remainder of energy is transferred landward
-
-    # Initialise dissiptation matrices
-    diss = np.zeros(topof.shape)
-    cumdiss = np.zeros(topof.shape)
-
-    # Calculate dissipation
-    diss[:, 0] = cellsizef / waterdepth[:, 0]  # Dissipation corrected for cellsize
-    cumdiss[:, 0] = diss[:, 0]
-    for m25 in range(1, topof.shape[1]):  # Do for all columns
-        diss[:, m25] = cellsizef / waterdepth[:, m25]  # Dissipation corrected for cellsize
-        cumdiss[:, m25] = diss[:, m25 - 1] + cumdiss[:, m25 - 1]  # Cumulative dissipation from the shore, excluding the current cell
-
-    # Initial wave strength m27f
-    m27f = m27af * totalwater
-
-    # Dissipation of wave strength across the topography (wave strength times dissiptation)
-    pwave = (pwavemaxf - m26f * cumdiss) * m27f
-    pwave[np.logical_and.reduce((pwave < pwaveminf, topof < totalwater, pexposed > 0))] = pwaveminf  # In area with waves always potential for action
-    # pwave[waterdepth < (slabheight * depthlimitf)] = 0  # No erosive strength in very shallow water
-
-    # Local reduction of erosive strength due to vegetation
-    pbare = 1 - m28f * vegf  # If vegf = 1, still some chance for being eroded
-
-    # Updating the topography
-    pbeachupdate = pbare * pwave * pexposed  # Probability for beachupdate, also indication of strength of process (it does not do anything random)  IRBR 1Nov22: Un-commented *pexposed
-    pbeachupdate[pbeachupdate < 0] = 0  # Keep probabilities to 0 - 1 range
-    pbeachupdate[pbeachupdate > 1] = 1
-
-    # Only allow beach update up to the dune/berm crest; IRBR 1Dec22
-    crest_limit = np.ones(topof.shape)
-    for ls in range(topof.shape[0]):
-        crest_limit[ls, crestline[ls] + 1:] = 0
-    pbeachupdate *= crest_limit
-
-    # Changed after revision (JK 21/01/2015)
-    newtopof = topof - (topof - eqtopof) * pbeachupdate  # Adjusting the topography
-    topof[np.logical_and(topof > totalwater, pbeachupdate > 0)] = totalwater  # Limit filling up of topography to the maximum water level so added (accreted) cells cannot be above the maximum water level
-
-    crestline_change = topof[np.arange(topof.shape[0]), crestline] - newtopof[np.arange(topof.shape[0]), crestline]
-
-    return newtopof, inundatedf, pbeachupdate, diss, cumdiss, pwave, crestline_change
-
-
 def growthfunction1_sens(spec, sed, A1, B1, C1, D1, E1, P1):
     """Input is the vegetation map, and the sedimentation balance in units of cell dimension (!), i.e. already adjusted by the slabheight
     Output is the change in vegetation effectiveness
@@ -590,9 +501,9 @@ def ocean_shoreline(topof, MHW):
     Parameters
     ----------
     topof : ndarray
-        [m] Present elevation domain.
+        [unit] Present elevation domain.
     MHW : float
-        [slabs] Mean high water elevation.
+        [unit] Mean high water elevation. Must be same units as topof.
 
     Returns
     ----------
@@ -1106,7 +1017,7 @@ def storm_processes(
             )
 
             if np.isnan(np.sum(Elevation)):
-                # print("  > Beach/Dune Model Instability Failure")
+                print("  > Beach/Dune Model Instability Failure")
                 Elevation[-1, :, :] = np.nan
                 break
 
@@ -1192,8 +1103,9 @@ def route_overwash(
             Discharge[TS, ls, dune_crest_loc[ls] - domain_width_start] = Qdune[ls]  # TODO: Vary Rhigh over storm duration
 
         Rin_eff = 1  # TEMP
+        flow_start = int(np.min(dune_crest_loc))
 
-        for d in range(domain_width - 1):  # TODO: Start this at first row with discharge, not at first row of domain
+        for d in range(flow_start, domain_width - 1):
 
             # Reduce discharge across row via infiltration
             if d > 0:
