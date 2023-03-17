@@ -6,7 +6,7 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 14 March 2023
+Last update: 17 March 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -248,9 +248,7 @@ class BEEM:
         self._beachcount = 0
         self._vegcount = 0
         self._shoreline_change_aggregate = np.zeros([self._longshore])
-        self._Qat = np.zeros([self._longshore])  # Need to convert from slabs to m
         self._OWflux = np.zeros([self._longshore])  # [m^3]
-        self._DuneLoss = np.zeros([self._longshore])  # Need to convert from slabs to m
         self._StormRecord = np.empty([5])  # Record of each storm that occurs in model: Year, iteration, Rhigh, Rlow, duration
 
         # __________________________________________________________________________________________________________________________________
@@ -337,12 +335,10 @@ class BEEM:
             Rlow += self._MHW * self._slabheight_m  # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
 
             if storm:
-                before1 = copy.deepcopy(self._topo)  # Copy of topo before it is changed
-                before1veg = copy.deepcopy(self._veg)  # Copy of veg before it is changed
 
                 # Storm Processes: Beach/duneface change, overwash
                 self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
-                self._topo, topo_change_overwash, self._OWflux, netDischarge, inundated = routine.storm_processes(
+                self._topo, topo_change, self._OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
                     self._topo,
                     Rhigh,
                     Rlow,
@@ -380,21 +376,15 @@ class BEEM:
 
             else:
                 self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
-                before1 = copy.deepcopy(self._topo)
-                topo_change_overwash = np.zeros(self._topo.shape)
+                topo_change = np.zeros(self._topo.shape)
 
-            seainput = self._topo - before1  # Sand added to the beach by the sea  TODO: This includes overwash, but it shouldnt. Use dV calculated in calc_dune_erosion instead!
-
-            balance_ts = self._topo - before1
-            self._balance = self._balance + balance_ts + topo_change_overwash
-            self._stability = self._stability + abs(self._topo - before1)
+            self._balance = self._balance + topo_change
+            self._stability = self._stability + abs(topo_change)
 
             self._beachcount += 1  # Update counter
 
             # --------------------------------------
             # SHORELINE CHANGE
-
-            Qbe = np.sum(seainput, axis=1) * self._slabheight_m / self._cellsize  # [m^3/m/ts] Volume of sediment imported from (+) or exported to (-) the upper shoreface by beach change
 
             # Update Shoreline Position from Cross-Shore Sediment Transport (i.e., RSLR, overwash, beach/dune change)
             self._x_s, self._x_t, shoreface_slope = routine.shoreline_change_from_CST(
@@ -403,10 +393,8 @@ class BEEM:
                 self._k_sf,
                 self._s_sf_eq,
                 self._RSLR,
-                self._Qat,
-                Qbe,
+                Qbe,  # [m^3/m/ts] Volume of sediment imported from (+) or exported to (-) the upper shoreface by beach change
                 self._OWflux,
-                self._DuneLoss,
                 self._x_s,
                 self._x_t,
                 self._MHW,
@@ -448,8 +436,6 @@ class BEEM:
                 self._slabheight_m
             )
 
-        else:
-            seainput = np.zeros([self._longshore, self._crossshore])
 
         # --------------------------------------
         # VEGETATION
@@ -522,13 +508,13 @@ class BEEM:
         self._stabilityb_sum = self._stabilityb_sum + self._stability
         self._windtransp_slabs[it] = (slabtransp * self._slabheight_m * self._cellsize ** 2) / self._longshore
         self._avalanches[it] = aval
-        self._seainput_sum = self._seainput_sum + seainput
 
         # --------------------------------------
         # RESET DOMAINS
 
         self._balance[:] = 0  # Reset the balance map
         self._stability[:] = 0  # Reset the balance map
+
 
     @property
     def name(self):

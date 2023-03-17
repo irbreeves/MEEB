@@ -6,7 +6,7 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 16 March 2023
+Last update: 17 March 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -419,10 +419,8 @@ def shoreline_change_from_CST(
         k_sf,
         s_sf_eq,
         RSLR,
-        Qat,
         Qbe,
         OWflux,
-        DuneLoss,
         x_s,
         x_t,
         MHW,
@@ -443,14 +441,10 @@ def shoreline_change_from_CST(
         Shoreface equilibrium slope
     RSLR :  float
         [m/ts] Relative sea-level rise rate
-    Qat : ndarray
-        [m^3/m/ts] Volume of sediment removed from (or added to) the upper shoreface by alongshore transport
     Qbe : ndarray
         [m^3/m/ts] Volume of sediment removed from (or added to) the upper shoreface by fairweather beach change
     OWflux : ndarray
         [m^3/ts] Volume of sediment removed from (or added to) the upper shoreface by overwash (not yet normalized alongshore)
-    DuneLoss : ndarray
-        [m^3/m/ts] Dune volume lost from storm erosion
     x_s : ndarray
         [m] Cross-shore shoreline position relative to start of simulation
     x_t : ndarray
@@ -473,8 +467,6 @@ def shoreline_change_from_CST(
     # Find volume of shoreface/beach/dune sand deposited in island interior and back-barrier
     Qow = OWflux * cellsize * slabheight  # [m^3/m/ts] Volume of sediment lost from shoreface/beach by overwash
     Qow[Qow < 0] = 0
-    DuneLoss[DuneLoss < Qow] = Qow[DuneLoss < Qow] - DuneLoss[DuneLoss < Qow]  # Account for dune contribution to overwash volume; dune loss volume subtracted from Qow because this volume is not coming from the shoreface/beach and therefor does not contribute to shoreline/shoreface change
-    DuneLoss[DuneLoss >= Qow] = 0  # Assumes all sediment deposited on barrier interior came from the dunes and therefore nothing came from shoreface/beach; excess DuneLoss assumed lost offshore/downshore
 
     # DefineParams
     h_b = np.average(topof[topof >= MHW], axis=0) * slabheight  # [m] Average height of barrier
@@ -485,7 +477,7 @@ def shoreline_change_from_CST(
 
     # Toe, Shoreline, and island base elevation changes
     x_t_dt = (4 * Qsf * (h_b + d_sf) / (d_sf * (2 * h_b + d_sf))) + (2 * RSLR / s_sf)
-    x_s_dt = 2 * (Qow + Qbe + Qat) / ((2 * h_b) + d_sf) - (4 * Qsf * (h_b + d_sf) / (((2 * h_b) + d_sf) ** 2))  # Dune growth and alongshore transport added to LTA14 formulation
+    x_s_dt = 2 * (Qow + Qbe) / ((2 * h_b) + d_sf) - (4 * Qsf * (h_b + d_sf) / (((2 * h_b) + d_sf) ** 2))  # Dune growth and alongshore transport added to LTA14 formulation
 
     # Record changes
     x_t = x_t + x_t_dt
@@ -1010,7 +1002,7 @@ def storm_processes(
 
         if TS % substep == 0:
             # Beach and Duneface Change
-            Elevation[TS, :, :], dV, wetMap = calc_dune_erosion_TS(  # TODO: Use dV in shoreline change calculations
+            Elevation[TS, :, :], BeachDune_Volume_Change, wetMap = calc_dune_erosion_TS(
                 Elevation[TS, :, :],
                 1,
                 dune_crest_loc,
@@ -1039,7 +1031,7 @@ def storm_processes(
     netDischarge = np.hstack((np.zeros([longshore, domain_width_start]), np.sum(Discharge, axis=0)))
     inundated[netDischarge > 1] = True  # Update inundated map to include cells landward of dune crest (i.e., inundated by overwash)
 
-    return topof, topof_change, OWloss, netDischarge, inundated
+    return topof, topof_change, OWloss, netDischarge, inundated, BeachDune_Volume_Change
 
 
 @njit
@@ -1105,7 +1097,7 @@ def route_overwash(
 
         # Set Discharge at Dune Crest
         for ls in range(longshore):
-            Discharge[TS, ls, dune_crest_loc[ls] - domain_width_start] = Qdune[ls]  # TODO: Vary Rhigh over storm duration
+            Discharge[TS, ls, dune_crest_loc[ls] - domain_width_start] = Qdune[ls]
 
         Rin_eff = 1  # TEMP
         flow_start = int(np.min(dune_crest_loc))
@@ -1459,7 +1451,7 @@ def calc_dune_erosion_TS(topo,
                     wetMap[y, x] = True
 
     topoChange = topo - topoPrestorm
-    dV = np.sum(topoChange, axis=1) * dx ** 3  # [m^3] Dune/beach volume change: (-) loss, (+) gain
+    dV = np.sum(topoChange, axis=1) * (dx ** 3)  # [m^3] Dune/beach volume change: (-) loss, (+) gain
 
     return topo, dV, wetMap
 
