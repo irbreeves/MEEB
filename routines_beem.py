@@ -198,7 +198,6 @@ def enforceslopes2(topof, vegf, sh, anglesand, angleveg, th, RNG):
 
     total = 0  # Number of avalanches
     slabsmoved = 1  # Initial number to get the loop going
-    avcount = 0
 
     while slabsmoved > 0:
         # Padding with same cell to create open boundaries
@@ -420,7 +419,7 @@ def shoreline_change_from_CST(
         s_sf_eq,
         RSLR,
         Qbe,
-        OWflux,
+        Qow,
         x_s,
         x_t,
         MHW,
@@ -442,9 +441,9 @@ def shoreline_change_from_CST(
     RSLR :  float
         [m/ts] Relative sea-level rise rate
     Qbe : ndarray
-        [m^3/m/ts] Volume of sediment removed from (or added to) the upper shoreface by fairweather beach change
-    OWflux : ndarray
-        [m^3/ts] Volume of sediment removed from (or added to) the upper shoreface by overwash (not yet normalized alongshore)
+        [m^3/m/ts] Volume of sediment removed from (or added to) the upper shoreface by fairweather beach/duneface change
+    Qow : ndarray
+        [m^3/ts] Volume of sediment removed from the upper shoreface by overwash
     x_s : ndarray
         [m] Cross-shore shoreline position relative to start of simulation
     x_t : ndarray
@@ -464,12 +463,9 @@ def shoreline_change_from_CST(
         [m] New cross-shore shoreface toe position relative to start of simulation
     """
 
-    # Find volume of shoreface/beach/dune sand deposited in island interior and back-barrier
-    Qow = OWflux * cellsize * slabheight  # [m^3/m/ts] Volume of sediment lost from shoreface/beach by overwash
     Qow[Qow < 0] = 0
 
-    # DefineParams
-    h_b = np.average(topof[topof >= MHW], axis=0) * slabheight  # [m] Average height of barrier
+    h_b = np.average(topof, weights=(topof >= MHW), axis=1) * slabheight  # [m] Average height of barrier
 
     # Shoreface Flux
     s_sf = d_sf / (x_s - x_t)
@@ -999,7 +995,6 @@ def storm_processes(
         # if Shrubs:
         #     # Insert calculation of burial/erosion for each shrub
 
-
         if TS % substep == 0:
             # Beach and Duneface Change
             Elevation[TS, :, :], BeachDune_Volume_Change, wetMap = calc_dune_erosion_TS(
@@ -1021,10 +1016,10 @@ def storm_processes(
         inundated = np.logical_or(inundated, wetMap)  # Update inundated map with cells seaward of dune crest
 
     # Update Interior Domain After Storm
-    domain_topo_change_m = Elevation[-1, :, :] - domain_topo_start  # [m] Change in elevation of routing domain
+    domain_topo_change_m = Elevation[-1, :, :] - domain_topo_start  # [m] Change in elevation of barrier
 
     # Update interior domain
-    topof_change = np.hstack((np.zeros([longshore, domain_width_start + 1]), domain_topo_change_m[:, 1:])) / slabheight_m  # [slabs] Add back in beach cells (zero topo change) and convert to units of slabs
+    topof_change = domain_topo_change_m / slabheight_m  # [slabs]
     topof += topof_change  # [slabs] Not rounded
 
     # Variable Calculations
@@ -1084,16 +1079,19 @@ def route_overwash(
         runup_regime = np.logical_and(Rlow <= dune_crest_height_m, Rhigh > dune_crest_height_m)  # [bool] Identifies rows alongshore where dunes crest is overwashed in run-up regime
         inundation_regime_count = np.count_nonzero(inundation_regime)
         runup_regime_count = np.count_nonzero(runup_regime)
-        if inundation_regime_count / (inundation_regime_count + runup_regime_count) >= threshold_in:  # If greater than threshold % of overtopped dune cells are inunundation regime -> inundation overwash regime
-            inundation = True  # TODO: Inundation regime parameterization needs work...
-            Rin = Rin_i
-            C = Cx * AvgSlope  # Momentum constant
-            print("  INUNDATION OVERWASH")
-        else:  # Run-up overwash regime
-            inundation = False
-            Rin = Rin_r
-            C = Cx * AvgSlope  # Momentum constant
-            # print("  RUN-UP OVERWASH")
+        # if inundation_regime_count / (inundation_regime_count + runup_regime_count) >= threshold_in:  # If greater than threshold % of overtopped dune cells are inunundation regime -> inundation overwash regime
+        #     inundation = True  # TODO: Inundation regime parameterization needs work...
+        #     Rin = Rin_i
+        #     print("  INUNDATION OVERWASH")
+        # else:  # Run-up overwash regime
+        #     inundation = False
+        #     Rin = Rin_r
+        #     # print("  RUN-UP OVERWASH")
+        # IRBR 20Mar23: Temporarily (?) removed differentiation between different regimes
+        inundation = False
+        Rin = Rin_r
+        C = Cx * AvgSlope  # Momentum constant
+
 
         # Set Discharge at Dune Crest
         for ls in range(longshore):
@@ -1103,6 +1101,7 @@ def route_overwash(
         flow_start = int(np.min(dune_crest_loc))
 
         for d in range(flow_start, domain_width - 1):
+            #  TODO: Break out of flow routing if zero discharge enters next row
 
             # Reduce discharge across row via infiltration
             if d > 0:
@@ -1254,18 +1253,21 @@ def route_overwash(
                         if Q1 > Qs_min:  # and S1 >= 0:
                             # Qs1 = max(0, Kr * Q1)
                             Qs1 = max(0, Kr * Q1 * (S1 + C))
+                            # Qs1 = max(0, Kr * (Q1 * (S1 + C)) ** mm)
                         else:
                             Qs1 = 0
 
                         if Q2 > Qs_min:  # and S2 >= 0:
                             # Qs2 = max(0, Kr * Q2)
                             Qs2 = max(0, Kr * Q2 * (S2 + C))
+                            # Qs2 = max(0, Kr * (Q2 * (S2 + C)) ** mm)
                         else:
                             Qs2 = 0
 
                         if Q3 > Qs_min:  # and S3 >= 0:
                             # Qs3 = max(0, Kr * Q3)
                             Qs3 = max(0, Kr * Q3 * (S3 + C))
+                            # Qs3 = max(0, Kr * (Q3 * (S3 + C)) ** mm)
                         else:
                             Qs3 = 0
 
@@ -1630,12 +1632,6 @@ def adjust_ocean_shoreline(
             # Adjust shoreface
             shoreface = np.arange(-new_shoreline + 1, 1) * shoreface_slope[ls] / slabheight_m  # New shoreface cells
             topo[ls, :new_shoreline] = shoreface  # Insert into domain
-
-            # # Adjust shoreline
-            # self._topo[ls, new_shoreline] = self._MHW  # [slabs]
-            # # Adjust shoreface
-            # shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] / self._slabheight_m + self._MHW # New shoreface cells
-            # self._topo[ls, :new_shoreline] = shoreface  # Insert into domain
         elif sc_ls < 0:  # Shoreline progradation
             # Adjust shoreline
             Bl = (topo[ls, prev_shoreline[ls]] - MHW) / (abs(sc_ls) + 1)  # Local slope between previous shoreline and new shoreline at MHW
@@ -1644,11 +1640,6 @@ def adjust_ocean_shoreline(
             # Adjust shoreface
             shoreface = np.arange(-new_shoreline + 1, 1) * shoreface_slope[ls] / slabheight_m  # New shoreface cells
             topo[ls, :new_shoreline] = shoreface  # Insert into domain
-
-            # # Adjust shoreline
-            # self._topo[ls, new_shoreline: prev_shoreline[ls]] = self._MHW + (self._RSLR + self._slabheight_m / 10) / self._slabheight_m  # [slabs]
-            # # Adjust shoreface
-            # shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] / self._slabheight_m + self._MHW  # New shoreface cells
             if len(shoreface) > new_shoreline:
                 raise ValueError("Out-Of-Bounds: Ocean shoreline progradaded beyond simulation domain boundary.")
             topo[ls, :new_shoreline] = shoreface  # Insert into domain

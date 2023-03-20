@@ -66,7 +66,7 @@ class BEEM:
             # SHOREFACE, BEACH, & SHORELINE
             beach_equilibrium_slope=0.02,  # Equilibrium slope of the beach
             beach_erosiveness=1.75,  # Beach erosiveness timescale constant: larger (smaller) Et == lesser (greater) storm erosiveness
-            beach_substeps=20,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
+            beach_substeps=40,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
             shoreface_flux_rate=5000,  # [m3/m/yr] Shoreface flux rate coefficient
             shoreface_equilibrium_slope=0.02,  # Equilibrium slope of the shoreface
             shoreface_depth=10,  # [m] Depth to shoreface toe (i.e. depth of ‘closure’)
@@ -339,32 +339,32 @@ class BEEM:
                 # Storm Processes: Beach/duneface change, overwash
                 self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
                 self._topo, topo_change, self._OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
-                    self._topo,
-                    Rhigh,
-                    Rlow,
-                    dur,
-                    self._slabheight_m,
-                    self._threshold_in,
-                    self._Rin_in,
-                    self._Rin_ru,
-                    self._Cx,
-                    2 / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
-                    self._nn,
-                    self._MaxUpSlope,
-                    self._fluxLimit,
-                    self._Qs_min,
-                    self._K_ru,
-                    self._K_in,
-                    self._mm,
-                    self._MHW,
-                    self._Cbb_in,
-                    self._Cbb_ru,
-                    self._Qs_bb_min,
-                    self._substep_in,
-                    self._substep_ru,
-                    self._beach_equilibrium_slope,
-                    self._beach_erosiveness,
-                    self._beach_substeps,
+                    topof=self._topo,
+                    Rhigh=Rhigh,
+                    Rlow=Rlow,
+                    dur=dur,
+                    slabheight_m=self._slabheight_m,
+                    threshold_in=self._threshold_in,
+                    Rin_i=self._Rin_in,
+                    Rin_r=self._Rin_ru,
+                    Cx=self._Cx,
+                    AvgSlope=2 / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
+                    nn=self._nn,
+                    MaxUpSlope=self._MaxUpSlope,
+                    fluxLimit=self._fluxLimit,
+                    Qs_min=self._Qs_min,
+                    Kr=self._K_ru,
+                    Ki=self._K_in,
+                    mm=self._mm,
+                    MHW=self._MHW,
+                    Cbb_i=self._Cbb_in,
+                    Cbb_r=self._Cbb_ru,
+                    Qs_bb_min=self._Qs_bb_min,
+                    substep_i=self._substep_in,
+                    substep_r=self._substep_ru,
+                    beach_equilibrium_slope=self._beach_equilibrium_slope,
+                    beach_erosiveness=self._beach_erosiveness,
+                    beach_substeps=self._beach_substeps,
                 )
 
                 # Enforce angles of repose again after overwash
@@ -377,6 +377,7 @@ class BEEM:
             else:
                 self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
                 topo_change = np.zeros(self._topo.shape)
+                Qbe = np.zeros([self._longshore])  # [m^3] No overwash if no storm
 
             self._balance = self._balance + topo_change
             self._stability = self._stability + abs(topo_change)
@@ -393,7 +394,7 @@ class BEEM:
                 self._k_sf,
                 self._s_sf_eq,
                 self._RSLR,
-                Qbe,  # [m^3/m/ts] Volume of sediment imported from (+) or exported to (-) the upper shoreface by beach change
+                Qbe,  # [m^3] Volume of sediment imported from (+) or exported to (-) the upper shoreface by beach change
                 self._OWflux,
                 self._x_s,
                 self._x_t,
