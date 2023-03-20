@@ -93,7 +93,7 @@ def storm_fitness(solution, solution_idx):
 
     topof = copy.deepcopy(topo_prestorm)
 
-    topof, topo_change_overwash, OWflux, netDischarge, inundated = routine.storm_processes(
+    topof, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
         topof,
         Rhigh,
         Rlow,
@@ -120,6 +120,7 @@ def storm_fitness(solution, solution_idx):
         beach_equilibrium_slope=solution[7],
         beach_erosiveness=solution[8],
         beach_substeps=solution[9],
+        x_s=x_s,
     )
 
     sim_topo_final = topof * slabheight_m  # [m]
@@ -202,8 +203,9 @@ veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
 veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or larger than one
 veg[veg < 0] = 0
 
-# Find Dune Crest, Beach Slopes
-dune_crest = routine.foredune_crest(topo * slabheight_m, MHW)
+# Find Dune Crest, Shoreline Positions
+dune_crest = routine.foredune_crest(topo, MHW)
+x_s = routine.ocean_shoreline(topo, MHW)
 
 # Transform water levels to vectors
 Rhigh = Rhigh * np.ones(topo_final.shape[0])

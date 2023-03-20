@@ -6,7 +6,7 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 17 March 2023
+Last update: 20 March 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -560,8 +560,9 @@ def foredune_crest(topo, MHW):
     # Step 4: Fill in gaps with linear interpolation
     x = np.arange(len(crestline))
     xp = np.nonzero(crestline * not_gap)[0]
-    fp = crestline[xp]
-    crestline = np.interp(x, xp, fp)
+    if len(xp) > 0:  # If there are any gaps
+        fp = crestline[xp]
+        crestline = np.interp(x, xp, fp)  # Interpolate
 
     # Step 5: Narrow smoothening of peak-buffer line
     crestline = np.round(scipy.signal.savgol_filter(crestline, window_small, 1)).astype(int)
@@ -829,6 +830,7 @@ def storm_processes(
         beach_equilibrium_slope,
         beach_erosiveness,
         beach_substeps,
+        x_s,
 ):
     """Resolves topographical change from storm events. Landward of dune crest: overwashes barrier interior where storm water levels exceed
     pre-storm dune crests following Barrier3D (Reeves et al., 2021) flow routing. Seaward of dune crest: determines topographic change of beach
@@ -879,15 +881,17 @@ def storm_processes(
     Qs_bb_min : float
         [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment.
     substep_i : int
-        Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+        Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes).
     substep_r : int
-        Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+        Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes).
     beach_equilibrium_slope : float
         Beach equilibrium slope.
     beach_erosiveness : float
-        Beach erosiveness timescale constant: larger (smaller) Et == greater (lesser) storm erosiveness
+        Beach erosiveness timescale constant: larger (smaller) Et == greater (lesser) storm erosiveness.
     beach_substeps : int
-        Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
+        Number of substeps per iteration of beach/duneface model; instabilities will occur if too low.
+    x_s : ndarray
+        Alongshore array of ocean shoreline locations.
 
     Returns
     ----------
@@ -1001,6 +1005,7 @@ def storm_processes(
                 Elevation[TS, :, :],
                 1,
                 dune_crest_loc,
+                x_s,
                 MHW_m,
                 Rhigh_TS,
                 beach_equilibrium_slope,
@@ -1353,6 +1358,7 @@ def route_overwash(
 def calc_dune_erosion_TS(topo,
                          dx,
                          crestline,
+                         x_s,
                          MHW,
                          Rhigh,
                          Beq,
@@ -1369,16 +1375,18 @@ def calc_dune_erosion_TS(topo,
         [m] Cell dimension.
     crestline : ndarray
         Alongshore array of dune crest locations.
+    x_s : ndarray
+        Alongshore array of ocean shoreline locations.
     MHW : float
-        [m] Mean high water
+        [m] Mean high water.
     Rhigh : ndarray
         [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
     Beq : float
         Beach equilibrium slope.
     Et : float
-        Beach erosiveness timescale constant: larger (smaller) Et == greater (lesser) storm erosiveness
+        Beach erosiveness timescale constant: larger (smaller) Et == greater (lesser) storm erosiveness.
     substeps : int
-        Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
+        Number of substeps per iteration of beach/duneface model; instabilities will occur if too low.
 
     Returns
     ----------
@@ -1392,7 +1400,6 @@ def calc_dune_erosion_TS(topo,
 
     # Initialize
     longshore, crossshore = topo.shape  # Domain dimensions
-    x_s = ocean_shoreline(topo, MHW)
     fluxMap = np.zeros(topo.shape)  # Initialize map of sediment flux aggregated over duration of storm
     wetMap = np.logical_and(np.zeros(topo.shape), False)
     topoPrestorm = topo.copy()
@@ -1616,32 +1623,49 @@ def adjust_ocean_shoreline(
         MHW,
         shoreface_slope,
         slabheight_m,
+        RSLR,
 ):
     """Adjust topography domain to according to amount of shoreline change.
 
+    Parameters
+    ----------
+    topo : ndarray
+        [slabs] Current elevation domain.
+    shoreline_change : ndarray
+        [m] Amount of shoreline change for each cell alongshore. Positive (negative) = erosion (progradation).
+    prev_shoreline : ndarray
+        [m] Cross-shore coordinates for shoreline position at previous time step.
+    MHW : float
+        [slabs] Mean high water.
+    shoreface_slope : ndarray
+        Active slope of the shoreface for each cell alongshore.
+    slabheight_m : float
+        [m] Height of slabs.
+    RSLR : float
+        [m/yr] Relative sea-level rise rate
 
+    Returns
+    ----------
+    topo
+        Topobathy updated for ocean shoreline change.
     """
+
     for ls in range(topo.shape[0]):
         sc_ls = int(shoreline_change[ls])  # [m] Amount of shoreline change for this location alongshore
         new_shoreline = prev_shoreline[ls] + sc_ls
         if sc_ls > 0:  # Shoreline erosion
             # Adjust shoreline
-            Bl = (topo[ls, new_shoreline + 1] - MHW) / (sc_ls + 1)  # Local slope between previous shoreline and new shoreline at MHW
-            remove = np.arange(1, 1 + sc_ls) * Bl + MHW
-            topo[ls, prev_shoreline[ls] + 1: new_shoreline + 1] = remove
+            topo[ls, new_shoreline] = MHW - (RSLR / slabheight_m)  # [slabs]
             # Adjust shoreface
-            shoreface = np.arange(-new_shoreline + 1, 1) * shoreface_slope[ls] / slabheight_m  # New shoreface cells
+            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] / slabheight_m + MHW  # New shoreface cells
             topo[ls, :new_shoreline] = shoreface  # Insert into domain
         elif sc_ls < 0:  # Shoreline progradation
             # Adjust shoreline
-            Bl = (topo[ls, prev_shoreline[ls]] - MHW) / (abs(sc_ls) + 1)  # Local slope between previous shoreline and new shoreline at MHW
-            add = np.arange(1, 1 + abs(sc_ls)) * Bl
-            topo[ls, new_shoreline: prev_shoreline[ls]] = add
+            topo[ls, new_shoreline: prev_shoreline[ls]] = MHW + (RSLR / slabheight_m)  # [slabs]
             # Adjust shoreface
-            shoreface = np.arange(-new_shoreline + 1, 1) * shoreface_slope[ls] / slabheight_m  # New shoreface cells
+            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] / slabheight_m + MHW  # New shoreface cells
             topo[ls, :new_shoreline] = shoreface  # Insert into domain
             if len(shoreface) > new_shoreline:
                 raise ValueError("Out-Of-Bounds: Ocean shoreline progradaded beyond simulation domain boundary.")
-            topo[ls, :new_shoreline] = shoreface  # Insert into domain
 
     return topo

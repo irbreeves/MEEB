@@ -50,8 +50,9 @@ veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
 veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or larger than one
 veg[veg < 0] = 0
 
-# Find Dune Crest, Beach Slopes
-dune_crest = routine.foredune_crest(topo * slabheight_m, MHW)
+# Find Dune Crest, Shoreline Positions
+dune_crest = routine.foredune_crest(topo, MHW)
+x_s = routine.ocean_shoreline(topo, MHW)
 
 # Transform water levels to vectors
 Rhigh = Rhigh * np.ones(topo_final.shape[0])
@@ -62,10 +63,10 @@ Rlow = Rlow * np.ones(topo_final.shape[0])
 # Overwash, Beach, & Dune Change
 topo_prestorm = copy.deepcopy(topo)
 
-name = "2150-2350, KQ(S+C), flow_start"
+name = "575-825, K(Q(S+C))^mm, mm=1.5, Kr=1e-06"
 print(name)
 
-sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated = routine.storm_processes(
+sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
     topo,
     Rhigh,
     Rlow,
@@ -73,25 +74,26 @@ sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated = routine.
     slabheight_m,
     threshold_in=0.25,
     Rin_i=5,
-    Rin_r=339,
-    Cx=24,
+    Rin_r=74,
+    Cx=68,
     AvgSlope=2/200,
     nn=0.5,
-    MaxUpSlope=0.89,
+    MaxUpSlope=0.54,
     fluxLimit=1,
     Qs_min=1,
-    Kr=5.15e-05,
+    Kr=6.2e-06,
     Ki=5e-06,
-    mm=2,
+    mm=1.1,
     MHW=MHW,
     Cbb_i=0.85,
     Cbb_r=0.7,
     Qs_bb_min=1,
     substep_i=6,
-    substep_r=5,
+    substep_r=3,
     beach_equilibrium_slope=0.02,
     beach_erosiveness=1.74,
-    beach_substeps=17,
+    beach_substeps=20,
+    x_s=x_s,
 )
 
 topo_change_prestorm = sim_topo_final - topo_prestorm

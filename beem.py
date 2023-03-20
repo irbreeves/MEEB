@@ -6,7 +6,7 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 17 March 2023
+Last update: 20 March 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -211,8 +211,8 @@ class BEEM:
         self._gw = np.zeros(self._topo.shape)  # Initialize
 
         # SHOREFACE & SHORELINE
-        self._x_t = shoreface_toe_init * np.ones([self._longshore])  # Start locations of shoreface toe
-        self._x_s = (self._x_t + self._LShoreface) * np.ones([self._longshore])  # [m] Start locations of shoreline
+        self._x_s = routine.ocean_shoreline(self._topo, self._MHW)  # [m] Start locations of shoreline according to initial topography and MHW
+        self._x_t = self._x_s - self._LShoreface  # [m] Start locations of shoreface toe
 
         # VEGETATION
         self._spec1 = Init[2, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
@@ -365,13 +365,14 @@ class BEEM:
                     beach_equilibrium_slope=self._beach_equilibrium_slope,
                     beach_erosiveness=self._beach_erosiveness,
                     beach_substeps=self._beach_substeps,
+                    x_s=self._x_s,
                 )
 
                 # Enforce angles of repose again after overwash
                 self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]
 
                 # Update vegetation from storm effects
-                self._spec1[inundated] = 0  # Remove species where beach is inundated - Why is this not working? TODO: Apply elevation change threshold here too
+                self._spec1[inundated] = 0  # Remove species where beach is inundated  TODO: Apply elevation change threshold here too
                 self._spec2[inundated] = 0  # Remove species where beach is inundated
 
             else:
@@ -411,31 +412,34 @@ class BEEM:
             #                                               self._stormreset / self._iterations_per_cycle
             #                                               )
 
-            shoreline_change = (self._x_s - self._x_s_TS[-1]) * self._cellsize  # [cellsize] Shoreline change from last time step
+            prev_shoreline = self._x_s_TS[-1].astype(int)  # Shoreline positions from previous time step
+            shoreline_change = (self._x_s - prev_shoreline) * self._cellsize  # [cellsize] Shoreline change from last time step
 
-            self._shoreline_change_aggregate += shoreline_change
+            self._shoreline_change_aggregate += shoreline_change  # Add to aggregate of shoreline change over whole simulation
 
-            shoreline_change[self._shoreline_change_aggregate >= 1] = np.floor(self._shoreline_change_aggregate[self._shoreline_change_aggregate >= 1]).astype(int)
-            self._shoreline_change_aggregate[self._shoreline_change_aggregate >= 1] -= shoreline_change[self._shoreline_change_aggregate >= 1]
+            shoreline_change[self._shoreline_change_aggregate >= 1] = np.floor(self._shoreline_change_aggregate[self._shoreline_change_aggregate >= 1]).astype(int)  # Remove partial shoreline change for this iteration
+            self._shoreline_change_aggregate[self._shoreline_change_aggregate >= 1] -= shoreline_change[self._shoreline_change_aggregate >= 1]  # Subtract this iteration's shoreline change from aggregate
 
-            shoreline_change[self._shoreline_change_aggregate <= -1] = np.ceil(self._shoreline_change_aggregate[self._shoreline_change_aggregate <= -1]).astype(int)
-            self._shoreline_change_aggregate[self._shoreline_change_aggregate <= -1] -= shoreline_change[self._shoreline_change_aggregate <= -1]
+            shoreline_change[self._shoreline_change_aggregate <= -1] = np.ceil(self._shoreline_change_aggregate[self._shoreline_change_aggregate <= -1]).astype(int)  # Remove partial shoreline change for this iteration
+            self._shoreline_change_aggregate[self._shoreline_change_aggregate <= -1] -= shoreline_change[self._shoreline_change_aggregate <= -1]  # Subtract this iteration's shoreline change from aggregate
 
-            shoreline_change[np.logical_and(-1 < shoreline_change, shoreline_change < 1)] = 0
-
-            self._x_s_TS = np.vstack((self._x_s_TS, self._x_s))  # Store
-            self._x_t_TS = np.vstack((self._x_t_TS, self._x_t))  # Store
+            shoreline_change[np.logical_and(-1 < shoreline_change, shoreline_change < 1)] = 0  # Remove partial shoreline change for this iteration
 
             # Adjust topography domain to according to shoreline change
-            prev_shoreline = routine.ocean_shoreline(self._topo, self._MHW).astype(int)  # Previous ocean shoreline location
-            self._topo = routine.adjust_ocean_shoreline(
-                self._topo,
-                shoreline_change,
-                prev_shoreline,
-                self._MHW,
-                shoreface_slope,
-                self._slabheight_m
-            )
+            if np.sum(shoreline_change) != 0:
+                self._topo = routine.adjust_ocean_shoreline(
+                    self._topo,
+                    shoreline_change,
+                    prev_shoreline,
+                    self._MHW,
+                    shoreface_slope,
+                    self._slabheight_m,
+                    self._RSLR,
+                )
+
+            # Store shoreline and shoreface toe locations
+            self._x_s_TS = np.vstack((self._x_s_TS, self._x_s))  # Store
+            self._x_t_TS = np.vstack((self._x_t_TS, self._x_t))  # Store
 
 
         # --------------------------------------

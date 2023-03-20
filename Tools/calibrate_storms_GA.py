@@ -90,7 +90,7 @@ def storm_fitness_overwash(solution, solution_idx):
 
     topof = copy.deepcopy(topo_prestorm)
 
-    topof, topo_change_overwash, OWflux, netDischarge, inundated = routine.storm_processes(
+    topof, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
         topof,
         Rhigh,
         Rlow,
@@ -113,10 +113,11 @@ def storm_fitness_overwash(solution, solution_idx):
         Cbb_r=0.7,
         Qs_bb_min=1,
         substep_i=6,
-        substep_r=int(solution[6]),
+        substep_r=solution[6],
         beach_equilibrium_slope=0.02,
         beach_erosiveness=2,
-        beach_substeps=20,
+        beach_substeps=30,
+        x_s=x_s,
     )
 
     sim_topo_final = topof * slabheight_m  # [m]
@@ -159,7 +160,7 @@ def storm_fitness_beach(solution, solution_idx):
 
     topof = copy.deepcopy(topo_prestorm)
 
-    topof, topo_change_overwash, OWflux, netDischarge, inundated = routine.storm_processes(
+    topof, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
         topof,
         Rhigh,
         Rlow,
@@ -186,6 +187,7 @@ def storm_fitness_beach(solution, solution_idx):
         beach_equilibrium_slope=solution[0],
         beach_erosiveness=solution[1],
         beach_substeps=solution[2],
+        x_s=x_s,
     )
 
     sim_topo_final = topof * slabheight_m  # [m]
@@ -250,7 +252,7 @@ Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  
 xmin = 575  # 575, 2000, 2150, 2000, 3800  # 2650
 xmax = 825  # 825, 2125, 2350, 2600, 4450  # 2850
 
-name = '575-825, KQ(S+C), Adaptive Mutation'
+name = '575-825, K(Q(S+C))^mm, Testing mm'
 
 
 # _____________________________________________
@@ -272,8 +274,9 @@ veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
 veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or larger than one
 veg[veg < 0] = 0
 
-# Find Dune Crest, Beach Slopes
-dune_crest = routine.foredune_crest(topo * slabheight_m, MHW)
+# Find Dune Crest, Shoreline Positions
+dune_crest = routine.foredune_crest(topo, MHW)
+x_s = routine.ocean_shoreline(topo, MHW)
 
 # Transform water levels to vectors
 Rhigh = Rhigh * np.ones(topo_final.shape[0])
@@ -293,15 +296,15 @@ if overwash:
                  int,
                  [float, 2],
                  [float, 2],
-                 [float, 7],
-                 [float, 2],
+                 [float, 8],
+                 [float, 1],
                  int]
     gene_space = [{'low': 50, 'high': 450},  # Rin
                   {'low': 1, 'high': 100},  # Cx
                   {'low': 0.5, 'high': 2.5},  # MaxUpSlope
                   {'low': 1, 'high': 1},  # fluxLimit
-                  {'low': 8e-06, 'high': 1e-04},  # Kr
-                  {'low': 2, 'high': 2},  # mm
+                  {'low': 1e-07, 'high': 1e-05},  # Kr
+                  {'low': 1, 'high': 1.5},  # mm
                   {'low': 1, 'high': 12}]  # OW Substep
 
 else:  # Beach/Dune
@@ -315,7 +318,7 @@ else:  # Beach/Dune
                   {'low': 10, 'high': 100}]  # BD Substep
 
 # Generations
-num_generations = 25
+num_generations = 15
 sol_per_pop = 5
 
 num_parents_mating = 4
