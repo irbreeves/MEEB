@@ -6,7 +6,7 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 20 March 2023
+Last update: 4 April 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -35,13 +35,14 @@ class BEEM:
             MHW=0,  # [m] Mean high water
             RSLR=0.000,  # [m/yr] Relative sea-level rise rate
             qpotseries=2,  # Number reference to calculate how many iterations represent one year. 4 is standard year of 100 iterations, corresponds to qpot (#1 = 25 it, #2 = 50 it, #3 = 75 it, #4 = 100 it, #5 = 125 it) (*25 = qpot)
-            writeyear=1,  # Write results to disc every n years
+            writeyear=0.5,  # Save results every n years
             simulation_time_yr=15,  # [yr] Length of the simulation time
             cellsize=1,  # [m] Interpreted cell size
             slabheight=0.1,  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
-            inputloc="Input/",  # Input file directory
-            outputloc="Output/",  # Output file directory
-            topo_filename="Init_NCB_20190830_500m_20200_LinearRidge.npy",  # "Init_NCB_2017_2000m_12000_GapsPreFlorence.npy", #
+            inputloc="Input/",  # Input file directory (end string with "/")
+            outputloc="Output/",  # Output file directory (end string with "/")
+            topo_filename="Init_NorthernNCB_2017_PreFlorence.npy",
+            hindcast=False,  # [bool] Determines whether the model is run with the default stochastisity generated storms [hindcast=False], or an empirical storm, wind, wave, temp timeseries [hindcast=True]
             seeded_random_numbers=True,
             save_data=False,
 
@@ -97,6 +98,7 @@ class BEEM:
 
             # STORM OVERWASH AND DUNE EROSION
             storm_list_filename="VCRStormList.npy",
+            storm_timeseries_filename="",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
             threshold_in=0.25,  # [%] Threshold percentage of overtopped dune cells exceeded by Rlow needed to be in inundation overwash regime
             Rin_in=5,  # [m^3/hr] Flow infiltration and drag parameter, inundation overwash regime
             Rin_ru=325,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
@@ -129,6 +131,7 @@ class BEEM:
         self._slabheight_m = cellsize * slabheight  # [m] Slab height
         self._inputloc = inputloc
         self._outputloc = outputloc
+        self._hindcast = hindcast
         self._save_data = save_data
         self._groundwater_depth = groundwater_depth
         self._p_dep_sand = p_dep_sand
@@ -202,8 +205,8 @@ class BEEM:
 
         # TOPOGRAPHY
         Init = np.load(inputloc + topo_filename)
-        xmin = 0
-        xmax = 100
+        xmin = 575
+        xmax = 825
         self._topo_initial = Init[0, xmin: xmax, :]  # [m] 2D-matrix with initial topography
         topo0 = self._topo_initial / self._slabheight_m  # [slabs] Transform from m into number of slabs
         self._topo = topo0  # [slabs] Initialise the topography map
@@ -226,6 +229,7 @@ class BEEM:
 
         # STORMS
         self._StormList = np.load(inputloc + storm_list_filename)
+        self._storm_timeseries = np.load(inputloc + storm_timeseries_filename)
         # self._pstorm = [0.393939393939394, 0.212121212121212, 0.181818181818182, 0.181818181818182, 0.212121212121212, 0.242424242424242, 0.212121212121212, 0.333333333333333, 0.363636363636364, 0.272727272727273, 0.303030303030303, 0.303030303030303, 0.181818181818182, 0.151515151515152,
         #                 0.212121212121212, 0.151515151515152, 0.212121212121212, 0.0606060606060606, 0.0909090909090909, 0.0303030303030303, 0.0303030303030303, 0.121212121212121, 0.0606060606060606, 0, 0.0909090909090909, 0.0303030303030303, 0, 0, 0, 0.0303030303030303, 0.0303030303030303,
         #                 0.0909090909090909, 0.0909090909090909, 0.303030303030303, 0.151515151515152, 0.121212121212121, 0.303030303030303, 0.121212121212121, 0.151515151515152, 0.272727272727273, 0.242424242424242, 0.303030303030303, 0.181818181818182, 0.242424242424242, 0.0909090909090909,
@@ -255,13 +259,13 @@ class BEEM:
         # MODEL OUPUT CONFIGURATION
 
         self._timeits = np.linspace(1, self._iterations, self._iterations)  # Time vector for budget calculations
-        self._topo_TS = np.empty([self._longshore, self._crossshore, self._simulation_time_yr + 1])  # Array for saving each topo map for each simulation year
+        self._topo_TS = np.empty([self._longshore, self._crossshore, int(self._simulation_time_yr / self._writeyear) + 1])  # Array for saving each topo map for each simulation year
         self._topo_TS[:, :, 0] = self._topo
-        self._spec1_TS = np.empty([self._longshore, self._crossshore, self._simulation_time_yr + 1])  # Array for saving each spec1 map for each simulation year
+        self._spec1_TS = np.empty([self._longshore, self._crossshore, int(self._simulation_time_yr / self._writeyear) + 1])  # Array for saving each spec1 map for each simulation year
         self._spec1_TS[:, :, 0] = self._spec1
-        self._spec2_TS = np.empty([self._longshore, self._crossshore, self._simulation_time_yr + 1])  # Array for saving each spec2 map for each simulation year
+        self._spec2_TS = np.empty([self._longshore, self._crossshore, int(self._simulation_time_yr / self._writeyear) + 1])  # Array for saving each spec2 map for each simulation year
         self._spec2_TS[:, :, 0] = self._spec2
-        self._veg_TS = np.empty([self._longshore, self._crossshore, self._simulation_time_yr + 1])  # Array for saving each veg map for each simulation year
+        self._veg_TS = np.empty([self._longshore, self._crossshore, int(self._simulation_time_yr / self._writeyear) + 1])  # Array for saving each veg map for each simulation year
         self._veg_TS[:, :, 0] = self._veg
         self._erosmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all erosmaps
         self._deposmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all deposmaps
@@ -329,10 +333,14 @@ class BEEM:
 
             iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
 
-            # Generate storm stats stochastically
-            storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, slopes, self._RNG)  # [m MSL]
-            Rhigh += self._MHW * self._slabheight_m  # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
-            Rlow += self._MHW * self._slabheight_m  # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
+            # Generate Storms Stats
+            if self._hindcast:  # Empirical storm time series
+                storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore)
+            else:  # Stochastic storm model
+                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, slopes, self._RNG)  # [m MSL]
+                # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
+                Rhigh += self._MHW * self._slabheight_m
+                Rlow += self._MHW * self._slabheight_m
 
             if storm:
 
@@ -500,7 +508,7 @@ class BEEM:
         # RECORD VARIABLES ANNUALLY
 
         if it % (self._writeyear * self._iterations_per_cycle) == 0:
-            moment = int(it / self._iterations_per_cycle) + 1
+            moment = int(it / self._writeyear / self._iterations_per_cycle) + 1
             self._topo_TS[:, :, moment] = self._topo
             self._spec1_TS[:, :, moment] = self._spec1
             self._spec2_TS[:, :, moment] = self._spec2
@@ -566,6 +574,10 @@ class BEEM:
         return self._save_data
 
     @property
+    def writeyear(self):
+        return self._writeyear
+
+    @property
     def outputloc(self):
         return self._outputloc
 
@@ -593,7 +605,7 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 beem = BEEM(
-    name="5 yr, SLR 0 mm/yr",
+    name="5 yr, SLR 0 mm/yr, no AST",
     simulation_time_yr=5,
     RSLR=0.000,
     seeded_random_numbers=True,
@@ -602,6 +614,8 @@ beem = BEEM(
     direction2=2,
     direction4=4,
     wave_asymetry=0.5,
+    hindcast=True,
+    storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt04_BermEl2pt0.npy',
 )
 
 print(beem.name)
@@ -652,7 +666,7 @@ cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
 plt.tight_layout()
 
 # Animation: Elevation and Vegetation Over Time
-for t in range(0, beem.simulation_time_yr + 1):
+for t in range(0, int(beem.simulation_time_yr / beem.writeyear) + 1):
     Fig = plt.figure(figsize=(14, 8))
 
     MHW = beem.RSLR * t
@@ -664,7 +678,7 @@ for t in range(0, beem.simulation_time_yr + 1):
     cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=5.0)
     cbar = Fig.colorbar(cax1)
     cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
-    timestr = "Year " + str(t)
+    timestr = "Year " + str(t * beem.writeyear)
     plt.text(2, beem.topo.shape[0] - 2, timestr, c='white')
 
     veg = beem.veg_TS[:, :, t]
@@ -675,7 +689,7 @@ for t in range(0, beem.simulation_time_yr + 1):
     cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
     cbar = Fig.colorbar(cax2)
     cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
-    timestr = "Year " + str(t)
+    timestr = "Year " + str(t * beem.writeyear)
     plt.text(2, beem.veg.shape[0] - 2, timestr, c='darkblue')
     plt.tight_layout()
     if not os.path.exists("Output/SimFrames/"):
@@ -685,7 +699,7 @@ for t in range(0, beem.simulation_time_yr + 1):
     plt.close()
 
 frames = []
-for filenum in range(0, beem.simulation_time_yr + 1):
+for filenum in range(0, int(beem.simulation_time_yr / beem.writeyear) + 1):
     filename = "Output/SimFrames/beem_elev_" + str(filenum) + ".png"
     frames.append(imageio.imread(filename))
 imageio.mimwrite("Output/SimFrames/beem_elev.gif", frames, fps=3)

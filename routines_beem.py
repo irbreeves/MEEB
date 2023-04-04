@@ -6,7 +6,7 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 20 March 2023
+Last update: 4 April 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -803,6 +803,46 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, RNG):
     return storm, Rhigh, Rlow, dur
 
 
+@njit
+def get_storm_timeseries(storm_timeseries, it, longshore):
+    """Returns storm characteristics for this model iteration from an empirical storm timeseries.
+
+    Parameters
+    ----------
+    storm_timeseries : ndarray
+        Table of observed storm events.
+    it : int
+        Current model iteration.
+    longshore :
+        [m] Longshore length of model domain
+
+    Returns
+    ----------
+    storm
+        Bool whether or not storm occurs this time step.
+    Rhigh
+        [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
+    Rlow
+        [m MHW] Lowest elevation of the landward margin of runup.
+    dur
+        [hrs] Duration of storm.
+    """
+
+    if it in storm_timeseries[:, 0]:
+        storm = True
+        idx = np.where(storm_timeseries[:, 0] == it)[0][0]
+        Rhigh = storm_timeseries[idx, 1] * np.ones(longshore)
+        Rlow = storm_timeseries[idx, 2] * np.ones(longshore)
+        dur = storm_timeseries[idx, 3]
+    else:
+        storm = False
+        Rhigh = np.zeros(longshore)
+        Rlow = np.zeros(longshore)
+        dur = 0
+
+    return storm, Rhigh, Rlow, dur
+
+
 def storm_processes(
         topof,
         Rhigh,
@@ -1494,20 +1534,42 @@ def shoreline_change_from_AST(x_s,
         Cross-shore coordinates for shoreline position updated for alongshore sediment transport.
     """
 
+    dy = 50  # [m] Distance alongshore between shoreline positions used in the shoreline diffusion calculations
+
+    # Sample shoreline location at every dy [m] alongshore
+    x_s_ast = x_s[0::dy].copy()
+    if (len(x_s) - 1) % dy > 0:
+        x_s_ast = np.append(x_s_ast, x_s[-1])  # Append last shoreline value if remainder
+        alongshore_section_length = np.append(np.ones([len(x_s_ast) - 1]) * dy, (len(x_s) - 1) % dy)  # Array of dy, plus remainder at end
+    else:
+        alongshore_section_length = dy
+
     # Create Wave Distribution
     waves = ashton(a=wave_asymetry, h=wave_high_angle_fraction, loc=-np.pi/2, scale=np.pi)
 
+    # plt.figure()
+    # plt.plot(x_s, c='black')
+
     # Initialize AlongshoreTransporter
-    transporter = AlongshoreTransporter(x_s,  # TODO: Check if x_s array needs to be flipped to be in correct orientation for AlongshoreTransporter
+    transporter = AlongshoreTransporter(shoreline_x=x_s_ast,  # TODO: Check if x_s array needs to be flipped to be in correct orientation for AlongshoreTransporter
                                         wave_distribution=waves,
-                                        alongshore_section_length=dy,
+                                        alongshore_section_length=alongshore_section_length,
                                         time_step=time_step,
                                         # wave_period=10,
                                         )
     # Advance one time step
     transporter.update()
 
-    return transporter.shoreline_x
+    # Interpolate shoreline change from AST linearly between each dy spacing
+    x = np.arange(len(x_s))
+    xp = np.append(0, np.cumsum(alongshore_section_length[1:]))
+    fp = transporter.shoreline_x
+    x_s_updated = np.interp(x, xp, fp)  # Interpolate
+
+    # plt.plot(x_s_updated, c='red')
+    # plt.show()
+
+    return x_s_updated
 
 
 def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=-1):
@@ -1664,8 +1726,8 @@ def adjust_ocean_shoreline(
             topo[ls, new_shoreline: prev_shoreline[ls]] = MHW + (RSLR / slabheight_m)  # [slabs]
             # Adjust shoreface
             shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] / slabheight_m + MHW  # New shoreface cells
-            topo[ls, :new_shoreline] = shoreface  # Insert into domain
             if len(shoreface) > new_shoreline:
                 raise ValueError("Out-Of-Bounds: Ocean shoreline progradaded beyond simulation domain boundary.")
+            topo[ls, :new_shoreline] = shoreface  # Insert into domain
 
     return topo
