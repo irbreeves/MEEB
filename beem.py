@@ -41,7 +41,7 @@ class BEEM:
             slabheight=0.1,  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
             inputloc="Input/",  # Input file directory (end string with "/")
             outputloc="Output/",  # Output file directory (end string with "/")
-            topo_filename="Init_NorthernNCB_2017_PreFlorence.npy",
+            topo_filename="Init_NorthernNCB_2017_PreFlorence.npy",  # [m NVD88]
             hindcast=False,  # [bool] Determines whether the model is run with the default stochastisity generated storms [hindcast=False], or an empirical storm, wind, wave, temp timeseries [hindcast=True]
             seeded_random_numbers=True,
             save_data=False,
@@ -205,12 +205,11 @@ class BEEM:
 
         # TOPOGRAPHY
         Init = np.load(inputloc + topo_filename)
-        xmin = 575
-        xmax = 825
-        self._topo_initial = Init[0, xmin: xmax, :]  # [m] 2D-matrix with initial topography
-        topo0 = self._topo_initial / self._slabheight_m  # [slabs] Transform from m into number of slabs
-        self._topo = topo0  # [slabs] Initialise the topography map
-        self._longshore, self._crossshore = topo0.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
+        xmin = 575  # temp
+        xmax = 825  # temp
+        self._topo_initial = Init[0, xmin: xmax, :]  # [m NAVD88] 2D array of initial topography
+        self._topo = self._topo_initial / self._slabheight_m  # [slabs NAVD88] Initialise the topography, transform from m into number of slabs
+        self._longshore, self._crossshore = self._topo.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
         self._gw = np.zeros(self._topo.shape)  # Initialize
 
         # SHOREFACE & SHORELINE
@@ -230,10 +229,6 @@ class BEEM:
         # STORMS
         self._StormList = np.load(inputloc + storm_list_filename)
         self._storm_timeseries = np.load(inputloc + storm_timeseries_filename)
-        # self._pstorm = [0.393939393939394, 0.212121212121212, 0.181818181818182, 0.181818181818182, 0.212121212121212, 0.242424242424242, 0.212121212121212, 0.333333333333333, 0.363636363636364, 0.272727272727273, 0.303030303030303, 0.303030303030303, 0.181818181818182, 0.151515151515152,
-        #                 0.212121212121212, 0.151515151515152, 0.212121212121212, 0.0606060606060606, 0.0909090909090909, 0.0303030303030303, 0.0303030303030303, 0.121212121212121, 0.0606060606060606, 0, 0.0909090909090909, 0.0303030303030303, 0, 0, 0, 0.0303030303030303, 0.0303030303030303,
-        #                 0.0909090909090909, 0.0909090909090909, 0.303030303030303, 0.151515151515152, 0.121212121212121, 0.303030303030303, 0.121212121212121, 0.151515151515152, 0.272727272727273, 0.242424242424242, 0.303030303030303, 0.181818181818182, 0.242424242424242, 0.0909090909090909,
-        #                 0.181818181818182, 0.333333333333333, 0.151515151515152, 0.212121212121212, 0.272727272727273]  # Empirical probability of storm occurance for each 1/50th (~weekly) iteration of the year, from 1980-2013 VCR storm record
         self._pstorm = [0.787878787878788, 0.393939393939394, 0.454545454545455, 0.727272727272727, 0.575757575757576, 0.484848484848485, 0.363636363636364, 0.363636363636364, 0.151515151515152, 0.0606060606060606, 0.181818181818182,
                         0.0606060606060606, 0.0606060606060606, 0, 0.0303030303030303, 0.121212121212121, 0.393939393939394, 0.272727272727273, 0.424242424242424, 0.424242424242424, 0.545454545454545, 0.424242424242424,
                         0.272727272727273, 0.484848484848485, 0.484848484848485]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1980-2013 VCR storm record
@@ -286,7 +281,7 @@ class BEEM:
         year = math.ceil(it / self._iterations_per_cycle)
 
         # Update sea level
-        self._MHW += self._RSLR / self._iterations_per_cycle / self._slabheight_m  # [slabs]
+        self._MHW += self._RSLR / self._iterations_per_cycle / self._slabheight_m  # [slabs NAVD88]
 
         # --------------------------------------
         # SAND TRANSPORT
