@@ -6,7 +6,7 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 4 April 2023
+Last update: 18 April 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -804,7 +804,7 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, RNG):
 
 
 @njit
-def get_storm_timeseries(storm_timeseries, it, longshore):
+def get_storm_timeseries(storm_timeseries, it, longshore, hindcast_start):
     """Returns storm characteristics for this model iteration from an empirical storm timeseries.
 
     Parameters
@@ -815,6 +815,8 @@ def get_storm_timeseries(storm_timeseries, it, longshore):
         Current model iteration.
     longshore :
         [m] Longshore length of model domain
+    hindcast_start :
+        [week] Week (1/50 year) to start hindcast from
 
     Returns
     ----------
@@ -828,9 +830,11 @@ def get_storm_timeseries(storm_timeseries, it, longshore):
         [hrs] Duration of storm.
     """
 
-    if it in storm_timeseries[:, 0]:
+    it_effective = it + hindcast_start
+
+    if it_effective in storm_timeseries[:, 0]:
         storm = True
-        idx = np.where(storm_timeseries[:, 0] == it)[0][0]
+        idx = np.where(storm_timeseries[:, 0] == it_effective)[0][0]
         Rhigh = storm_timeseries[idx, 1] * np.ones(longshore)
         Rlow = storm_timeseries[idx, 2] * np.ones(longshore)
         dur = storm_timeseries[idx, 3]

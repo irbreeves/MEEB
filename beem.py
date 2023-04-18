@@ -6,7 +6,7 @@ Barrier Explicit Evolution Model
 
 IRB Reeves
 
-Last update: 4 April 2023
+Last update: 18 April 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -32,7 +32,7 @@ class BEEM:
             # GENERAL
             name="default",
             simnum=1,  # Reference number of the simulation. Used for personal reference.
-            MHW=0,  # [m] Mean high water
+            MHW=0,  # [m NAVD88] Initial mean high water
             RSLR=0.000,  # [m/yr] Relative sea-level rise rate
             qpotseries=2,  # Number reference to calculate how many iterations represent one year. 4 is standard year of 100 iterations, corresponds to qpot (#1 = 25 it, #2 = 50 it, #3 = 75 it, #4 = 100 it, #5 = 125 it) (*25 = qpot)
             writeyear=0.5,  # Save results every n years
@@ -41,8 +41,9 @@ class BEEM:
             slabheight=0.1,  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
             inputloc="Input/",  # Input file directory (end string with "/")
             outputloc="Output/",  # Output file directory (end string with "/")
-            topo_filename="Init_NorthernNCB_2017_PreFlorence.npy",  # [m NVD88]
+            init_filename="Init_NorthernNCB_2017_PreFlorence.npy",  # [m NVD88] Name of initial topography and vegetation input file
             hindcast=False,  # [bool] Determines whether the model is run with the default stochastisity generated storms [hindcast=False], or an empirical storm, wind, wave, temp timeseries [hindcast=True]
+            hindcast_start=0,  # [1/50 year] Week to start hindcast timeseries from relative to beginning of timeseries (e.g., 100 will start hindcast 2 years into timeseries)
             seeded_random_numbers=True,
             save_data=False,
 
@@ -121,7 +122,7 @@ class BEEM:
 
         self._name = name
         self._simnum = simnum
-        self._MHW = MHW * slabheight  # [slabs]
+        self._MHW = MHW * slabheight  # [slabs NAVD88]
         self._RSLR = RSLR
         self._qpotseries = qpotseries
         self._writeyear = writeyear
@@ -132,6 +133,7 @@ class BEEM:
         self._inputloc = inputloc
         self._outputloc = outputloc
         self._hindcast = hindcast
+        self._hindcast_start = hindcast_start
         self._save_data = save_data
         self._groundwater_depth = groundwater_depth
         self._p_dep_sand = p_dep_sand
@@ -204,9 +206,9 @@ class BEEM:
         self._iterations = self._iterations_per_cycle * self._simulation_time_yr  # Number of iterations
 
         # TOPOGRAPHY
-        Init = np.load(inputloc + topo_filename)
-        xmin = 575  # temp
-        xmax = 825  # temp
+        Init = np.load(inputloc + init_filename)
+        xmin = 21600  #575  # temp
+        xmax = 22000  #825  # temp
         self._topo_initial = Init[0, xmin: xmax, :]  # [m NAVD88] 2D array of initial topography
         self._topo = self._topo_initial / self._slabheight_m  # [slabs NAVD88] Initialise the topography, transform from m into number of slabs
         self._longshore, self._crossshore = self._topo.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
@@ -217,8 +219,8 @@ class BEEM:
         self._x_t = self._x_s - self._LShoreface  # [m] Start locations of shoreface toe
 
         # VEGETATION
-        self._spec1 = Init[2, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
-        self._spec2 = Init[3, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
+        self._spec1 = Init[1, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
+        self._spec2 = Init[2, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
 
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
@@ -234,6 +236,9 @@ class BEEM:
                         0.272727272727273, 0.484848484848485, 0.484848484848485]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1980-2013 VCR storm record
         # self._pstorm = [0.232558139534884, 0.0697674418604651, 0.116279069767442, 0.186046511627907, 0.0930232558139535, 0.0465116279069767, 0.139534883720930, 0.0697674418604651, 0.0232558139534884, 0, 0, 0, 0.0232558139534884, 0,
         #                 0.0232558139534884, 0.0465116279069767, 0.255813953488372, 0.255813953488372, 0.116279069767442, 0.139534883720930, 0.0697674418604651, 0.0465116279069767, 0.0697674418604651, 0.0697674418604651, 0.0930232558139535]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 NCB storm record
+
+        if self._hindcast and self._iterations > (self._storm_timeseries[-1, 0] - self._hindcast_start):
+            raise ValueError("Simulation length is greater than hindcast timeSeries length.")
 
         # MODEL PARAMETERS
         self._direction = self._RNG.choice(np.tile([direction1, direction2, direction3, direction4, direction5], (1, 2000))[0, :], 10000, replace=False)
@@ -330,7 +335,7 @@ class BEEM:
 
             # Generate Storms Stats
             if self._hindcast:  # Empirical storm time series
-                storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore)
+                storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._hindcast_start)
             else:  # Stochastic storm model
                 storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, slopes, self._RNG)  # [m MSL]
                 # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
@@ -600,8 +605,8 @@ start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
 beem = BEEM(
-    name="5 yr, SLR 0 mm/yr, no AST",
-    simulation_time_yr=5,
+    name="3 yr, SLR 0 mm/yr, no AST, 2009-2012 Hindcast",
+    simulation_time_yr=3,
     RSLR=0.000,
     seeded_random_numbers=True,
     p_dep_sand=0.5,  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr
@@ -609,8 +614,10 @@ beem = BEEM(
     direction2=2,
     direction4=4,
     wave_asymetry=0.5,
+    init_filename="Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy",
     hindcast=True,
-    storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt04_BermEl2pt0.npy',
+    hindcast_start=1531,
+    storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
 )
 
 print(beem.name)
