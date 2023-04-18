@@ -147,13 +147,15 @@ def storm_fitness(solution, solution_idx):
     # Mask
     obs_change_masked = obs_change_m * Sim_Obs_All_Mask  # [m]
     sim_change_masked = sim_change_m * Sim_Obs_All_Mask  # [m]
+    obs_change_mean_masked = np.mean(obs_change_m[Sim_Obs_All_Mask])  # [m] Average beach change of observations, masked
 
     if np.isnan(np.sum(sim_change_masked)):
-        BSS = -1e10
+        score = -1e10
     else:
-        BSS = routine.brier_skill_score(sim_change_masked, obs_change_masked, np.zeros(sim_change_masked.shape), Sim_Obs_All_Mask)
+        nse, rmse, bss, pc, hss = model_skill(obs_change_masked, sim_change_masked, obs_change_mean_masked, Sim_Obs_All_Mask)
+        score = bss  # This is the skill score used in genetic algorithm
 
-    return BSS
+    return score
 
 
 # ___________________________________________________________________________________________________________________________________
