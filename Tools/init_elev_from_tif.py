@@ -2,7 +2,7 @@
     use in BEEM (Barrier Explicit Evolution Model).
 
     IRB Reeves
-    Last update: 9 January 2023
+    Last update: 18 April 2023
 """
 
 import matplotlib.pyplot as plt
@@ -15,28 +15,31 @@ import copy
 # SPECIFICATIONS
 
 # Elevation (NAVD88)
-tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/PostIrene_2011829_NOAA_FullNCB.tif"
-MHW = 0.3  # [m initial datum] For finding back-barrier shoreline (0.36, Duke Marine Lab, Beaufort)
+tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/PreIsabel_200101to03_NCFMP_FullNCB.tif"
+MHW = 0.0  # [m initial datum] Mean high water, for finding ocean shoreline (0.36, Duke Marine Lab, Beaufort)
+BB_thresh = 0.08  # [m initial datum] Threshold elevation for finding back-barrier marsh shoreline
 BB_depth = 1.5  # [m] Back-barrier bay depth
-BB_slope_length = 30  # [m] Length of slope from back-barrier shorline into bay
+BB_slope_length = 30  # [m] Length of slope from back-barrier shoreline into bay
 SF_slope = 0.02  # Equilibrium shoreface slope
 buffer = 3000  #
 
 # Domain
-xmin = 343  # [m] Alongshore coordinate for start of domain
-xmax = 35783  # [m] Alongshore coordinate for end of domain
-ymin = 0  # [m] Cross-shore coordinate for start of domain
-ymax = 1949  # [m] Cross-shore coordinate for end of domain
-bay = 100  # [m] Additional width of bay to ad to domain
+xmin = 7000  # [m] Alongshore coordinate for start of domain
+xmax = 35750  # [m] Alongshore coordinate for end of domain
+ymin = 100  # [m] Cross-shore coordinate for start of domain
+ymax = 1800  # [m] Cross-shore coordinate for end of domain
+zmax = 10  # [m NAVD88] Maximum elevation to remove outlier errors
+zmin = -10  # [m NAVD88] Minimum elevation to remove outlier errors
+bay = 0  # [m] Additional width of bay to add to domain
 
 # Vegetation
 Veggie = True  # [bool] Whether or not to load & convert a contemporaneous init veg raster
 veg_tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/ModSAVI_20190830_FullNCB.tif"
-veg_min = 0.45  # [m] Minimum elevation for vegetation
+veg_min = BB_thresh  # [m] Minimum elevation for vegetation
 
 # Save
 save = False  # [bool] Whether or not to save finished arrays
-savename = "Init_NCB_2009_PreIrene"
+savename = "NCB-NewDrum-Ocracoke_2001_PreIsabel"
 
 
 # ================================================================================================================
@@ -59,22 +62,22 @@ else:
 # Trim
 dem = full_dem[max(0, ymin): ymax, xmin: xmax]
 veg = full_veg[max(0, ymin): ymax, xmin: xmax]
-dem[dem > 30] = 0  # Remove any very large values (essentially NaNs)
-dem[dem < -30] = 0  # Remove any very large values (essentially NaNs)
-veg[veg > 30] = 0  # Remove any very large values (essentially NaNs)
-veg[veg < -30] = 0  # Remove any very large values (essentially NaNs)
+dem[dem > zmax] = 0  # Remove any very large values (essentially NaNs)
+dem[dem < zmin] = 0  # Remove any very large values (essentially NaNs)
+veg[veg > zmax] = 0  # Remove any very large values (essentially NaNs)
+veg[veg < zmin] = 0  # Remove any very large values (essentially NaNs)
 cs, ls = dem.shape
 if ymin < 0:
     dem = np.vstack((np.ones([abs(ymin), ls]) * BB_depth * -1, dem))  # Add more bay
     veg = np.vstack((np.zeros([abs(ymin), ls]), veg))  # Add more bay (without veg)
 cs, ls = dem.shape
 
-# Set back-barrier TODO: Account for barrier profiles that are entirely under MHW
+# Set back-barrier TODO: Account for barrier profiles that are entirely under MHW (i.e., inlets)
 BB_shoreline = []
 BB_slope = np.arange(1, BB_slope_length + 1) * BB_depth / BB_slope_length
 BB_profile = np.hstack((BB_slope, np.ones([buffer]) * BB_depth)) * -1
 for l in range(ls):
-    BB_loc = np.argmax(dem[:, l] > MHW)
+    BB_loc = np.argmax(dem[:, l] > BB_thresh)
     BB_shoreline.append(BB_loc)
     dem[:BB_loc, l] = np.flip(BB_profile[:BB_loc])
 
@@ -83,7 +86,7 @@ dem = np.rot90(dem, 2)  # Flip upside down
 ocean_shoreline = []
 SF_profile = np.arange(1, buffer + 1) * SF_slope * -1
 for l in range(ls):
-    shoreline_loc = np.argmax(dem[:, l] > 0)
+    shoreline_loc = np.argmax(dem[:, l] > MHW)
     ocean_shoreline.append(shoreline_loc)
     dem[:shoreline_loc, l] = np.flip(SF_profile[:shoreline_loc])
 
