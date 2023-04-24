@@ -36,7 +36,7 @@ class MEEB:
             RSLR=0.000,  # [m/yr] Relative sea-level rise rate
             qpotseries=2,  # Number reference to calculate how many iterations represent one year. 4 is standard year of 100 iterations, corresponds to qpot (#1 = 25 it, #2 = 50 it, #3 = 75 it, #4 = 100 it, #5 = 125 it) (*25 = qpot)
             writeyear=0.5,  # Save results every n years
-            simulation_time_yr=15,  # [yr] Length of the simulation time
+            simulation_time_yr=15.0,  # [yr] Length of the simulation time
             cellsize=1,  # [m] Interpreted cell size
             slabheight=0.1,  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
             inputloc="Input/",  # Input file directory (end string with "/")
@@ -203,7 +203,7 @@ class MEEB:
         self._vegetationupdate = round(self._qpotseries * 25)
         self._iterations_per_cycle = round(self._qpotseries * 25)  # Number of iterations that is regarded as 1 year (was 50) [iterations/year]
         self._stormreset = round(self._qpotseries * 1)
-        self._iterations = self._iterations_per_cycle * self._simulation_time_yr  # Number of iterations
+        self._iterations = int(self._iterations_per_cycle * self._simulation_time_yr)  # Number of iterations
 
         # TOPOGRAPHY
         Init = np.load(inputloc + init_filename)
@@ -226,7 +226,7 @@ class MEEB:
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
         self._veg[self._veg < 0] = 0
 
-        self._growth_reduction_timeseries = np.linspace(0, self._VGR / 100, self._simulation_time_yr)
+        self._growth_reduction_timeseries = np.linspace(0, self._VGR / 100, int(np.ceil(self._simulation_time_yr)))
 
         # STORMS
         self._StormList = np.load(inputloc + storm_list_filename)
@@ -259,13 +259,13 @@ class MEEB:
         # MODEL OUPUT CONFIGURATION
 
         self._timeits = np.linspace(1, self._iterations, self._iterations)  # Time vector for budget calculations
-        self._topo_TS = np.empty([self._longshore, self._crossshore, int(self._simulation_time_yr / self._writeyear) + 1])  # Array for saving each topo map for each simulation year
+        self._topo_TS = np.empty([self._longshore, self._crossshore, int(np.ceil(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each topo map for each simulation year
         self._topo_TS[:, :, 0] = self._topo
-        self._spec1_TS = np.empty([self._longshore, self._crossshore, int(self._simulation_time_yr / self._writeyear) + 1])  # Array for saving each spec1 map for each simulation year
+        self._spec1_TS = np.empty([self._longshore, self._crossshore, int(np.ceil(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each spec1 map for each simulation year
         self._spec1_TS[:, :, 0] = self._spec1
-        self._spec2_TS = np.empty([self._longshore, self._crossshore, int(self._simulation_time_yr / self._writeyear) + 1])  # Array for saving each spec2 map for each simulation year
+        self._spec2_TS = np.empty([self._longshore, self._crossshore, int(np.ceil(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each spec2 map for each simulation year
         self._spec2_TS[:, :, 0] = self._spec2
-        self._veg_TS = np.empty([self._longshore, self._crossshore, int(self._simulation_time_yr / self._writeyear) + 1])  # Array for saving each veg map for each simulation year
+        self._veg_TS = np.empty([self._longshore, self._crossshore, int(np.ceil(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each veg map for each simulation year
         self._veg_TS[:, :, 0] = self._veg
         self._erosmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all erosmaps
         self._deposmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all deposmaps
