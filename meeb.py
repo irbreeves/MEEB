@@ -1,12 +1,12 @@
 """__________________________________________________________________________________________________________________________________
 
-Main Model Script for BEEM
+Main Model Script for MEEB
 
-Barrier Explicit Evolution Model
+Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 18 April 2023
+Last update: 24 April 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -25,7 +25,7 @@ import routines_beem as routine
 np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
 
 
-class BEEM:
+class MEEB:
     def __init__(
             self,
 
@@ -43,7 +43,7 @@ class BEEM:
             outputloc="Output/",  # Output file directory (end string with "/")
             init_filename="Init_NorthernNCB_2017_PreFlorence.npy",  # [m NVD88] Name of initial topography and vegetation input file
             hindcast=False,  # [bool] Determines whether the model is run with the default stochastisity generated storms [hindcast=False], or an empirical storm, wind, wave, temp timeseries [hindcast=True]
-            hindcast_start=0,  # [1/50 year] Week to start hindcast timeseries from relative to beginning of timeseries (e.g., 100 will start hindcast 2 years into timeseries)
+            hindcast_start=0,  # [1/50 year] Week to start hindcast timeseries from relative to beginning of timeseries (e.g., 100 will start hindcast 2 years into timeseries); VALUE MUST BE EVEN TODO: Rounds odd numbers to even
             seeded_random_numbers=True,
             save_data=False,
 
@@ -118,7 +118,7 @@ class BEEM:
             substep_ru=5,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
 
     ):
-        """BEEM: Barrier Explicit Evolution Model"""
+        """MEEB: Mesoscale Explicit Ecogeomorphic Barrier model"""
 
         self._name = name
         self._simnum = simnum
@@ -208,7 +208,7 @@ class BEEM:
         # TOPOGRAPHY
         Init = np.load(inputloc + init_filename)
         xmin = 21600  #575  # temp
-        xmax = 22000  #825  # temp
+        xmax = 21800  #825  # temp
         self._topo_initial = Init[0, xmin: xmax, :]  # [m NAVD88] 2D array of initial topography
         self._topo = self._topo_initial / self._slabheight_m  # [slabs NAVD88] Initialise the topography, transform from m into number of slabs
         self._longshore, self._crossshore = self._topo.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
@@ -281,7 +281,7 @@ class BEEM:
     # MAIN ITERATION LOOP
 
     def update(self, it):
-        """Update BEEM by a single time step"""
+        """Update MEEB by a single time step"""
 
         year = math.ceil(it / self._iterations_per_cycle)
 
@@ -604,31 +604,31 @@ class BEEM:
 start_time = time.time()  # Record time at start of simulation
 
 # Create an instance of the BMI class
-beem = BEEM(
-    name="3 yr, SLR 0 mm/yr, no AST, 2009-2012 Hindcast",
+meeb = MEEB(
+    name="SLR 3 mm/yr, 2009-2012 Hindcast",
     simulation_time_yr=3,
-    RSLR=0.000,
+    RSLR=0.003,
     seeded_random_numbers=True,
-    p_dep_sand=0.5,  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr
-    p_ero_sand=0.5,
+    p_dep_sand=0.05,  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr, 0.75 = 3.333 m^m/3/yr, 1 = 2.5 m^m/3/yr
+    p_ero_sand=0.25,  # if p_dep = 0.5, p_ero of 0.5 = 5 m^m/3/yr, 0.25 = 2.5 m^m/3/yr, 0.1 = 1 m^m/3/yr
     direction2=2,
     direction4=4,
     wave_asymetry=0.5,
     init_filename="Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy",
     hindcast=True,
-    hindcast_start=1531,
+    hindcast_start=1530,
     storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
 )
 
-print(beem.name)
+print(meeb.name)
 
 # Loop through time
-for time_step in range(int(beem.iterations)):
+for time_step in range(int(meeb.iterations)):
     # Print time step to screen
-    print("\r", "Time Step: ", time_step / beem.iterations_per_cycle, "years", end="")
+    print("\r", "Time Step: ", time_step / meeb.iterations_per_cycle, "years", end="")
 
     # Run time step
-    beem.update(time_step)
+    meeb.update(time_step)
 
 # Print elapsed time of simulation
 print()
@@ -637,8 +637,8 @@ print()
 print("Elapsed Time: ", SimDuration, "sec")
 
 # Save Results
-if beem.save_data:
-    filename = beem.outputloc + "Sim_" + str(beem.simnum)
+if meeb.save_data:
+    filename = meeb.outputloc + "Sim_" + str(meeb.simnum)
     dill.dump_module(filename)  # To re-load data: dill.load_session(filename)
 
 
@@ -647,10 +647,10 @@ if beem.save_data:
 
 # Final Elevation & Vegetation
 Fig = plt.figure(figsize=(14, 9.5))
-Fig.suptitle(beem.name, fontsize=13)
-MHW = beem.RSLR * beem.simulation_time_yr
-topo = beem.topo * beem.slabheight
-topo = np.ma.masked_where(topo < MHW, topo)  # Mask cells below MHW
+Fig.suptitle(meeb.name, fontsize=13)
+MHW = meeb.RSLR * meeb.simulation_time_yr
+topo = meeb.topo * meeb.slabheight
+topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
 cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 ax1 = Fig.add_subplot(211)
@@ -658,8 +658,8 @@ cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=5.0)
 cbar = Fig.colorbar(cax1)
 cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
 ax2 = Fig.add_subplot(212)
-veg = beem.veg
-veg = np.ma.masked_where(topo < MHW, veg)  # Mask cells below MHW
+veg = meeb.veg
+veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
 cmap2 = copy.copy(plt.cm.get_cmap("YlGn"))
 cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
@@ -668,43 +668,43 @@ cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
 plt.tight_layout()
 
 # Animation: Elevation and Vegetation Over Time
-for t in range(0, int(beem.simulation_time_yr / beem.writeyear) + 1):
+for t in range(0, int(meeb.simulation_time_yr / meeb.writeyear) + 1):
     Fig = plt.figure(figsize=(14, 8))
 
-    MHW = beem.RSLR * t
-    topo = beem.topo_TS[:, :, t] * beem.slabheight  # [m]
-    topo = np.ma.masked_where(topo < MHW, topo)  # Mask cells below MHW
+    MHW = meeb.RSLR * t
+    topo = meeb.topo_TS[:, :, t] * meeb.slabheight  # [m]
+    topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
     cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
     cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
     ax1 = Fig.add_subplot(211)
     cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=5.0)
     cbar = Fig.colorbar(cax1)
     cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
-    timestr = "Year " + str(t * beem.writeyear)
-    plt.text(2, beem.topo.shape[0] - 2, timestr, c='white')
+    timestr = "Year " + str(t * meeb.writeyear)
+    plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
 
-    veg = beem.veg_TS[:, :, t]
-    veg = np.ma.masked_where(topo < MHW, veg)  # Mask cells below MHW
+    veg = meeb.veg_TS[:, :, t]
+    veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
     cmap2 = copy.copy(plt.cm.get_cmap("YlGn"))
     cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
     ax2 = Fig.add_subplot(212)
     cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
     cbar = Fig.colorbar(cax2)
     cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
-    timestr = "Year " + str(t * beem.writeyear)
-    plt.text(2, beem.veg.shape[0] - 2, timestr, c='darkblue')
+    timestr = "Year " + str(t * meeb.writeyear)
+    plt.text(2, meeb.veg.shape[0] - 2, timestr, c='darkblue')
     plt.tight_layout()
     if not os.path.exists("Output/SimFrames/"):
         os.makedirs("Output/SimFrames/")
-    name = "Output/SimFrames/beem_elev_" + str(t)
+    name = "Output/SimFrames/meeb_elev_" + str(t)
     plt.savefig(name)  # dpi=200
     plt.close()
 
 frames = []
-for filenum in range(0, int(beem.simulation_time_yr / beem.writeyear) + 1):
-    filename = "Output/SimFrames/beem_elev_" + str(filenum) + ".png"
+for filenum in range(0, int(meeb.simulation_time_yr / meeb.writeyear) + 1):
+    filename = "Output/SimFrames/meeb_elev_" + str(filenum) + ".png"
     frames.append(imageio.imread(filename))
-imageio.mimwrite("Output/SimFrames/beem_elev.gif", frames, fps=3)
+imageio.mimwrite("Output/SimFrames/meeb_elev.gif", frames, fps=3)
 print()
 print("[ * GIF successfully generated * ]")
 
