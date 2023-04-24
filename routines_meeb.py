@@ -1,12 +1,12 @@
 """__________________________________________________________________________________________________________________________________
 
-Model Functions for BEEM
+Model Functions for MEEB
 
-Barrier Explicit Evolution Model
+Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 18 April 2023
+Last update: 24 April 2023
 
 __________________________________________________________________________________________________________________________________"""
 

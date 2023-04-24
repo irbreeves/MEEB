@@ -1,5 +1,5 @@
 """ This script converts a .tif elevation raster file to a numpy array initial elevation file suitable for
-    use in BEEM (Barrier Explicit Evolution Model).
+    use in MEEB (Mesoscale Explicit Ecogeomorphic Barrier model).
 
     IRB Reeves
     Last update: 18 April 2023

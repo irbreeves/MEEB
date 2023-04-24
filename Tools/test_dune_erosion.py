@@ -1,11 +1,11 @@
 """
-Script for testing BEEM dune/beach erosion function.
+Script for testing MEEB dune/beach erosion function.
 IRBR 1 Mar 2023
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-import routines_beem as routine
+import routines_meeb as routine
 import copy
 import time
 from matplotlib import colors

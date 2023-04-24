@@ -1,11 +1,11 @@
 """
-Script for calibrating storm parameters based on best fit to observations.
+Script for calibrating MEEB storm parameters with BRUTE FORCE based on best fit to observations.
 IRBR 8 Mar 2023
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-import routines_beem as routine
+import routines_meeb as routine
 import copy
 import time
 from tabulate import tabulate

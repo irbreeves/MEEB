@@ -1,11 +1,11 @@
 """
-Script for calibrating BEEM storm parameters using genetic algorithm.
+Script for calibrating MEEB storm parameters using genetic algorithm.
 IRBR 14 Mar 2023
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-import routines_beem as routine
+import routines_meeb as routine
 import copy
 import time
 from tabulate import tabulate

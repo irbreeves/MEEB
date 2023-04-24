@@ -1,4 +1,4 @@
-# BEEM
-Barrier Explicit Evolution Model
+# MEEB
+Mesoscale Explicit Ecogeomorphic Barrier model
 
 In development.

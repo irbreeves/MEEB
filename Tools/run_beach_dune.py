@@ -1,11 +1,11 @@
 """
-Script for running BEEM dune/beach function.
+Script for running MEEB dune/beach function.
 IRBR 20 Mar 2023
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-import routines_beem as routine
+import routines_meeb as routine
 import copy
 import time
 from matplotlib import colors

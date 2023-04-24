@@ -1,11 +1,11 @@
 """
-Script for calibrating beach/dune change parameters based on best fit to observations.
+Script for calibrating MEEB beach/dune change parameters with BRUTE FORCE based on best fit to observations.
 IRBR 1 Mar 2023
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-import routines_beem as routine
+import routines_meeb as routine
 import copy
 import time
 

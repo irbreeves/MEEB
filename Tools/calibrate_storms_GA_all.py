@@ -1,5 +1,5 @@
 """
-Script for calibrating BEEM storm parameters using genetic algorithm.
+Script for calibrating MEEB storm parameters using genetic algorithm.
 
 Calibrates based on fitess score for all morphologic change (i.e., beach/dune and overwash together).
 
@@ -8,7 +8,7 @@ IRBR 14 Mar 2023
 
 import numpy as np
 import matplotlib.pyplot as plt
-import routines_beem as routine
+import routines_meeb as routine
 import copy
 import time
 from tabulate import tabulate
