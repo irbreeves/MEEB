@@ -78,38 +78,71 @@ def shadowzones2(topof, sh, lee, longshore, crossshore, direction):
 
 @njit
 def erosprobs2(vegf, shade, sand, topof, groundw, p_er):
-    """ Returns a map with erosion probabilities
-    - vegf: map of combined vegetation effectiveness [veg] [0,1]
-    - shade: logical map of shadowzones [shadowmap]
-    - sand: logical map of sandy cells [sandmap]
-    - topof: topography map [topo]
-    - groundw: groundwater map [gw]
-    - p_er: probability of erosion of base/sandy cell"""
+    """ Returns a map with erosion probabilities.
 
-    r = np.logical_not(shade) * sand * (p_er - vegf) * (topof > groundw)  # IRBR 30Nov22: Fixed to follow Keijsers paper
+    Parameters
+    ----------
+    vegf : ndarray
+        [%] Map of combined vegetation effectiveness
+    shade : ndarray
+        [Bool] Map of shadowzones.
+    sand : ndarray
+        [bool] Map of sandy cells.
+    topof : ndarray
+        [slabs] Topography map.
+    groundw : ndarray
+        [slabs] Groundwater map.
+    p_er : float
+        Probability of erosion of base/sandy cell with zero vegetation.
+
+    Returns
+    -------
+    r
+        Map of effective erosion probabilities across landscape.
+    """
+
+    clim = 0.5  # TODO: Add to paramter list
+    r = np.logical_not(shade) * sand * (topof > groundw) * (p_er - (p_er / clim * vegf))
     r *= (r >= 0)
 
     return r
 
 
 @njit
-def depprobs(vegf, shade, sand, dep0, dep1):
-    """Returns a map of deposition probabilities that can then be used to implement transport
-    - vegf: map of combined vegetation effectiveness [veg] [0,1]
-    - shade: logical map of shadowzones [shadowmap]
-    - sand: logical map of sanded sites [sandmap]
-    - dep0: deposition probability on base cell [p_dep_base]
-    - dep1: deposition probability on sandy cell [p_dep_sand]"""
+def depprobs(vegf, shade, sand, dep_base, dep_sand):
+    """Returns a map of deposition probabilities that can then be used to implement transport.
+
+    Parameters
+    ----------
+    vegf : ndarray
+        [%] Map of combined vegetation effectiveness
+    shade : ndarray
+        [Bool] Map of shadowzones.
+    sand : ndarray
+        [bool] Map of sandy cells.
+    dep_base : float
+        Probability of deposition in base cell with zero vegetation.
+    dep_sand : float
+        Probability of deposition in sandy cell with zero vegetation.
+
+    Returns
+    -------
+    r
+        Map of effective deposition probabilities across landscape.
+    """
+
+    dep_max_base = dep_base + 0.1  # Probability of deposition in base cell with 100% vegetation  # TODO: Add these to parameter list
+    dep_max_sand = dep_sand + 0.1  # Probability of deposition in sandy cell with 100% vegetation
 
     # For base cells
-    temp1 = vegf * dep0 + dep0  # Deposition probabilities on base cells  # IRBR 30Nov22: Fixed to follow Keijsers paper
-    temp2 = np.logical_not(sand) * np.logical_not(shade) * temp1  # Apply to base cells outside shadows only
+    pdb_veg = dep_base + ((dep_max_base - dep_base) * vegf)  # Deposition probabilities on base cells, greater with increasing for veg
+    pdb = np.logical_not(sand) * np.logical_not(shade) * pdb_veg  # Apply to base cells outside shadows only
 
     # For sandy cells
-    temp3 = vegf * dep1 + dep1  # Deposition probabilities on sandy cells  # IRBR 30Nov22: Fixed to follow Keijsers paper
-    temp4 = sand * np.logical_not(shade) * temp3  # Apply to sandy cells outside shadows only
+    pds_veg = dep_sand + ((dep_max_sand - dep_sand) * vegf)  # Deposition probabilities on base cells, greater with increasing for veg
+    pds = sand * np.logical_not(shade) * pds_veg  # Apply to sandy cells outside shadows only
 
-    r = temp2 + temp4 + shade  # Combine both types of cells + shadowzones
+    r = pdb + pds + shade  # Combine both types of cells + shadowzones
 
     return r
 
@@ -543,7 +576,8 @@ def foredune_crest(topo, MHW):
     """
 
     # Parameters
-    max_crossshore = 400  # [m] Limit cross-shore distance over which algorithm searches for foredune crest
+    shoreline = ocean_shoreline(topo, MHW)  # [m] Ocean shoreline locations
+    max_crossshore = np.max(shoreline) + 400  # [m] Limit cross-shore distance over which algorithm searches for foredune crest
     buff = 25  # [m] Buffer for searching for foredune crests around rough estimate of dune location
     window_large = 75  # Window size for primary broad savgol smoothening
     window_small = 11  # Window size for secondary narrow savgol smoothening
