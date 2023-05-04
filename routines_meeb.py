@@ -22,8 +22,8 @@ from AST.waves import ashton
 from numba import njit, prange
 
 
-def shadowzones2(topof, sh, lee, longshore, crossshore, direction):
-    """Returns a logical map with all shadowzones identified as ones. Wind from left to right, along the +2 dimension.
+def shadowzones(topof, sh, shadowangle, longshore, crossshore, direction):
+    """Returns a boolean map with all shadowzones identified as ones. Wind from left to right, along the +2 dimension.
 
     Parameters
     ----------
@@ -31,53 +31,50 @@ def shadowzones2(topof, sh, lee, longshore, crossshore, direction):
         Topography map.
     sh : float
         Slab height.
-    lee : float
+    shadowangle : float
         Shadow angle.
     longshore : int
         Alongshore length of domain
     crossshore : int
         Cross-shore width of domain
     direction : int
-        Wind direction (1 east, 2 north, 3, west, 4 south).
+        Wind direction (1 right, 2 down, 3 left, 4 up).
 
     Returns
     -------
     inshade
-        Logical map of shaded cells, now with open boundaries
+        Boolean map of shaded cells, now with open boundaries
     """
 
-    # steplimit = math.floor(math.tan(lee * math.pi / 180) / sh)  # The maximum step difference allowed given the slabheight and shadowangle
-    steplimit = math.tan(lee * math.pi / 180) / sh  # The maximum step difference allowed given the slabheight and shadowangle, not rounded yet
+    steplimit = math.tan(shadowangle * math.pi / 180) / sh  # The maximum step difference allowed given the slabheight and shadowangle
 
-    # range = min(crossshore, max(topof) / steplimit)
-    search_range = int(math.floor(np.max(topof) / steplimit))  # Identifies highest elevation and uses that to determine what the largest search distance needs to be
-
+    search_range = int(math.ceil(np.max(topof) / steplimit))  # Identifies highest elevation and uses that to determine what the largest search distance needs to be
     inshade = np.zeros([longshore, crossshore]).astype(bool)  # Define the zeroed logical map
 
     for i in range(1, search_range + 1):
         if direction == 1:
             step = topof - np.roll(topof, i, axis=1)  # Shift across columns (2nd dimension; along a row)
-            tempinshade = step < -math.floor(steplimit * i)  # Identify cells with too great a stepheight
-            tempinshade[:, 0:i] = 0  # Part that is circshifted back into beginning of space is ignored
+            tempinshade = step < -(steplimit * i)  # Identify cells with too great a stepheight (IRBR 4May23: Removed floor rounding of steplimit)
+            tempinshade[:, 0:i] = 0  # Part that is rolled back into beginning of space is ignored
         elif direction == 2:
             step = topof - np.roll(topof, i, axis=0)  # Shift across columns (2nd dimension; along a row)
-            tempinshade = step < -math.floor(steplimit * i)  # Identify cells with too great a stepheight
-            tempinshade[0:i, :] = 0  # Part that is circshifted back into beginning of space is ignored
+            tempinshade = step < -(steplimit * i)  # Identify cells with too great a stepheight (IRBR 4May23: Removed floor rounding of steplimit)
+            tempinshade[0:i, :] = 0  # Part that is rolled back into beginning of space is ignored
         elif direction == 3:
             step = topof - np.roll(topof, -i, axis=1)  # Shift across columns (2nd dimension; along a row)
-            tempinshade = step < -math.floor(steplimit * i)  # Identify cells with too great a stepheight
-            tempinshade[:, -1 - i:-1] = 0  # Part that is circshifted back into beginning of space is ignored
+            tempinshade = step < -(steplimit * i)  # Identify cells with too great a stepheight (IRBR 4May23: Removed floor rounding of steplimit)
+            tempinshade[:, -1 - i:-1] = 0  # Part that is rolled back into beginning of space is ignored
         elif direction == 4:
             step = topof - np.roll(topof, -i, axis=0)  # Shift across columns (2nd dimension; along a row)
-            tempinshade = step < -math.floor(steplimit * i)  # Identify cells with too great a stepheight
-            tempinshade[-1 - i:-1, :] = 0  # Part that is circshifted back into beginning of space is ignored
+            tempinshade = step < -(steplimit * i)  # Identify cells with too great a stepheight (IRBR 4May23: Removed floor rounding of steplimit)
+            tempinshade[-1 - i:-1, :] = 0  # Part that is rolled back into beginning of space is ignored
         inshade = np.bitwise_or(inshade, tempinshade)  # Merge with previous inshade zones
 
     return inshade
 
 
 @njit
-def erosprobs2(vegf, shade, sand, topof, groundw, p_er):
+def erosprobs(vegf, shade, sand, topof, groundw, p_er):
     """ Returns a map with erosion probabilities.
 
     Parameters
@@ -147,15 +144,15 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand):
     return r
 
 
-def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore, direction, RNG):
+def shiftslabs(Pe, Pd, hop, contour, longshore, crossshore, direction, RNG):
     """Shifts the sand. Movement is from left to right, along +2 dimension, across columns, along rows. Returns a map of height changes [-,+].
     Open boundaries (modification by Alma), no feeding from the sea side.
-    - erosprobs: map of erosion probabilities [erosmap]
-    - deposprobs: map of deposition probabilities [deposmap]
+    - Pe: map of erosion probabilities
+    - Pd: map of deposition probabilities
     - hop: jumplength
     - direction: wind direction (1 east, 2 north, 3, west, 4 south)"""
 
-    pickedup = RNG.random((longshore, crossshore)) < erosprobs  # True where slab is picked up
+    pickedup = RNG.random((longshore, crossshore)) < Pe  # True where slab is picked up
     # pickedup[:, -1 - hop: -1] = 0  # Do not pick any slab that are on the ladward boundary -- east only?
 
     totaldeposit = np.zeros([longshore, crossshore])
@@ -170,7 +167,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             inmotion = np.roll(inmotion, hop, axis=1)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = RNG.random((longshore, crossshore)) < deposprobs  # True where slab should be deposited
+            depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
             # depocells[:, -1 - hop: -1] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[:, 0: hop] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
@@ -178,7 +175,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             inmotion = np.roll(inmotion, hop, axis=0)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = RNG.random((longshore, crossshore)) < deposprobs  # True where slab should be deposited
+            depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
             # depocells[0 : hop, :] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[0: hop, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
@@ -186,7 +183,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             inmotion = np.roll(inmotion, -hop, axis=1)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = RNG.random((longshore, crossshore)) < deposprobs  # True where slab should be deposited
+            depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
             # depocells[:, -1 - hop: -1] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[:, -1 - hop: -1] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
@@ -194,7 +191,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
             inmotion = np.roll(inmotion, -hop, axis=0)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[contour.astype(np.int64), :], axis=1)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = RNG.random((longshore, crossshore)) < deposprobs  # True where slab should be deposited
+            depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
             # depocells[0 : hop + 1, :] = 1  # All slabs are deposited if they are transported over the landward edge
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[-1 - hop: -1, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
@@ -208,7 +205,7 @@ def shiftslabs3_open3(erosprobs, deposprobs, hop, contour, longshore, crossshore
     return diff, numshifted, sum_contour
 
 
-def enforceslopes2(topof, vegf, sh, anglesand, angleveg, th, RNG):
+def enforceslopes(topof, vegf, sh, anglesand, angleveg, th, RNG):
     """Function to enforce the angle of repose; open boundaries (18 oct 2010). Returns an updated topography.
     - topof         : topography map [topo]
     - vegf          : map of combined vegetation effectiveness [veg] [0,1]

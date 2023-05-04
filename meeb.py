@@ -49,11 +49,11 @@ class MEEB:
 
             # AEOLIAN
             groundwater_depth=0.8,  # Proportion of the equilibrium profile used to set groundwater profile.
-            direction1=1,  # Direction 1 (from) of the slab movement. 1 = west, 2 = north, 3 = east and 4 = south
-            direction2=1,  # Direction 2 (from) of the slab movement. 1 = west, 2 = north, 3 = east and 4 = south
-            direction3=1,  # Direction 3 (from) of the slab movement. 1 = west, 2 = north, 3 = east and 4 = south
-            direction4=1,  # Direction 4 (from) of the slab movement. 1 = west, 2 = north, 3 = east and 4 = south
-            direction5=1,  # Direction 5 (from) of the slab movement. 1 = west, 2 = north, 3 = east and 4 = south
+            direction1=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
+            direction2=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
+            direction3=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
+            direction4=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
+            direction5=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
             p_dep_sand=0.1,  # [0-1] Probability of deposition of sandy cells
             p_dep_base=0.1,  # [0-1] Probability of deposition of base cells
             p_ero_sand=0.5,  # [0-1] Probability of erosion of bare/sandy cells
@@ -207,8 +207,8 @@ class MEEB:
 
         # TOPOGRAPHY
         Init = np.load(inputloc + init_filename)
-        xmin = 21600  #575  # temp
-        xmax = 21800  #825  # temp
+        xmin = 6500  #575  # temp
+        xmax = 6600  #825  # temp
         self._topo_initial = Init[0, xmin: xmax, :]  # [m NAVD88] 2D array of initial topography
         self._topo = self._topo_initial / self._slabheight_m  # [slabs NAVD88] Initialise the topography, transform from m into number of slabs
         self._longshore, self._crossshore = self._topo.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
@@ -301,23 +301,23 @@ class MEEB:
 
         # Find sandy and shadowed cells
         sandmap = self._topo > self._MHW  # Boolean array, Returns True (1) for sandy cells
-        shadowmap = routine.shadowzones2(self._topo, self._slabheight, self._shadowangle, self._longshore, self._crossshore, direction=self._direction[it])  # Returns map of True (1) for in shadow, False (2) not in shadow
+        shadowmap = routine.shadowzones(self._topo, self._slabheight, self._shadowangle, self._longshore, self._crossshore, direction=self._direction[it])  # Returns map of True (1) for in shadow, False (2) not in shadow
 
         # Erosion/Deposition Probabilities
-        erosmap = routine.erosprobs2(self._veg, shadowmap, sandmap, self._topo, self._gw, self._p_ero_sand)  # Returns map of erosion probabilities
+        erosmap = routine.erosprobs(self._veg, shadowmap, sandmap, self._topo, self._gw, self._p_ero_sand)  # Returns map of erosion probabilities
         deposmap = routine.depprobs(self._veg, shadowmap, sandmap, self._p_dep_base, self._p_dep_sand)  # Returns map of deposition probabilities
 
         # Move sand slabs
         if self._direction[it] == 1 or self._direction[it] == 3:  # East or west wind direction
             contour = np.linspace(0, round(self._crossshore) - 1, self._n_contour + 1)  # Contours to account for transport
-            changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
+            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
         else:  # North or south wind direction
             contour = np.linspace(0, round(self._longshore) - 1, self._n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This may produce slightly different results than Matlab version - need to verify
-            changemap, slabtransp, sum_contour = routine.shiftslabs3_open3(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
+            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
 
         # Apply changes, make calculations
         self._topo = self._topo + changemap  # Changes applied to the topography
-        self._topo, aval = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)  # Enforce angles of repose: avalanching
+        self._topo, aval = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)  # Enforce angles of repose: avalanching
         self._balance = self._balance + (self._topo - before)  # Update the sedimentation balance map
         balance_init = self._balance + (self._topo - before)
         self._stability = self._stability + abs(self._topo - before)
@@ -377,7 +377,7 @@ class MEEB:
                 )
 
                 # Enforce angles of repose again after overwash
-                self._topo = routine.enforceslopes2(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]
+                self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]
 
                 # Update vegetation from storm effects
                 self._spec1[inundated] = 0  # Remove species where beach is inundated  TODO: Apply elevation change threshold here too
