@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 24 April 2023
+Last update: 4 May 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -16,6 +16,7 @@ import dill
 import matplotlib.pyplot as plt
 import time
 import imageio
+import scipy
 import os
 import copy
 import cProfile
@@ -66,7 +67,7 @@ class MEEB:
             n_contour=10,  # Number of contours to be used to calculate fluxes. Multiples of 10
 
             # SHOREFACE, BEACH, & SHORELINE
-            beach_equilibrium_slope=0.02,  # Equilibrium slope of the beach
+            beach_equilibrium_slope=0.039,  # Equilibrium slope of the beach
             beach_erosiveness=1.75,  # Beach erosiveness timescale constant: larger (smaller) Et == lesser (greater) storm erosiveness
             beach_substeps=40,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
             shoreface_flux_rate=5000,  # [m3/m/yr] Shoreface flux rate coefficient
@@ -295,9 +296,8 @@ class MEEB:
 
         # Get present groundwater elevations
         dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._MHW * self._slabheight_m)
-        eqtopo = routine.equilibrium_topography(self._topo, self._s_sf_eq, self._beach_equilibrium_slope, self._MHW, dune_crest)
-        self._gw = eqtopo * self._groundwater_depth
-        self._gw[self._gw >= self._topo] = self._topo[self._gw >= self._topo]
+        self._gw = scipy.ndimage.gaussian_filter(self._topo, sigma=12) * self._groundwater_depth  # IRBR 4May23: New groundwater parameterization based on smoothened topography
+        self._gw[self._gw < self._MHW] = self._MHW
 
         # Find sandy and shadowed cells
         sandmap = self._topo > self._MHW  # Boolean array, Returns True (1) for sandy cells

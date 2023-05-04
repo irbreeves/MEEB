@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 24 April 2023
+Last update: 4 May 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -1645,32 +1645,6 @@ def brier_skill_score(simulated, observed, baseline, mask):
     return BSS
 
 
-@njit
-def equilibrium_topography(topo, shoreface_equilibrium_slope, beach_equilibrium_slope, MHW, crestline):
-    """"""
-
-    longshore, crossshore = topo.shape
-    shoreline_ocean = ocean_shoreline(topo, MHW)  # Alongshore locations of ocean shoreline
-    shoreline_backbarrier = backbarrier_shoreline(topo, MHW)  # Alongshore locations of back-barrier shoreline
-
-    eqtopo = np.zeros(topo.shape)  # Initialize
-
-    for l in range(longshore):
-
-        shoreface = np.arange(-shoreline_ocean[l], 1) * shoreface_equilibrium_slope + MHW
-        beach = np.arange(1, crestline[l] - shoreline_ocean[l] + 1) * beach_equilibrium_slope + MHW
-
-        interior_slope = (beach[-1] - MHW) / (shoreline_backbarrier[l] - crestline[l])
-        interior = np.arange(shoreline_backbarrier[l] - crestline[l] - 1, -1, -1) * interior_slope + MHW
-
-        eqtopo[l, :shoreline_ocean[l] + 1] = shoreface
-        eqtopo[l, shoreline_ocean[l] + 1: crestline[l] + 1] = beach
-        eqtopo[l, crestline[l] + 1: shoreline_backbarrier[l] + 1] = interior
-        eqtopo[l, shoreline_backbarrier[l] + 1:] = -1.5
-
-    return eqtopo
-
-
 def foredune_toe(topo, MHW, slabheight_m):
 
     from pybeach.beach import Profile
@@ -1766,3 +1740,24 @@ def adjust_ocean_shoreline(
             topo[ls, :new_shoreline] = shoreface  # Insert into domain
 
     return topo
+
+def reduce_raster_resolution(raster, reduction_factor):
+    """Reduces raster resolutions by reduction factor using averaging.
+
+    Parameters
+    ----------
+    raster : ndarray
+        2D numpy array raster.
+    reduction_factor : int
+        Fraction to reduce raster resolution by (i.e., 10 will reduce 500x300 raster to 50x30).
+
+    Returns
+    ----------
+    raster
+        Reduced resolution raster.
+    """
+
+    shape = tuple(int(ti / reduction_factor) for ti in raster.shape)
+    sh = shape[0],raster.shape[0]//shape[0],shape[1],raster.shape[1]//shape[1]
+
+    return raster.reshape(sh).mean(-1).mean(1)
