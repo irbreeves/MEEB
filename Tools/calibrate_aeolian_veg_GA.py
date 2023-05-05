@@ -97,23 +97,26 @@ def storm_fitness(solution, solution_idx):
 
     # Create an instance of the BMI class
     meeb = MEEB(
-        name="SLR 3 mm/yr, 2014-2016 Hindcast",
-        simulation_time_yr=0.92,
-        RSLR=0.003,
+        name="SLR 0 mm/yr, 2004-2009 Hindcast",
+        simulation_time_yr=5.1,
+        RSLR=0.000,
         MHW=MHW,
         seeded_random_numbers=True,
-        p_dep_sand=solution[0],  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr, 0.75 = 3.333 m^m/3/yr, 1 = 2.5 m^m/3/yr
-        p_ero_sand=solution[1],  # if p_dep = 0.5, p_ero of 0.5 = 5 m^m/3/yr, 0.25 = 2.5 m^m/3/yr, 0.1 = 1 m^m/3/yr
-        shadowangle=solution[2],  # [deg] 15
-        repose_bare=solution[3],  # [deg] 20 orig:30
-        repose_veg=solution[3] + 5,  # [deg] 30 orig:35
-        direction2=solution[4],
-        direction4=solution[5],
+        p_dep_sand=solution[0],
+        p_dep_sand_VegMax=solution[0] + solution[1],
+        p_ero_sand=solution[2],
+        entrainment_veg_limit=solution[3],
+        shadowangle=solution[4],
+        repose_bare=solution[5],
+        repose_veg=solution[5] + 10,
+        direction2=solution[6],
+        direction4=solution[7],
         init_filename=start,
         hindcast=True,
-        hindcast_start=1889,
+        hindcast_start=1278,  # Must be even integer
         storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
     )
+
 
     # Loop through time
     for time_step in range(int(meeb.iterations)):
@@ -124,8 +127,8 @@ def storm_fitness(solution, solution_idx):
     # ASSESS MODEL SKILL
 
     topo_end_sim = meeb.topo * meeb.slabheight
-    topo_change_sim = topo_start - topo_end_sim  # [m]
-    topo_change_obs = topo_start - topo_end_obs  # [m]
+    topo_change_sim = topo_end_sim - topo_start  # [m]
+    topo_change_obs = topo_end_obs - topo_start  # [m]
 
     # Subaerial mask
     subaerial_mask = topo_end_sim > MHW  # [bool] Mask for every cell above water
@@ -136,6 +139,16 @@ def storm_fitness(solution, solution_idx):
     for l in range(topo_start.shape[0]):
         beach_duneface_mask[l, :dune_crest[l]] = True
     beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
+
+    # Temp limit interior in analysis to dunes
+    subaerial_mask[:, :820] = False
+    subaerial_mask[:, 950:] = False
+
+    # Optional: Reduce Resolutions
+    reduc = 5  # Reduction factor
+    topo_change_obs = routine.reduce_raster_resolution(topo_change_obs, reduc)
+    topo_change_sim = routine.reduce_raster_resolution(topo_change_sim, reduc)
+    subaerial_mask = (routine.reduce_raster_resolution(subaerial_mask, reduc)) == 1
 
     if np.isnan(np.sum(topo_change_sim)):
         score = -1e10
@@ -153,21 +166,28 @@ start_time = time.time()  # Record time at start of calibration
 
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
-start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
-stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
+# # 0.92, 1890
+# start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
+
+# 5.1, 1278
+start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
+
+# Define Alongshore Coordinates of Domain
+xmin = 6500  # 575, 2000, 2150, 2000, 3800  # 2650
+xmax = 6600  # 825, 2125, 2350, 2600, 4450  # 2850
+
+slabheight_m = 0.1  # [m]
+MHW = 0.4  # [m NAVD88]
+name = '6500-6600, 2004-2009, BSS, shadow & groundwater changes, Reduc5'
+
+# ____________________________________
 
 # Initial Observed Topo
 Init = np.load("Input/" + start)
 # Final Observed
 End = np.load("Input/" + stop)
-
-# Define Alongshore Coordinates of Domain
-xmin = 21600  # 575, 2000, 2150, 2000, 3800  # 2650
-xmax = 21800  # 825, 2125, 2350, 2600, 4450  # 2850
-
-slabheight_m = 0.1  # [m]
-MHW = 0.4  # [m NAVD88]
-name = '21600-21800, 2016-2017'
 
 # Transform Initial Observed Topo
 topo_i = Init[0, xmin: xmax, :]  # [m]
@@ -196,28 +216,32 @@ veg_end[veg_end < 0] = 0
 # Prepare Genetic Algoritm Parameters
 
 # Genes: Free parameters
-num_genes = 6
+num_genes = 8
 gene_type = [[float, 2],
+             [float, 2],
+             [float, 2],
              [float, 2],
              int,
              int,
              int,
              int]
-gene_space = [{'low': 0.1, 'high': 0.9},  # p_dep_sand
-              {'low': 0.1, 'high': 0.9},  # p_ero_sand
-              {'low': 5, 'high': 25},  # shadowangle
-              {'low': 15, 'high': 35},  # repose_bare
+gene_space = [{'low': 0.02, 'high': 0.5},  # p_dep_sand
+              {'low': 0.01, 'high': 0.5},  # p_dep_sand_VegMax
+              {'low': 0.02, 'high': 0.5},  # p_ero_sand
+              {'low': 0.05, 'high': 0.95},  # entrainment_veg_limit
+              {'low': 2, 'high': 20},  # shadowangle
+              {'low': 15, 'high': 30},  # repose_bare
               {'low': 1, 'high': 4},  # direction2
               {'low': 1, 'high': 4}]  # direction4
 
 # Generations
-num_generations = 5
-sol_per_pop = 3  # Solutions for each population  # 5
+num_generations = 25
+sol_per_pop = 5  # Solutions for each population, AKA individuals
 
 mutation_type = "adaptive"
 mutation_percent_genes = [15, 5]
 
-num_parents_mating = 2  # 4
+num_parents_mating = 4
 parent_selection_type = "sss"
 keep_parents = 1
 crossover_type = "single_point"
@@ -269,13 +293,15 @@ print()
 print(tabulate({
     "BEST SOLUTION": ["BSS"],
     "p_dep_sand":  [best_solution[0]],
-    "p_ero_sand":   [best_solution[1]],
-    "shadowangle":  [best_solution[2]],
-    "repose_bare": [best_solution[3]],
-    "direction2":   [best_solution[4]],
-    "direction4":   [best_solution[5]],
+    "p_dep_sand_VegMax":  [best_solution[0] + best_solution[1]],
+    "p_ero_sand":   [best_solution[2]],
+    "entrainment_veg_limit":  [best_solution[3]],
+    "shadowangle":  [best_solution[4]],
+    "repose_bare": [best_solution[5]],
+    "direction2":   [best_solution[6]],
+    "direction4":   [best_solution[7]],
     "Score": [solution_fitness]
-    }, headers="keys", floatfmt=(None, ".2f", ".2f", ".0f", ".0f", ".0f", ".0f", ".4f"))
+    }, headers="keys", floatfmt=(None, ".2f", ".2f", ".2f", ".2f", ".0f", ".0f", ".0f", ".0f", ".4f"))
 )
 
 ga_instance.plot_fitness(title=name)
