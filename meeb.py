@@ -49,15 +49,17 @@ class MEEB:
             save_data=False,
 
             # AEOLIAN
-            groundwater_depth=0.8,  # Proportion of the equilibrium profile used to set groundwater profile.
+            groundwater_depth=0.8,  # Proportion of the smoothend topography used to set groundwater profile
             direction1=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
             direction2=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
             direction3=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
             direction4=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
             direction5=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
-            p_dep_sand=0.1,  # [0-1] Probability of deposition of sandy cells
+            p_dep_sand=0.1,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
+            p_dep_sand_VegMax=0.2,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover. Must be greater than or equal to p_dep_sand/p_dep_base.
             p_dep_base=0.1,  # [0-1] Probability of deposition of base cells
             p_ero_sand=0.5,  # [0-1] Probability of erosion of bare/sandy cells
+            entrainment_veg_limit=0.5, # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible.
             shadowangle=15,  # [deg]
             repose_bare=20,  # [deg] - orig:30
             repose_veg=30,  # [deg] - orig:35
@@ -138,8 +140,10 @@ class MEEB:
         self._save_data = save_data
         self._groundwater_depth = groundwater_depth
         self._p_dep_sand = p_dep_sand
+        self._p_dep_sand_VegMax = p_dep_sand_VegMax
         self._p_dep_base = p_dep_base
         self._p_ero_sand = p_ero_sand
+        self._entrainment_veg_limit = entrainment_veg_limit
         self._shadowangle = shadowangle
         self._repose_bare = repose_bare
         self._repose_veg = repose_veg
@@ -304,8 +308,8 @@ class MEEB:
         shadowmap = routine.shadowzones(self._topo, self._slabheight, self._shadowangle, self._longshore, self._crossshore, direction=self._direction[it])  # Returns map of True (1) for in shadow, False (2) not in shadow
 
         # Erosion/Deposition Probabilities
-        erosmap = routine.erosprobs(self._veg, shadowmap, sandmap, self._topo, self._gw, self._p_ero_sand)  # Returns map of erosion probabilities
-        deposmap = routine.depprobs(self._veg, shadowmap, sandmap, self._p_dep_base, self._p_dep_sand)  # Returns map of deposition probabilities
+        erosmap = routine.erosprobs(self._veg, shadowmap, sandmap, self._topo, self._gw, self._p_ero_sand, self._entrainment_veg_limit)  # Returns map of erosion probabilities
+        deposmap = routine.depprobs(self._veg, shadowmap, sandmap, self._p_dep_base, self._p_dep_sand, self._p_dep_sand_VegMax)  # Returns map of deposition probabilities
 
         # Move sand slabs
         if self._direction[it] == 1 or self._direction[it] == 3:  # East or west wind direction

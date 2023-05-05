@@ -74,7 +74,7 @@ def shadowzones(topof, sh, shadowangle, longshore, crossshore, direction):
 
 
 @njit
-def erosprobs(vegf, shade, sand, topof, groundw, p_er):
+def erosprobs(vegf, shade, sand, topof, groundw, p_er, entrainment_veg_limit):
     """ Returns a map with erosion probabilities.
 
     Parameters
@@ -91,22 +91,23 @@ def erosprobs(vegf, shade, sand, topof, groundw, p_er):
         [slabs] Groundwater map.
     p_er : float
         Probability of erosion of base/sandy cell with zero vegetation.
+    entrainment_veg_limit : float
+        [%] Percent of vegetation cover (effectiveness) beyond which aeolian sediment entrainment is no longer possible.
 
     Returns
     -------
-    r
+    Pe
         Map of effective erosion probabilities across landscape.
     """
 
-    clim = 0.5  # TODO: Add to paramter list
-    r = np.logical_not(shade) * sand * (topof > groundw) * (p_er - (p_er / clim * vegf))
-    r *= (r >= 0)
+    Pe = np.logical_not(shade) * sand * (topof > groundw) * (p_er - (p_er / entrainment_veg_limit * vegf))
+    Pe *= (Pe >= 0)
 
-    return r
+    return Pe
 
 
 @njit
-def depprobs(vegf, shade, sand, dep_base, dep_sand):
+def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg):
     """Returns a map of deposition probabilities that can then be used to implement transport.
 
     Parameters
@@ -121,27 +122,26 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand):
         Probability of deposition in base cell with zero vegetation.
     dep_sand : float
         Probability of deposition in sandy cell with zero vegetation.
+    dep_sand_MaxVeg : float
+        Probability of deposition in sandy cell with 100% vegetation cover.
 
     Returns
     -------
-    r
+    Pd
         Map of effective deposition probabilities across landscape.
     """
 
-    dep_max_base = dep_base + 0.1  # Probability of deposition in base cell with 100% vegetation  # TODO: Add these to parameter list
-    dep_max_sand = dep_sand + 0.1  # Probability of deposition in sandy cell with 100% vegetation
-
     # For base cells
-    pdb_veg = dep_base + ((dep_max_base - dep_base) * vegf)  # Deposition probabilities on base cells, greater with increasing for veg
+    pdb_veg = dep_base + ((dep_sand_MaxVeg - dep_base) * vegf)  # Deposition probabilities on base cells, greater with increasing vegetation cover
     pdb = np.logical_not(sand) * np.logical_not(shade) * pdb_veg  # Apply to base cells outside shadows only
 
     # For sandy cells
-    pds_veg = dep_sand + ((dep_max_sand - dep_sand) * vegf)  # Deposition probabilities on base cells, greater with increasing for veg
+    pds_veg = dep_sand + ((dep_sand_MaxVeg - dep_sand) * vegf)  # Deposition probabilities on base cells, greater with increasing for veg
     pds = sand * np.logical_not(shade) * pds_veg  # Apply to sandy cells outside shadows only
 
-    r = pdb + pds + shade  # Combine both types of cells + shadowzones
+    Pd = pdb + pds + shade  # Combine both types of cells + shadowzones
 
-    return r
+    return Pd
 
 
 def shiftslabs(Pe, Pd, hop, contour, longshore, crossshore, direction, RNG):
