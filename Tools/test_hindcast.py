@@ -3,7 +3,7 @@ Script for testing MEEB hindcast simulations.
 
 Calculates fitess score for all morphologic and ecologic change between two observations.
 
-IRBR 4 May 2023
+IRBR 31 May 2023
 """
 
 import numpy as np
@@ -96,6 +96,20 @@ def model_skill(obs_change, sim_change, obs_change_mean, mask):
 
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
+
+# # 5.1, 20040716
+# start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
+
+# # 0.92, 20161012
+# start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
+
+# # 1.96, 20161012
+# start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
+
+# 9.7, 20040716
 start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
 stop = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
 
@@ -105,12 +119,12 @@ Init = np.load("Input/" + start)
 End = np.load("Input/" + stop)
 
 # Define Alongshore Coordinates of Domain
-xmin = 6500  # 575, 2000, 2150, 2000, 3800  # 2650
-xmax = 6600  # 825, 2125, 2350, 2600, 4450  # 2850
+xmin = 6100  # 575, 2000, 2150, 2000, 3800  # 2650 #6500
+xmax = 6200  # 825, 2125, 2350, 2600, 4450  # 2850 #6600
 
 slabheight_m = 0.1  # [m]
 MHW = 0.4  # [m NAVD88]
-name = '6500-6600, 04-09, RSLR=0.0, 7-10-12-25-35-3-3'
+name = '6100-6200, 2004-2014, 48-74-41-9-4-17-27-3-1'
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
 
@@ -141,26 +155,26 @@ veg_end[veg_end < 0] = 0
 
 start_time = time.time()  # Record time at start of simulation
 
-# Create an instance of the BMI class
+# Create an instance of the MEEB class
 meeb = MEEB(
     name=name,
-    simulation_time_yr=5.1,
+    simulation_time_yr=9.7,
     RSLR=0.00,
     MHW=MHW,
     seeded_random_numbers=True,
-    p_dep_sand=0.07,  # Q = hs * L * n * pe/pd
-    p_dep_sand_VegMax=0.17,
-    p_ero_sand=0.10,
-    entrainment_veg_limit=0.5,
-    shadowangle=12,
-    repose_bare=25,
-    repose_veg=35,
+    p_dep_sand=0.48,  # Q = hs * L * n * pe/pd
+    p_dep_sand_VegMax=0.74,
+    p_ero_sand=0.41,
+    entrainment_veg_limit=0.09,
+    shadowangle=4,
+    repose_bare=17,
+    repose_veg=27,
     direction2=3,
-    direction3=3,
+    direction3=1,
     wave_asymetry=0.5,
     init_filename=start,  # !!! Currently, the min and max have to be modified in meeb.py too
     hindcast=True,
-    hindcast_start=1278,
+    simulation_start_date='20040716',
     storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
 )
 
@@ -199,15 +213,21 @@ for l in range(topo_start.shape[0]):
     beach_duneface_mask[l, :dune_crest[l]] = True
 beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask_sim)  # [bool] Map of every cell seaward of dune crest
 
+# Temp limit interior in analysis to dunes
+subaerial_mask = copy.copy(subaerial_mask_sim)
+subaerial_mask[:, :820] = False
+subaerial_mask[:, 950:] = False
+
 if ResReduc:
     # Reduce Resolutions
     topo_change_obs = routine.reduce_raster_resolution(topo_change_obs, reduc)
     topo_change_sim = routine.reduce_raster_resolution(topo_change_sim, reduc)
+    subaerial_mask = (routine.reduce_raster_resolution(subaerial_mask, reduc)) == 1
     subaerial_mask_obs = (routine.reduce_raster_resolution(subaerial_mask_obs, reduc)) == 1
     subaerial_mask_sim = (routine.reduce_raster_resolution(subaerial_mask_sim, reduc)) == 1
 
 # Model Skill
-nse, rmse, bss, pc, hss = model_skill(topo_change_obs, topo_change_sim, np.mean(topo_change_obs), subaerial_mask_sim)
+nse, rmse, bss, pc, hss = model_skill(topo_change_obs, topo_change_sim, np.mean(topo_change_obs), subaerial_mask)
 
 # Prin scores
 print()
@@ -291,7 +311,7 @@ for t in range(0, int(meeb.simulation_time_yr / meeb.writeyear) + 1):
     Fig = plt.figure(figsize=(14, 8))
 
     MHW = meeb.RSLR * t
-    topo = meeb.topo_TS[:, :, t] * meeb.slabheight  # [m]
+    topo = meeb.topo_TS[:, xmin: xmax, t] * meeb.slabheight  # [m]
     topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
     cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
     cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
@@ -302,7 +322,7 @@ for t in range(0, int(meeb.simulation_time_yr / meeb.writeyear) + 1):
     timestr = "Year " + str(t * meeb.writeyear)
     plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
 
-    veg = meeb.veg_TS[:, :, t]
+    veg = meeb.veg_TS[:, xmin: xmax, t]
     veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
     cmap2 = copy.copy(plt.cm.get_cmap("YlGn"))
     cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue

@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 4 May 2023
+Last update: 31 May 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -20,6 +20,7 @@ import scipy
 import os
 import copy
 import cProfile
+from datetime import datetime, timedelta
 
 import routines_meeb as routine
 
@@ -44,7 +45,8 @@ class MEEB:
             outputloc="Output/",  # Output file directory (end string with "/")
             init_filename="Init_NorthernNCB_2017_PreFlorence.npy",  # [m NVD88] Name of initial topography and vegetation input file
             hindcast=False,  # [bool] Determines whether the model is run with the default stochastisity generated storms [hindcast=False], or an empirical storm, wind, wave, temp timeseries [hindcast=True]
-            hindcast_start=0,  # [1/50 year] Week to start hindcast timeseries from relative to beginning of timeseries (e.g., 100 will start hindcast 2 years into timeseries); VALUE MUST BE EVEN TODO: Rounds odd numbers to even
+            simulation_start_date='20040716',  # [date] Date from which to start hindcast; must be string in format 'yyyymmdd'
+            hindcast_timeseries_start_date='19790101',  # [date] Start date of hindcast timeseries input data; format 'yyyymmdd'
             seeded_random_numbers=True,
             save_data=False,
 
@@ -136,7 +138,8 @@ class MEEB:
         self._inputloc = inputloc
         self._outputloc = outputloc
         self._hindcast = hindcast
-        self._hindcast_start = hindcast_start
+        self._simulation_start_date = simulation_start_date
+        self._hindcast_timseries_start_date = hindcast_timeseries_start_date
         self._save_data = save_data
         self._groundwater_depth = groundwater_depth
         self._p_dep_sand = p_dep_sand
@@ -209,10 +212,21 @@ class MEEB:
         self._iterations_per_cycle = round(self._qpotseries * 25)  # Number of iterations that is regarded as 1 year (was 50) [iterations/year]
         self._stormreset = round(self._qpotseries * 1)
         self._iterations = int(self._iterations_per_cycle * self._simulation_time_yr)  # Number of iterations
+        self._simulation_start_date = datetime.strptime(self._simulation_start_date, '%Y%m%d').date()  # Convert to datetime
+        if hindcast:
+            self._hindcast_timeseries_start_date = datetime.strptime(self._hindcast_timseries_start_date, '%Y%m%d').date()  # Convert to datetime
+            self._simulation_start_iteration = ((self._simulation_start_date.year - self._hindcast_timeseries_start_date.year) * self._iterations_per_cycle) + \
+                                           math.floor(self._simulation_start_date.timetuple().tm_yday / 365 * self._iterations_per_cycle)  #  Iteration, realtive to timeseries start, from which to begin hindcast
+            if self._simulation_start_iteration % 2 != 0:
+                self._simulation_start_iteration -= 1  # Round simulation start iteration to even number
+        else:
+            self._simulation_start_iteration = 0
+
+        self._iteration_dates = [self._simulation_start_date + timedelta(minutes=10512 * x) for x in range(self._iterations)]  # List of dates corresponding to each model iteration TODO: Need to round start date to nearest 1/50th
 
         # TOPOGRAPHY
         Init = np.load(inputloc + init_filename)
-        xmin = 6500  #575  # temp
+        xmin = 6400  #575  # temp
         xmax = 6600  #825  # temp
         self._topo_initial = Init[0, xmin: xmax, :]  # [m NAVD88] 2D array of initial topography
         self._topo = self._topo_initial / self._slabheight_m  # [slabs NAVD88] Initialise the topography, transform from m into number of slabs
@@ -242,7 +256,7 @@ class MEEB:
         # self._pstorm = [0.232558139534884, 0.0697674418604651, 0.116279069767442, 0.186046511627907, 0.0930232558139535, 0.0465116279069767, 0.139534883720930, 0.0697674418604651, 0.0232558139534884, 0, 0, 0, 0.0232558139534884, 0,
         #                 0.0232558139534884, 0.0465116279069767, 0.255813953488372, 0.255813953488372, 0.116279069767442, 0.139534883720930, 0.0697674418604651, 0.0465116279069767, 0.0697674418604651, 0.0697674418604651, 0.0930232558139535]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 NCB storm record
 
-        if self._hindcast and self._iterations > (self._storm_timeseries[-1, 0] - self._hindcast_start):
+        if self._hindcast and self._iterations > (self._storm_timeseries[-1, 0] - self._simulation_start_iteration):
             raise ValueError("Simulation length is greater than hindcast timeSeries length.")
 
         # MODEL PARAMETERS
@@ -339,7 +353,7 @@ class MEEB:
 
             # Generate Storms Stats
             if self._hindcast:  # Empirical storm time series
-                storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._hindcast_start)
+                storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._simulation_start_iteration)
             else:  # Stochastic storm model
                 storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, slopes, self._RNG)  # [m MSL]
                 # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
@@ -602,114 +616,114 @@ class MEEB:
         return self._StormRecord
 
 
-# __________________________________________________________________________________________________________________________________
-# RUN MODEL
-
-start_time = time.time()  # Record time at start of simulation
-
-# Create an instance of the BMI class
-meeb = MEEB(
-    name="SLR 3 mm/yr, 2009-2012 Hindcast",
-    simulation_time_yr=3,
-    RSLR=0.003,
-    seeded_random_numbers=True,
-    p_dep_sand=0.05,  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr, 0.75 = 3.333 m^m/3/yr, 1 = 2.5 m^m/3/yr
-    p_ero_sand=0.25,  # if p_dep = 0.5, p_ero of 0.5 = 5 m^m/3/yr, 0.25 = 2.5 m^m/3/yr, 0.1 = 1 m^m/3/yr
-    direction2=2,
-    direction4=4,
-    wave_asymetry=0.5,
-    init_filename="Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy",
-    hindcast=True,
-    hindcast_start=1530,
-    storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
-)
-
-print(meeb.name)
-
-# Loop through time
-for time_step in range(int(meeb.iterations)):
-    # Print time step to screen
-    print("\r", "Time Step: ", time_step / meeb.iterations_per_cycle, "years", end="")
-
-    # Run time step
-    meeb.update(time_step)
-
-# Print elapsed time of simulation
-print()
-SimDuration = time.time() - start_time
-print()
-print("Elapsed Time: ", SimDuration, "sec")
-
-# Save Results
-if meeb.save_data:
-    filename = meeb.outputloc + "Sim_" + str(meeb.simnum)
-    dill.dump_module(filename)  # To re-load data: dill.load_session(filename)
-
-
-# __________________________________________________________________________________________________________________________________
-# PLOT RESULTS
-
-# Final Elevation & Vegetation
-Fig = plt.figure(figsize=(14, 9.5))
-Fig.suptitle(meeb.name, fontsize=13)
-MHW = meeb.RSLR * meeb.simulation_time_yr
-topo = meeb.topo * meeb.slabheight
-topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
-cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
-cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-ax1 = Fig.add_subplot(211)
-cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=5.0)
-cbar = Fig.colorbar(cax1)
-cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
-ax2 = Fig.add_subplot(212)
-veg = meeb.veg
-veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
-cmap2 = copy.copy(plt.cm.get_cmap("YlGn"))
-cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
-cbar = Fig.colorbar(cax2)
-cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
-plt.tight_layout()
-
-# Animation: Elevation and Vegetation Over Time
-for t in range(0, int(meeb.simulation_time_yr / meeb.writeyear) + 1):
-    Fig = plt.figure(figsize=(14, 8))
-
-    MHW = meeb.RSLR * t
-    topo = meeb.topo_TS[:, :, t] * meeb.slabheight  # [m]
-    topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
-    cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
-    cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-    ax1 = Fig.add_subplot(211)
-    cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=5.0)
-    cbar = Fig.colorbar(cax1)
-    cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
-    timestr = "Year " + str(t * meeb.writeyear)
-    plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
-
-    veg = meeb.veg_TS[:, :, t]
-    veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
-    cmap2 = copy.copy(plt.cm.get_cmap("YlGn"))
-    cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-    ax2 = Fig.add_subplot(212)
-    cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
-    cbar = Fig.colorbar(cax2)
-    cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
-    timestr = "Year " + str(t * meeb.writeyear)
-    plt.text(2, meeb.veg.shape[0] - 2, timestr, c='darkblue')
-    plt.tight_layout()
-    if not os.path.exists("Output/SimFrames/"):
-        os.makedirs("Output/SimFrames/")
-    name = "Output/SimFrames/meeb_elev_" + str(t)
-    plt.savefig(name)  # dpi=200
-    plt.close()
-
-frames = []
-for filenum in range(0, int(meeb.simulation_time_yr / meeb.writeyear) + 1):
-    filename = "Output/SimFrames/meeb_elev_" + str(filenum) + ".png"
-    frames.append(imageio.imread(filename))
-imageio.mimwrite("Output/SimFrames/meeb_elev.gif", frames, fps=3)
-print()
-print("[ * GIF successfully generated * ]")
-
-plt.show()
+# # __________________________________________________________________________________________________________________________________
+# # RUN MODEL
+#
+# start_time = time.time()  # Record time at start of simulation
+#
+# # Create an instance of the BMI class
+# meeb = MEEB(
+#     name="SLR 3 mm/yr, 2009-2012 Hindcast",
+#     simulation_time_yr=3,
+#     RSLR=0.003,
+#     seeded_random_numbers=True,
+#     p_dep_sand=0.05,  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr, 0.75 = 3.333 m^m/3/yr, 1 = 2.5 m^m/3/yr
+#     p_ero_sand=0.25,  # if p_dep = 0.5, p_ero of 0.5 = 5 m^m/3/yr, 0.25 = 2.5 m^m/3/yr, 0.1 = 1 m^m/3/yr
+#     direction2=2,
+#     direction4=4,
+#     wave_asymetry=0.5,
+#     init_filename="Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy",
+#     hindcast=True,
+#     hindcast_start=1530,
+#     storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
+# )
+#
+# print(meeb.name)
+#
+# # Loop through time
+# for time_step in range(int(meeb.iterations)):
+#     # Print time step to screen
+#     print("\r", "Time Step: ", time_step / meeb.iterations_per_cycle, "years", end="")
+#
+#     # Run time step
+#     meeb.update(time_step)
+#
+# # Print elapsed time of simulation
+# print()
+# SimDuration = time.time() - start_time
+# print()
+# print("Elapsed Time: ", SimDuration, "sec")
+#
+# # Save Results
+# if meeb.save_data:
+#     filename = meeb.outputloc + "Sim_" + str(meeb.simnum)
+#     dill.dump_module(filename)  # To re-load data: dill.load_session(filename)
+#
+#
+# # __________________________________________________________________________________________________________________________________
+# # PLOT RESULTS
+#
+# # Final Elevation & Vegetation
+# Fig = plt.figure(figsize=(14, 9.5))
+# Fig.suptitle(meeb.name, fontsize=13)
+# MHW = meeb.RSLR * meeb.simulation_time_yr
+# topo = meeb.topo * meeb.slabheight
+# topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
+# cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
+# cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
+# ax1 = Fig.add_subplot(211)
+# cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=5.0)
+# cbar = Fig.colorbar(cax1)
+# cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
+# ax2 = Fig.add_subplot(212)
+# veg = meeb.veg
+# veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
+# cmap2 = copy.copy(plt.cm.get_cmap("YlGn"))
+# cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
+# cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
+# cbar = Fig.colorbar(cax2)
+# cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
+# plt.tight_layout()
+#
+# # Animation: Elevation and Vegetation Over Time
+# for t in range(0, int(meeb.simulation_time_yr / meeb.writeyear) + 1):
+#     Fig = plt.figure(figsize=(14, 8))
+#
+#     MHW = meeb.RSLR * t
+#     topo = meeb.topo_TS[:, :, t] * meeb.slabheight  # [m]
+#     topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
+#     cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
+#     cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
+#     ax1 = Fig.add_subplot(211)
+#     cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=5.0)
+#     cbar = Fig.colorbar(cax1)
+#     cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
+#     timestr = "Year " + str(t * meeb.writeyear)
+#     plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
+#
+#     veg = meeb.veg_TS[:, :, t]
+#     veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
+#     cmap2 = copy.copy(plt.cm.get_cmap("YlGn"))
+#     cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
+#     ax2 = Fig.add_subplot(212)
+#     cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
+#     cbar = Fig.colorbar(cax2)
+#     cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
+#     timestr = "Year " + str(t * meeb.writeyear)
+#     plt.text(2, meeb.veg.shape[0] - 2, timestr, c='darkblue')
+#     plt.tight_layout()
+#     if not os.path.exists("Output/SimFrames/"):
+#         os.makedirs("Output/SimFrames/")
+#     name = "Output/SimFrames/meeb_elev_" + str(t)
+#     plt.savefig(name)  # dpi=200
+#     plt.close()
+#
+# frames = []
+# for filenum in range(0, int(meeb.simulation_time_yr / meeb.writeyear) + 1):
+#     filename = "Output/SimFrames/meeb_elev_" + str(filenum) + ".png"
+#     frames.append(imageio.imread(filename))
+# imageio.mimwrite("Output/SimFrames/meeb_elev.gif", frames, fps=3)
+# print()
+# print("[ * GIF successfully generated * ]")
+#
+# plt.show()

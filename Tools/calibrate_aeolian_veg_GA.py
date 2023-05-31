@@ -5,7 +5,7 @@ Calibrates based on fitess score for all morphologic and ecologic change between
 
 Can choose to calibrate for just aeolian, just veg, or both.
 
-IRBR 24 Apr 2023
+IRBR 31 May 2023
 """
 
 import numpy as np
@@ -113,7 +113,7 @@ def storm_fitness(solution, solution_idx):
         direction4=solution[7],
         init_filename=start,
         hindcast=True,
-        hindcast_start=1278,  # Must be even integer
+        simulation_start_date='20040716',
         storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
     )
 
@@ -144,11 +144,11 @@ def storm_fitness(solution, solution_idx):
     subaerial_mask[:, :820] = False
     subaerial_mask[:, 950:] = False
 
-    # Optional: Reduce Resolutions
-    reduc = 5  # Reduction factor
-    topo_change_obs = routine.reduce_raster_resolution(topo_change_obs, reduc)
-    topo_change_sim = routine.reduce_raster_resolution(topo_change_sim, reduc)
-    subaerial_mask = (routine.reduce_raster_resolution(subaerial_mask, reduc)) == 1
+    # # Optional: Reduce Resolutions
+    # reduc = 5  # Reduction factor
+    # topo_change_obs = routine.reduce_raster_resolution(topo_change_obs, reduc)
+    # topo_change_sim = routine.reduce_raster_resolution(topo_change_sim, reduc)
+    # subaerial_mask = (routine.reduce_raster_resolution(subaerial_mask, reduc)) == 1
 
     if np.isnan(np.sum(topo_change_sim)):
         score = -1e10
@@ -166,21 +166,21 @@ start_time = time.time()  # Record time at start of calibration
 
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
-# # 0.92, 1890
+# # 0.92, 20161012
 # start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
 # stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
 
-# 5.1, 1278
+# 5.1, 20040716
 start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
 stop = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
 
 # Define Alongshore Coordinates of Domain
-xmin = 6500  # 575, 2000, 2150, 2000, 3800  # 2650
+xmin = 6400  # 575, 2000, 2150, 2000, 3800  # 2650
 xmax = 6600  # 825, 2125, 2350, 2600, 4450  # 2850
 
 slabheight_m = 0.1  # [m]
 MHW = 0.4  # [m NAVD88]
-name = '6500-6600, 2004-2009, BSS, shadow & groundwater changes, Reduc5'
+name = '6400-6600, 2004-2009, BSS'
 
 # ____________________________________
 
@@ -229,13 +229,13 @@ gene_space = [{'low': 0.02, 'high': 0.5},  # p_dep_sand
               {'low': 0.01, 'high': 0.5},  # p_dep_sand_VegMax
               {'low': 0.02, 'high': 0.5},  # p_ero_sand
               {'low': 0.05, 'high': 0.95},  # entrainment_veg_limit
-              {'low': 2, 'high': 20},  # shadowangle
+              {'low': 5, 'high': 20},  # shadowangle
               {'low': 15, 'high': 30},  # repose_bare
               {'low': 1, 'high': 4},  # direction2
               {'low': 1, 'high': 4}]  # direction4
 
 # Generations
-num_generations = 25
+num_generations = 50
 sol_per_pop = 5  # Solutions for each population, AKA individuals
 
 mutation_type = "adaptive"
