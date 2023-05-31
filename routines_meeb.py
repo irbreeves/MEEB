@@ -80,7 +80,7 @@ def erosprobs(vegf, shade, sand, topof, groundw, p_er, entrainment_veg_limit):
     Parameters
     ----------
     vegf : ndarray
-        [%] Map of combined vegetation effectiveness
+        [%] Map of combined vegetation effectiveness.
     shade : ndarray
         [Bool] Map of shadowzones.
     sand : ndarray
@@ -88,7 +88,7 @@ def erosprobs(vegf, shade, sand, topof, groundw, p_er, entrainment_veg_limit):
     topof : ndarray
         [slabs] Topography map.
     groundw : ndarray
-        [slabs] Groundwater map.
+        [slabs] Groundwater elevation map.
     p_er : float
         Probability of erosion of base/sandy cell with zero vegetation.
     entrainment_veg_limit : float
@@ -106,8 +106,8 @@ def erosprobs(vegf, shade, sand, topof, groundw, p_er, entrainment_veg_limit):
     return Pe
 
 
-@njit
-def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg):
+# @njit
+def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg, topof, groundw):
     """Returns a map of deposition probabilities that can then be used to implement transport.
 
     Parameters
@@ -124,6 +124,10 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg):
         Probability of deposition in sandy cell with zero vegetation.
     dep_sand_MaxVeg : float
         Probability of deposition in sandy cell with 100% vegetation cover.
+    topof : ndarray
+        [slabs] Topography map.
+    groundw : ndarray
+        [slabs] Groundwater elevation map.
 
     Returns
     -------
@@ -134,10 +138,12 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg):
     # For base cells
     pdb_veg = dep_base + ((dep_sand_MaxVeg - dep_base) * vegf)  # Deposition probabilities on base cells, greater with increasing vegetation cover
     pdb = np.logical_not(sand) * np.logical_not(shade) * pdb_veg  # Apply to base cells outside shadows only
+    pdb[(topof <= groundw)] = 1  # 100% probability of deposition in where groundwater level is at or above surfae level
 
     # For sandy cells
     pds_veg = dep_sand + ((dep_sand_MaxVeg - dep_sand) * vegf)  # Deposition probabilities on base cells, greater with increasing for veg
     pds = sand * np.logical_not(shade) * pds_veg  # Apply to sandy cells outside shadows only
+    pds[(topof <= groundw)] = 1  # 100% probability of deposition in where groundwater level is at or above surfae level
 
     Pd = pdb + pds + shade  # Combine both types of cells + shadowzones
 

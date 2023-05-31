@@ -231,7 +231,7 @@ class MEEB:
         self._topo_initial = Init[0, xmin: xmax, :]  # [m NAVD88] 2D array of initial topography
         self._topo = self._topo_initial / self._slabheight_m  # [slabs NAVD88] Initialise the topography, transform from m into number of slabs
         self._longshore, self._crossshore = self._topo.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
-        self._gw = np.zeros(self._topo.shape)  # Initialize
+        self._groundwater_elevation = np.zeros(self._topo.shape)  # [slabs NAVD88] Initialize
 
         # SHOREFACE & SHORELINE
         self._x_s = routine.ocean_shoreline(self._topo, self._MHW)  # [m] Start locations of shoreline according to initial topography and MHW
@@ -313,16 +313,16 @@ class MEEB:
         before = copy.deepcopy(self._topo)
 
         # Get present groundwater elevations
-        self._gw = scipy.ndimage.gaussian_filter(self._topo, sigma=12) * self._groundwater_depth  # IRBR 4May23: New groundwater parameterization based on smoothened topography
-        self._gw[self._gw < self._MHW] = self._MHW
+        self._groundwater_elevation = scipy.ndimage.gaussian_filter(self._topo, sigma=12) * self._groundwater_depth  # [slabs NAVD88] IRBR 4May23: New groundwater parameterization based on smoothened topography
+        self._groundwater_elevation[self._groundwater_elevation < self._MHW] = self._MHW  # [slabs NAVD88]
 
         # Find sandy and shadowed cells
-        sandmap = self._topo > self._MHW  # Boolean array, Returns True (1) for sandy cells
-        shadowmap = routine.shadowzones(self._topo, self._slabheight, self._shadowangle, self._longshore, self._crossshore, direction=self._direction[it])  # Returns map of True (1) for in shadow, False (2) not in shadow
+        sandmap = self._topo > self._MHW  # Boolean array, Returns True for sandy cells
+        shadowmap = routine.shadowzones(self._topo, self._slabheight, self._shadowangle, self._longshore, self._crossshore, direction=self._direction[it])  # Returns map of True for in shadow, False not in shadow
 
         # Erosion/Deposition Probabilities
-        erosmap = routine.erosprobs(self._veg, shadowmap, sandmap, self._topo, self._gw, self._p_ero_sand, self._entrainment_veg_limit)  # Returns map of erosion probabilities
-        deposmap = routine.depprobs(self._veg, shadowmap, sandmap, self._p_dep_base, self._p_dep_sand, self._p_dep_sand_VegMax)  # Returns map of deposition probabilities
+        erosmap = routine.erosprobs(self._veg, shadowmap, sandmap, self._topo, self._groundwater_elevation, self._p_ero_sand, self._entrainment_veg_limit)  # Returns map of erosion probabilities
+        deposmap = routine.depprobs(self._veg, shadowmap, sandmap, self._p_dep_base, self._p_dep_sand, self._p_dep_sand_VegMax, self._topo, self._groundwater_elevation)  # Returns map of deposition probabilities
 
         # Move sand slabs
         if self._direction[it] == 1 or self._direction[it] == 3:  # East or west wind direction
