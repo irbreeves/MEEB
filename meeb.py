@@ -313,7 +313,6 @@ class MEEB:
         before = copy.deepcopy(self._topo)
 
         # Get present groundwater elevations
-        dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._MHW * self._slabheight_m)
         self._gw = scipy.ndimage.gaussian_filter(self._topo, sigma=12) * self._groundwater_depth  # IRBR 4May23: New groundwater parameterization based on smoothened topography
         self._gw[self._gw < self._MHW] = self._MHW
 
@@ -345,17 +344,13 @@ class MEEB:
         # STORMS - UPDATE BEACH, DUNE, AND INTERIOR
 
         if it % self._stormreset == 0:
-            veg_elev_limit = np.argmax(min(self._Spec1_elev_min, self._Spec2_elev_min) / self._slabheight_m + self._MHW < self._topo, axis=1)
-            dune_crest = routine.foredune_crest(self._topo * self._slabheight_m, self._MHW * self._slabheight_m)
-            slopes = routine.beach_slopes(self._topo, self._beach_equilibrium_slope, self._MHW, dune_crest, self._slabheight_m)
-
             iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
 
             # Generate Storms Stats
             if self._hindcast:  # Empirical storm time series
                 storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._simulation_start_iteration)
             else:  # Stochastic storm model
-                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, slopes, self._RNG)  # [m MSL]
+                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, self._beach_equilibrium_slope, self._RNG)  # [m MSL]
                 # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
                 Rhigh += self._MHW * self._slabheight_m
                 Rlow += self._MHW * self._slabheight_m

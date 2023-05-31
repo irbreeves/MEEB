@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 4 May 2023
+Last update: 31 May 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -746,34 +746,6 @@ def find_crests(profile, MHW, threshold, crest_pct):
     return idx
 
 
-def beach_slopes(topo, beach_equilibrium_slope, MHW, crestline, slabheight_m):
-    """Finds beach slope based on EQ beach profile for each cell alongshore, from MHW to location of dune crest.
-
-    Parameters
-    ----------
-    topo : ndarray
-        [slabs] Present topography.
-    beach_equilibrium_slope : float
-        Equilibrium slope of the beach
-    MHW : float
-        [slabs] Present mean high water level.
-    crestline : ndarray
-        Location of the foredune crest for each cell alongshore
-    slabheight_m : float
-        [m] Height of slabs.
-
-    Returns
-    ----------
-    slopes
-        Array of beach slopes for each cell alongshore
-    """
-
-    longshore = topo.shape[0]
-    slopes = np.ones([longshore]) * beach_equilibrium_slope  # Temporarily returns alongshore-uniform equilibrium slope; TODO: Return actual, alongshore-variable slope
-
-    return slopes
-
-
 def stochastic_storm(pstorm, iteration, storm_list, beach_slope, RNG):
     """Stochastically determines whether a storm occurs for this timestep, and, if so, stochastically determines the relevant characteristics of the storm (i.e., water levels, duration).
 
@@ -786,7 +758,7 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, RNG):
     storm_list : ndarray
         List of synthetic storms (rows), with wave and tide statistics (columns) desccribing each storm.
     beach_slope : float
-        Beach slope from MHW to dune toe.
+        Equilibrium beach slope.
     RNG :
         Random number generator, either seeded or unseeded
 
@@ -1645,47 +1617,6 @@ def brier_skill_score(simulated, observed, baseline, mask):
     return BSS
 
 
-def foredune_toe(topo, MHW, slabheight_m):
-
-    from pybeach.beach import Profile
-
-    topof = topo * slabheight_m - MHW  # Set relative to MHW
-    longshore, crossshore = topof.shape
-    dune_toe = np.zeros([longshore])
-    dune_crest = np.zeros([longshore])
-    xlim = 115
-
-    for l in range(longshore):
-        x = np.arange(0, xlim, 1)
-        z0 = np.flip(topof[l, :xlim])
-
-        z = scipy.signal.savgol_filter(z0, 21, 3)
-
-        # Instantiate
-        p = Profile(x, z)
-
-        # Predict toe, crest
-        toe_ml, prob_ml = p.predict_dunetoe_ml('wave_embayed_clf')  # predict toe using machine learning model
-        toe_mc = p.predict_dunetoe_mc()    # predict toe using maximum curvature method (Stockdon et al, 2007)
-        toe_rr = p.predict_dunetoe_rr()    # predict toe using relative relief method (Wernette et al, 2016)
-        toe_pd = p.predict_dunetoe_pd()    # predict toe using perpendicular distance method
-        crest = p.predict_dunecrest()      # predict dune crest
-
-        dune_toe[l] = xlim - toe_ml
-        dune_crest[l] = xlim - crest[0]
-
-    return dune_toe, dune_crest
-
-
-@njit(cache=True, parallel=True, nogil=True)
-def nanmin3D(array):
-    output = np.empty((array.shape[0], array.shape[1]))
-    for i in prange(array.shape[0]):
-        for j in range(array.shape[1]):
-            output[i, j] = np.nanmin(array[i, :, :][j, :])
-    return output
-
-
 @njit
 def adjust_ocean_shoreline(
         topo,
@@ -1740,6 +1671,7 @@ def adjust_ocean_shoreline(
             topo[ls, :new_shoreline] = shoreface  # Insert into domain
 
     return topo
+
 
 def reduce_raster_resolution(raster, reduction_factor):
     """Reduces raster resolutions by reduction factor using averaging.
