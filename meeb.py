@@ -41,6 +41,8 @@ class MEEB:
             simulation_time_yr=15.0,  # [yr] Length of the simulation time
             cellsize=1,  # [m] Interpreted cell size
             slabheight=0.1,  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
+            alongshore_domain_boundary_min=0,  # [m] Alongshore minimum boundary location for model domain
+            alongshore_domain_boundary_max=10e7,  # [m] Alongshore maximum boundary location for model domain; if left to this default value, it will automatically adjust to the actual full length of the domain
             inputloc="Input/",  # Input file directory (end string with "/")
             outputloc="Output/",  # Output file directory (end string with "/")
             init_filename="Init_NorthernNCB_2017_PreFlorence.npy",  # [m NVD88] Name of initial topography and vegetation input file
@@ -135,6 +137,8 @@ class MEEB:
         self._cellsize = cellsize
         self._slabheight = slabheight
         self._slabheight_m = cellsize * slabheight  # [m] Slab height
+        self._alongshore_domain_boundary_min = alongshore_domain_boundary_min
+        self._alongshore_domain_boundary_max = alongshore_domain_boundary_max
         self._inputloc = inputloc
         self._outputloc = outputloc
         self._hindcast = hindcast
@@ -226,9 +230,8 @@ class MEEB:
 
         # TOPOGRAPHY
         Init = np.load(inputloc + init_filename)
-        xmin = 6400  #575  # temp
-        xmax = 6600  #825  # temp
-        self._topo_initial = Init[0, xmin: xmax, :]  # [m NAVD88] 2D array of initial topography
+        self._alongshore_domain_boundary_max = min(self._alongshore_domain_boundary_max, Init[0, :, :].shape[0])
+        self._topo_initial = Init[0, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, :]  # [m NAVD88] 2D array of initial topography
         self._topo = self._topo_initial / self._slabheight_m  # [slabs NAVD88] Initialise the topography, transform from m into number of slabs
         self._longshore, self._crossshore = self._topo.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
         self._groundwater_elevation = np.zeros(self._topo.shape)  # [slabs NAVD88] Initialize
@@ -238,8 +241,8 @@ class MEEB:
         self._x_t = self._x_s - self._LShoreface  # [m] Start locations of shoreface toe
 
         # VEGETATION
-        self._spec1 = Init[1, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
-        self._spec2 = Init[2, xmin: xmax, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
+        self._spec1 = Init[1, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec1
+        self._spec2 = Init[2, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, :]  # [0-1] 2D-matrix of vegetation effectiveness for spec2
 
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
@@ -607,6 +610,10 @@ class MEEB:
         return self._RSLR
 
     @property
+    def MHW(self):
+        return self._MHW
+
+    @property
     def StormRecord(self):
         return self._StormRecord
 
@@ -620,6 +627,8 @@ class MEEB:
 # meeb = MEEB(
 #     name="SLR 3 mm/yr, 2009-2012 Hindcast",
 #     simulation_time_yr=3,
+#     alongshore_domain_boundary_min=6000,
+#     alongshore_domain_boundary_max=6500,
 #     RSLR=0.003,
 #     seeded_random_numbers=True,
 #     p_dep_sand=0.05,  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr, 0.75 = 3.333 m^m/3/yr, 1 = 2.5 m^m/3/yr
