@@ -2,21 +2,138 @@
     use in MEEB (Mesoscale Explicit Ecogeomorphic Barrier model).
 
     IRB Reeves
-    Last update: 18 April 2023
+    Last update: 8 June 2023
 """
 
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
 import copy
+import routines_meeb as routine
+
+
+def populateVeg(topo,
+                veggie,
+                mhw,
+                dune_crest_loc,
+                density_slope,
+                density_intercept,
+                elevation_mean,
+                elevation_tau,
+                elevation_maximum,
+                distance_r,
+                distance_u,
+                distance_maximum,
+                density_weight,
+                elevation_weight,
+                distance_weight,
+                ):
+    """
+    Stochastically populates model domain with 2 species types of vegetation (grass & shrub) using an observed veg cover map categorized by estimated relatively density (low, medium, high). Placement of species types depends
+    probabilistically on observed density, elevation, and distance from dune crest. Initial percent cover depends probablistically on estimated relative density.
+
+    :param topo: [m NAVD88] Initial elevation domain.
+    :param veggie: Initial vegetation density map.
+    :param mhw: [NAVD88] Mean high water.
+    :param dune_crest_loc: Cross-shore locations for dune crest for each m alongshore.
+    :param density_slope: Slope of line capturing probabilistic relationship between observed density and species type.
+    :param density_intercept: Intercept of line capturing probabilistic relationship between observed density and species type.
+    :param elevation_mean: Mean of normal distribution of shrub elevation capturing probabilistic relationship between elevation and species type.
+    :param elevation_tau: Spread (Std Dev) of normal distribution of shrub elevation; controls elevation tolerance bounds.
+    :param elevation_maximum: Maximum probability of a cell being a shrub at the optimal elevation.
+    :param distance_r: Steepness of logistic curve capturing probabilistic relationship between distance from the dune crest and species type.
+    :param distance_u: Distance from dune crest where probability of shrub = 50% on the logistic curve.
+    :param distance_maximum: Maximum probability of a cell being a shrub at the optimal distance from the dune crest.
+    :param density_weight: Relative weight factor for observed density probability for calculating a weighted composite probability.
+    :param elevation_weight: Relative weight factor for elevation probability for calculating a weighted composite probability.
+    :param distance_weight: Relative weight factor for distance from dune crest probability for calculating a weighted composite probability.
+    :return: s1: Species 1 (grass) percent cover map.
+    :return: s2: Species 2 (shrub) percent cover map.
+    """
+
+    longshore, crossshore = topo.shape
+
+    # Define Topographic Parameters
+    elev_mhw = topo - mhw  # [MHW] Elevation relative to MHW
+
+    # Find height of dune crest alongshore
+    dune_crest_height = np.zeros(longshore)
+    for ls in range(longshore):
+        dune_crest_height[ls] = topo[ls, dune_crest_loc[ls]]  # [m]
+
+    # Calculate Distance from Dune Crest
+    dist_to_dune_crest = np.zeros(topo.shape)
+    x_vals = np.arange(crossshore)
+    for i in range(longshore):
+        dist_to_dune_crest[i, :] = x_vals - dune_crest_loc[i]
+
+    # Calculate Probability of Shrub Across Model Domain Based on 3 Factors
+    prob_density = (density_slope * veggie + density_intercept) / 100  # Probability of shrub based on estimated "density" of vegetation
+    prob_density[prob_density < 0] = 0
+    prob_elevation = bell_curve(elev_mhw, elevation_mean, elevation_tau, elevation_maximum)  # Probability of shrub based on elevation
+    prob_distance = logistic_curve(dist_to_dune_crest, distance_r, distance_u, distance_maximum)  # Probability of shrub based on distance to dune crest
+
+    weighted_composite_probability = (prob_density * density_weight + prob_elevation * elevation_weight + prob_distance * distance_weight) / (
+                density_weight + elevation_weight + distance_weight)
+
+    # Stochastically Distribute Shrubs and Grass Species Types Across Domain According to Calculated Probabilities
+    s1_bool = np.zeros(topo.shape, dtype=bool)  # Species 1 (grass)
+    s2_bool = np.zeros(topo.shape, dtype=bool)  # Species 2 (shrub)
+    randDistribution = np.random.rand(longshore, crossshore)
+    s1_bool[np.logical_and(randDistribution > weighted_composite_probability, veggie > 0)] = True
+    s2_bool[np.logical_and(randDistribution <= weighted_composite_probability, veggie > 0)] = True
+
+    # Stochastically Assign Initial Density Following Estimated Observed Relative Density Classification
+    s1 = np.zeros(topo.shape)  # Species 1 (grass)
+    s2 = np.zeros(topo.shape)  # Species 2 (shrub)
+    randDensity = np.random.rand(longshore, crossshore)
+
+    s1[np.logical_and(s1_bool, veggie == 1)] = 0.2 * randDensity[np.logical_and(s1_bool, veggie == 1)] + 0.1  # Assign random initial density between 0.1 and 0.3 for low density cells
+    s2[np.logical_and(s2_bool, veggie == 1)] = 0.2 * randDensity[np.logical_and(s2_bool, veggie == 1)] + 0.1  # Assign random initial density between 0.1 and 0.3 for low density cells
+
+    s1[np.logical_and(s1_bool, veggie == 2)] = 0.3 * randDensity[np.logical_and(s1_bool, veggie == 2)] + 0.3  # Assign random initial density between 0.3 and 0.6 for medium density cells
+    s2[np.logical_and(s2_bool, veggie == 2)] = 0.3 * randDensity[np.logical_and(s2_bool, veggie == 2)] + 0.3  # Assign random initial density between 0.3 and 0.6 for medium density cells
+
+    s1[np.logical_and(s1_bool, veggie == 3)] = 0.3 * randDensity[np.logical_and(s1_bool, veggie == 3)] + 0.6  # Assign random initial density between 0.6 and 0.9 for high density cells
+    s2[np.logical_and(s2_bool, veggie == 3)] = 0.3 * randDensity[np.logical_and(s2_bool, veggie == 3)] + 0.6  # Assign random initial density between 0.6 and 0.9 for high density cells
+
+    # Artificially & Stochastically Thin Out Coverage of Low & Medium Densities
+    randThin = np.random.rand(longshore, crossshore)
+    s1[np.logical_and(randThin < 0.5, veggie == 1)] = 0
+    s2[np.logical_and(randThin < 0.5, veggie == 1)] = 0
+    s1[np.logical_and(randThin < 0.25, veggie == 2)] = 0
+    s2[np.logical_and(randThin < 0.25, veggie == 2)] = 0
+
+    return s1, s2
+
+
+def bell_curve(x, mean, tau, maximum):
+    """
+    :param x: multiplier
+    :param mean: mean of normal distribution (optimum)
+    :param tau: parameter controlling tolerance bounds (i.e., spread)
+    :param maximum: maximum probability at optimum value (from 0 to 1)
+    :return: probability
+    """
+    return np.exp(-(tau * (x - mean)) ** 2) * maximum
+
+def logistic_curve(x, r, u, maximum):
+    """
+    :param x: multiplier
+    :param r: parameter controlling slope of logistic curve
+    :param u: value where probability = 0.5
+    :param maximum: maximum probability at optimum value (from 0 to 1)
+    :return: probability
+    """
+    return 1 / (1 + np.exp(r * (u - x))) * maximum
 
 
 # ================================================================================================================
 # SPECIFICATIONS
 
 # Elevation (NAVD88)
-tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/PreIsabel_200101to03_NCFMP_FullNCB.tif"
-MHW = 0.0  # [m initial datum] Mean high water, for finding ocean shoreline (0.36, Duke Marine Lab, Beaufort)
+tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/PostSandy_20121129_USGS.tif"
+MHW = 0.4  # [m initial datum] Mean high water, for finding ocean shoreline (0.36, Duke Marine Lab, Beaufort)
 BB_thresh = 0.08  # [m initial datum] Threshold elevation for finding back-barrier marsh shoreline
 BB_depth = 1.5  # [m] Back-barrier bay depth
 BB_slope_length = 30  # [m] Length of slope from back-barrier shoreline into bay
@@ -34,12 +151,12 @@ bay = 0  # [m] Additional width of bay to add to domain
 
 # Vegetation
 Veggie = True  # [bool] Whether or not to load & convert a contemporaneous init veg raster
-veg_tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/ModSAVI_20190830_FullNCB.tif"
-veg_min = BB_thresh  # [m] Minimum elevation for vegetation
+veg_tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/Veg_20130720_NDVI_Planet_PostSandy.tif"
+veg_min = 0.5  # [m] Minimum elevation for vegetation
 
 # Save
-save = False  # [bool] Whether or not to save finished arrays
-savename = "NCB-NewDrum-Ocracoke_2001_PreIsabel"
+save = True  # [bool] Whether or not to save finished arrays
+savename = "NCB-NewDrum-Ocracoke_2012_PostSandyUSGS"
 
 
 # ================================================================================================================
@@ -102,15 +219,25 @@ veg = np.rot90(veg, 3)
 
 # Veg
 veg[dem < veg_min] = 0  # Remove veg below minimum elevation threshold
-spec1 = np.zeros(veg.shape)
-spec2 = np.zeros(veg.shape)
-spec_rand = RNG.random(spec1.shape)  # Randomly decide species, weighted by density
-spec1[veg == 1] = (spec_rand[veg == 1] < 0.75) * 0.2
-spec1[veg == 2] = (spec_rand[veg == 2] < 0.50) * 0.4
-spec1[veg == 3] = (spec_rand[veg == 3] < 0.25) * 0.6
-spec2[veg == 1] = (spec_rand[veg == 1] > 0.75) * 0.2
-spec2[veg == 2] = (spec_rand[veg == 2] > 0.50) * 0.4
-spec2[veg == 3] = (spec_rand[veg == 3] > 0.25) * 0.6
+
+dune_crest = routine.foredune_crest(dem, MHW)
+spec1, spec2 = populateVeg(dem,
+                           veg,
+                           MHW,
+                           dune_crest,
+                           density_slope=40,
+                           density_intercept=-30,
+                           elevation_mean=1.29,
+                           elevation_tau=3,
+                           elevation_maximum=0.75,
+                           distance_r=0.1,
+                           distance_u=50,
+                           distance_maximum=0.9,
+                           density_weight=0.5,
+                           elevation_weight=0.25,
+                           distance_weight=0.25,
+                           )
+veg = spec1 + spec2
 
 
 # ================================================================================================================
@@ -128,6 +255,7 @@ plt.tight_layout
 fig = plt.figure()
 ax_1 = fig.add_subplot(111)
 ax_1.matshow(spec1, cmap='YlGn')
+plt.plot(dune_crest, np.arange(len(dune_crest)))
 plt.tight_layout
 
 fig = plt.figure()
