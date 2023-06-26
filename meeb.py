@@ -85,16 +85,16 @@ class MEEB:
             wave_high_angle_fraction=0,  # Fraction of waves approaching at angles higher than 45 degrees from shore normal
 
             # VEGETATION
-            sp1_a=-1.4,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
-            sp1_b=0.2,  # Vertice b, spec1. vegetation growth based on Nield and Baas (2008)
-            sp1_c=0.6,  # Vertice c, spec1. vegetation growth based on Nield and Baas (2008)
-            sp1_d=2.0,  # Vertice d, spec1. vegetation growth based on Nield and Baas (2008)
-            sp1_e=2.2,  # Vertice e, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_a=-1.3,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_b=-0.1,  # Vertice b, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_c=0.5,  # Vertice c, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_d=1.5,  # Vertice d, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_e=2.5,  # Vertice e, spec1. vegetation growth based on Nield and Baas (2008)
             sp2_a=-1.4,  # Vertice a, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_b=-0.65,  # Vertice b, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_c=0.0,  # Vertice c, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_d=0.2,  # Vertice d, spec2. vegetation growth based on Nield and Baas (2008)
-            sp2_e=2.8,  # Vertice e, spec2. vegetation growth based on Nield and Baas (2008)
+            sp2_e=2.2,  # Vertice e, spec2. vegetation growth based on Nield and Baas (2008)
             sp1_peak=0.2,  # Growth peak, spec1
             sp2_peak=0.05,  # Growth peak, spec2
             VGR=0,  # [%] Growth reduction by end of period
@@ -281,13 +281,13 @@ class MEEB:
         # MODEL OUPUT CONFIGURATION
 
         self._timeits = np.linspace(1, self._iterations, self._iterations)  # Time vector for budget calculations
-        self._topo_TS = np.empty([self._longshore, self._crossshore, int(np.ceil(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each topo map for each simulation year
+        self._topo_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each topo map for each simulation year
         self._topo_TS[:, :, 0] = self._topo
-        self._spec1_TS = np.empty([self._longshore, self._crossshore, int(np.ceil(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each spec1 map for each simulation year
+        self._spec1_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each spec1 map for each simulation year
         self._spec1_TS[:, :, 0] = self._spec1
-        self._spec2_TS = np.empty([self._longshore, self._crossshore, int(np.ceil(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each spec2 map for each simulation year
+        self._spec2_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each spec2 map for each simulation year
         self._spec2_TS[:, :, 0] = self._spec2
-        self._veg_TS = np.empty([self._longshore, self._crossshore, int(np.ceil(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each veg map for each simulation year
+        self._veg_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._writeyear)) + 1])  # Array for saving each veg map for each simulation year
         self._veg_TS[:, :, 0] = self._veg
         self._erosmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all erosmaps
         self._deposmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all deposmaps
@@ -503,7 +503,7 @@ class MEEB:
             self._spec2 = spec2_old + spec2_change_allowed + spec2_loss  # Re-assemble gain and loss and add to original vegetation cover
 
             Spec1_elev_min_mht = self._Spec1_elev_min / self._slabheight_m + self._MHW  # [m MHW]
-            Spec2_elev_min_mht = self._Spec1_elev_min / self._slabheight_m + self._MHW  # [m MHW]
+            Spec2_elev_min_mht = self._Spec2_elev_min / self._slabheight_m + self._MHW  # [m MHW]
             self._spec1[self._topo <= Spec1_elev_min_mht] = 0  # Remove species where below elevation minimum
             self._spec2[self._topo <= Spec2_elev_min_mht] = 0  # Remove species where below elevation minimum
 
@@ -521,10 +521,10 @@ class MEEB:
             self._vegcount = self._vegcount + 1  # Update counter
 
         # --------------------------------------
-        # RECORD VARIABLES ANNUALLY
+        # RECORD VARIABLES PERIODICALLY
 
-        if it % (self._writeyear * self._iterations_per_cycle) == 0:
-            moment = int(it / self._writeyear / self._iterations_per_cycle) + 1
+        if (it + 1) % (self._writeyear * self._iterations_per_cycle) == 0:
+            moment = int((it + 1) / self._writeyear / self._iterations_per_cycle)
             self._topo_TS[:, :, moment] = self._topo
             self._spec1_TS[:, :, moment] = self._spec1
             self._spec2_TS[:, :, moment] = self._spec2
