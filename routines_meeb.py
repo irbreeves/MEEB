@@ -106,7 +106,6 @@ def erosprobs(vegf, shade, sand, topof, groundw, p_er, entrainment_veg_limit):
     return Pe
 
 
-# @njit
 def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg, topof, groundw):
     """Returns a map of deposition probabilities that can then be used to implement transport.
 
@@ -1615,8 +1614,8 @@ def brier_skill_score(simulated, observed, baseline, mask):
 
     """
 
-    MSE = np.square(np.abs(np.subtract(simulated[mask], observed[mask]))).mean()
-    MSEref = np.square(np.abs(np.subtract(baseline[mask], observed[mask]))).mean()
+    MSE = np.nanmean(np.square(np.abs(np.subtract(simulated[mask], observed[mask]))))
+    MSEref = np.nanmean(np.square(np.abs(np.subtract(baseline[mask], observed[mask]))))
 
     BSS = 1 - MSE / MSEref
 
