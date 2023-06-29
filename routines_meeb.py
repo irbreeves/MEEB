@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 31 May 2023
+Last update: 29 June 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -149,16 +149,43 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg, topof, grou
     return Pd
 
 
-def shiftslabs(Pe, Pd, hop, contour, longshore, crossshore, direction, RNG):
-    """Shifts the sand. Movement is from left to right, along +2 dimension, across columns, along rows. Returns a map of height changes [-,+].
-    Open boundaries (modification by Alma), no feeding from the sea side.
-    - Pe: map of erosion probabilities
-    - Pd: map of deposition probabilities
-    - hop: jumplength
-    - direction: wind direction (1 east, 2 north, 3, west, 4 south)"""
+def shiftslabs(Pe, Pd, hop, vegf, vegf_lim, contour, longshore, crossshore, direction, RNG):
+    """Shifts the sand from wind. Returns a map of surface elevation change. Open boundaries, no feeding from the sea side.
+
+    Follows modifications by Teixeira et al. (2023) that allow larger hop lengths while still accounting for vegetation interactions
+    over the course of the hop trajectory, which results in a saltation transport mode rather than a ripple migration transport mode.
+
+    Parameters
+    ----------
+    Pe : ndarray
+        Map of erosion probabilities.
+    Pd : float
+        Map of deposition probabilities.
+    hop : int
+        [cell L] Slab hop length.
+    vegf : ndarray
+        Map of combined vegetation effectiveness.
+    vegf_lim : float
+        Threshold vegetation effectiveness needed for a cell along a slab saltation path needed to be considered vegetated.
+    contour : ndarray
+        Contours to account for transport.
+    longshore : int
+        Alongshore length of domain.
+    crossshore : int
+        Cross-shore width of domain.
+    direction : int
+        Wind direction (1 right, 2 down, 3 left, 4 up).
+    RNG
+        Random Number Generator object.
+
+    Returns
+    -------
+    elevation_change
+        [slabs] Net change in surface elevation."""
+
+    shift = 1  # [cell length] Shift increment
 
     pickedup = RNG.random((longshore, crossshore)) < Pe  # True where slab is picked up
-    # pickedup[:, -1 - hop: -1] = 0  # Do not pick any slab that are on the ladward boundary -- east only?
 
     totaldeposit = np.zeros([longshore, crossshore])
     inmotion = copy.deepcopy(pickedup)  # Make copy of original erosion map
@@ -167,37 +194,45 @@ def shiftslabs(Pe, Pd, hop, contour, longshore, crossshore, direction, RNG):
     sum_contour = np.zeros([len(contour)])
 
     while np.sum(inmotion) > 0:  # While still any slabs moving
-        transportdist += 1  # Every time in the loop the slaps are transported one length further to the right
+        transportdist += 1  # Every time in the loop the slaps are transported one slab length
         if direction == 1:
-            inmotion = np.roll(inmotion, hop, axis=1)  # Shift the moving slabs one hop length to the right
+            inmotion = np.roll(inmotion, shift, axis=1)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
-            # depocells[:, -1 - hop: -1] = 1  # All slabs are deposited if they are transported over the landward edge
+            if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
+                depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
+            else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
+                depocells = np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim) # True where slab should be deposited
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[:, 0: hop] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 2:
-            inmotion = np.roll(inmotion, hop, axis=0)  # Shift the moving slabs one hop length to the right
+            inmotion = np.roll(inmotion, shift, axis=0)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
-            # depocells[0 : hop, :] = 1  # All slabs are deposited if they are transported over the landward edge
+            if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
+                depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
+            else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
+                depocells = np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim) # True where slab should be deposited
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[0: hop, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 3:
-            inmotion = np.roll(inmotion, -hop, axis=1)  # Shift the moving slabs one hop length to the right
+            inmotion = np.roll(inmotion, -shift, axis=1)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
-            # depocells[:, -1 - hop: -1] = 1  # All slabs are deposited if they are transported over the landward edge
+            if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
+                depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
+            else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
+                depocells = np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim) # True where slab should be deposited
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[:, -1 - hop: -1] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 4:
-            inmotion = np.roll(inmotion, -hop, axis=0)  # Shift the moving slabs one hop length to the right
+            inmotion = np.roll(inmotion, -shift, axis=0)  # Shift the moving slabs one hop length to the right
             transp_contour = np.nansum(inmotion[contour.astype(np.int64), :], axis=1)  # Account ammount of slabs that are in motion in specific contours
             sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
-            depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
-            # depocells[0 : hop + 1, :] = 1  # All slabs are deposited if they are transported over the landward edge
+            if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
+                depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
+            else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
+                depocells = np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim) # True where slab should be deposited
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[-1 - hop: -1, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
 
@@ -205,9 +240,9 @@ def shiftslabs(Pe, Pd, hop, contour, longshore, crossshore, direction, RNG):
         numshifted = numshifted + np.sum(deposited) * transportdist  # Number of slabs deposited, weighted for transport distance
         totaldeposit = totaldeposit + deposited  # Total slabs deposited so far
 
-    diff = totaldeposit - pickedup  # deposition - erosion
+    elevation_change = totaldeposit - pickedup  # deposition - erosion
 
-    return diff, numshifted, sum_contour
+    return elevation_change, numshifted, sum_contour
 
 
 def enforceslopes(topof, vegf, sh, anglesand, angleveg, th, RNG):
@@ -999,11 +1034,11 @@ def storm_processes(
             Elevation[TS, :, :] = Elevation[TS - 1, :, :]
 
         # Find TWL for this timestep
-        # if TS < iterations / 2:
-        #     Rhigh_TS = Rlow + twl_step * TS
-        # else:
-        #     Rhigh_TS = TWL - (twl_step * (TS - iterations / 2))
-        Rhigh_TS = Rhigh.copy()  # This line prescribes a static TWL over course of storm
+        if TS < iterations / 2:
+            Rhigh_TS = Rlow + twl_step * TS
+        else:
+            Rhigh_TS = TWL - (twl_step * (TS - iterations / 2))
+        # Rhigh_TS = Rhigh.copy()  # This line prescribes a static TWL over course of storm
 
         # Find dune crest locations and heights for this storm iteration
         dune_crest_loc = foredune_crest(Elevation[TS, :, :], MHW_m)  # Cross-shore location of pre-storm dune crest

@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 31 May 2023
+Last update: 29 June 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -68,6 +68,7 @@ class MEEB:
             repose_bare=20,  # [deg] - orig:30
             repose_veg=30,  # [deg] - orig:35
             repose_threshold=0.3,  # Vegetation threshold for applying repose_veg
+            saltation_veg_limit=0.25,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path needed to be considered vegetated
             jumplength=1,  # [slabs] Hop length for slabs
             clim=0.5,  # Vegetation cover that limits erosion
             n_contour=10,  # Number of contours to be used to calculate fluxes. Multiples of 10
@@ -155,6 +156,7 @@ class MEEB:
         self._repose_bare = repose_bare
         self._repose_veg = repose_veg
         self._repose_threshold = repose_threshold
+        self._saltation_veg_limit = saltation_veg_limit
         self._jumplength = jumplength
         self._clim = clim
         self._n_contour = n_contour
@@ -328,12 +330,12 @@ class MEEB:
         deposmap = routine.depprobs(self._veg, shadowmap, sandmap, self._p_dep_base, self._p_dep_sand, self._p_dep_sand_VegMax, self._topo, self._groundwater_elevation)  # Returns map of deposition probabilities
 
         # Move sand slabs
-        if self._direction[it] == 1 or self._direction[it] == 3:  # East or west wind direction
+        if self._direction[it] == 1 or self._direction[it] == 3:  # Left or Right wind direction
             contour = np.linspace(0, round(self._crossshore) - 1, self._n_contour + 1)  # Contours to account for transport
-            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
-        else:  # North or south wind direction
+            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
+        else:  # Up or Down wind direction
             contour = np.linspace(0, round(self._longshore) - 1, self._n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This may produce slightly different results than Matlab version - need to verify
-            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
+            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
 
         # Apply changes, make calculations
         self._topo = self._topo + changemap  # Changes applied to the topography
