@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 29 June 2023
+Last update: 8 July 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -19,12 +19,9 @@ import imageio
 import scipy
 import os
 import copy
-import cProfile
 from datetime import datetime, timedelta
 
 import routines_meeb as routine
-
-np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
 
 
 class MEEB:
@@ -40,7 +37,7 @@ class MEEB:
             writeyear=0.5,  # Save results every n years
             simulation_time_yr=15.0,  # [yr] Length of the simulation time
             cellsize=1,  # [m] Interpreted cell size
-            slabheight=0.1,  # Ratio of cell dimension 0.1 (0.077 - 0.13 (Nield and Baas, 2007))
+            slabheight=0.02,  # Ratio of cell dimension (0.02, Teixeira et al. 2023)
             alongshore_domain_boundary_min=0,  # [m] Alongshore minimum boundary location for model domain
             alongshore_domain_boundary_max=10e7,  # [m] Alongshore maximum boundary location for model domain; if left to this default value, it will automatically adjust to the actual full length of the domain
             inputloc="Input/",  # Input file directory (end string with "/")
@@ -69,7 +66,7 @@ class MEEB:
             repose_veg=30,  # [deg] - orig:35
             repose_threshold=0.3,  # Vegetation threshold for applying repose_veg
             saltation_veg_limit=0.25,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path needed to be considered vegetated
-            jumplength=1,  # [slabs] Hop length for slabs
+            jumplength=5,  # [slabs] Hop length for slabs (5, Teixeira et al. 2023)
             clim=0.5,  # Vegetation cover that limits erosion
             n_contour=10,  # Number of contours to be used to calculate fluxes. Multiples of 10
 
@@ -363,7 +360,7 @@ class MEEB:
             if storm:
 
                 # Storm Processes: Beach/duneface change, overwash
-                self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, Rhigh, Rlow, dur]))
+                self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, np.max(Rhigh), np.max(Rlow), dur]))
                 self._topo, topo_change, self._OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
                     topof=self._topo,
                     Rhigh=Rhigh,
