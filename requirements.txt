@@ -8,3 +8,5 @@ rasterio
 numba
 tabulate
 pygad
+pyswarms
+joblib
