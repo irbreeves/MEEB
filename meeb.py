@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 8 July 2023
+Last update: 14 July 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -329,10 +329,10 @@ class MEEB:
         # Move sand slabs
         if self._direction[it] == 1 or self._direction[it] == 3:  # Left or Right wind direction
             contour = np.linspace(0, round(self._crossshore) - 1, self._n_contour + 1)  # Contours to account for transport
-            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
+            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._direction[it], True, self._RNG)  # Returns map of height changes
         else:  # Up or Down wind direction
             contour = np.linspace(0, round(self._longshore) - 1, self._n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This may produce slightly different results than Matlab version - need to verify
-            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._direction[it], self._RNG)  # Returns map of height changes
+            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._direction[it], True, self._RNG)  # Returns map of height changes
 
         # Apply changes, make calculations
         self._topo = self._topo + changemap  # Changes applied to the topography

@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 29 June 2023
+Last update: 14 July 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -149,11 +149,14 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg, topof, grou
     return Pd
 
 
-def shiftslabs(Pe, Pd, hop, vegf, vegf_lim, contour, longshore, crossshore, direction, RNG):
+def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, longshore, crossshore, direction, random_hoplength, RNG):
     """Shifts the sand from wind. Returns a map of surface elevation change. Open boundaries, no feeding from the sea side.
 
     Follows modifications by Teixeira et al. (2023) that allow larger hop lengths while still accounting for vegetation interactions
     over the course of the hop trajectory, which results in a saltation transport mode rather than a ripple migration transport mode.
+
+    Includes option to vary the hop length randomly around a mean. Note: the random distribution must be centered around mean, otherwise
+    the overall sediment flux will vary according to whether or not the hop length is random (not ideal).
 
     Parameters
     ----------
@@ -161,7 +164,7 @@ def shiftslabs(Pe, Pd, hop, vegf, vegf_lim, contour, longshore, crossshore, dire
         Map of erosion probabilities.
     Pd : float
         Map of deposition probabilities.
-    hop : int
+    hop_avg : int
         [cell L] Slab hop length.
     vegf : ndarray
         Map of combined vegetation effectiveness.
@@ -175,6 +178,8 @@ def shiftslabs(Pe, Pd, hop, vegf, vegf_lim, contour, longshore, crossshore, dire
         Cross-shore width of domain.
     direction : int
         Wind direction (1 right, 2 down, 3 left, 4 up).
+    random_hoplength : bool
+        When True, hop length varies randomly +/- 2 around the average hop length.
     RNG
         Random Number Generator object.
 
@@ -184,6 +189,11 @@ def shiftslabs(Pe, Pd, hop, vegf, vegf_lim, contour, longshore, crossshore, dire
         [slabs] Net change in surface elevation."""
 
     shift = 1  # [cell length] Shift increment
+
+    if random_hoplength:
+        hop = RNG.integers(hop_avg - 2, hop_avg + 3)  # Draw random hop length +/- 2 around average hop length
+    else:
+        hop = hop_avg
 
     pickedup = RNG.random((longshore, crossshore)) < Pe  # True where slab is picked up
 
