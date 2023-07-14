@@ -1,6 +1,6 @@
 """
 Script for testing MEEB overwash function.
-IRBR 13 Feb 2023
+IRBR 14 July 2023
 """
 
 import numpy as np
@@ -9,15 +9,59 @@ import routines_meeb as routine
 import copy
 import time
 from matplotlib import colors
-import math
+from tabulate import tabulate
+
+
+def model_skill(obs, sim, t0, mask):
+    """
+    Perform suite of model skill assesments and return scores.
+    Mask is boolean array with same size as change maps, with cells to be excluded from skill analysis set to FALSE.
+    """
+    if np.isnan(np.sum(sim)):
+        nse = -1e10
+        rmse = -1e10
+        nmae = -1e10
+        mass = -1e10
+        bss = -1e10
+
+    else:
+        # _____________________________________________
+        # Nash-Sutcliffe Model Efficiency
+        """The closer the score is to 1, the better the agreement. If the score is below 0, the mean observed value is a better predictor than the model."""
+        A = np.nanmean(np.square(np.subtract(obs[mask], sim[mask])))
+        B = np.nanmean(np.square(np.subtract(obs[mask], np.nanmean(obs[mask]))))
+        nse = 1 - A / B
+
+        # _____________________________________________
+        # Root Mean Square Error
+        rmse = np.sqrt(np.nanmean(np.square(sim[mask] - obs[mask])))
+
+        # _____________________________________________
+        # Normalized Mean Absolute Error
+        nmae = np.nanmean(np.abs(sim[mask] - obs[mask])) / (np.nanmax(obs[mask]) - np.nanmin(obs[mask]))  # (np.nanstd(np.abs(obs[mask])))
+
+        # _____________________________________________
+        # Mean Absolute Skill Score
+        mass = 1 - np.nanmean(np.abs(sim[mask] - obs[mask])) / np.nanmean(np.abs(t0[mask] - obs[mask]))
+
+        # _____________________________________________
+        # Brier Skill Score
+        """A skill score value of zero means that the score for the predictions is merely as good as that of a set of baseline or reference or default predictions, 
+        while a skill score value of one (100%) represents the best possible score. A skill score value less than zero means that the performance is even worse than 
+        that of the baseline or reference predictions (i.e., the baseline matches the final field profile more closely than the simulation output)."""
+        MSE = np.nanmean(np.square(np.abs(np.subtract(sim[mask], obs[mask]))))
+        MSEref = np.nanmean(np.square(np.abs(np.subtract(t0[mask], obs[mask]))))
+        bss = 1 - MSE / MSEref
+
+    return nse, rmse, nmae, mass, bss
+
 
 start_time = time.time()  # Record time at start of run
-
 
 # _____________________________________________
 # Define Variables
 Rhigh = 3.32
-Rlow = 0.9  # 1.93
+Rlow = 1.93
 dur = 70
 slabheight_m = 0.1
 MHW = 0
@@ -63,7 +107,7 @@ Rlow = Rlow * np.ones(topo_final.shape[0])
 # Overwash, Beach, & Dune Change
 topo_prestorm = copy.deepcopy(topo)
 
-name = "575-825, K(Q(S+C))^mm, mm=1.5, Kr=1e-06"
+name = "575-825, KQ(S+C)"
 print(name)
 
 sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
@@ -74,29 +118,29 @@ sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = rou
     slabheight_m,
     threshold_in=0.25,
     Rin_i=5,
-    Rin_r=74,
-    Cx=68,
+    Rin_r=344,
+    Cx=38,
     AvgSlope=2/200,
     nn=0.5,
     MaxUpSlope=0.54,
     fluxLimit=1,
     Qs_min=1,
-    Kr=6.2e-06,
+    Kr=0.0000454,
     Ki=5e-06,
-    mm=1.1,
+    mm=2,
     MHW=MHW,
     Cbb_i=0.85,
     Cbb_r=0.7,
     Qs_bb_min=1,
     substep_i=6,
-    substep_r=3,
-    beach_equilibrium_slope=0.02,
-    beach_erosiveness=1.74,
-    beach_substeps=20,
+    substep_r=6,
+    beach_equilibrium_slope=0.018,
+    beach_erosiveness=2.49,
+    beach_substeps=71,
     x_s=x_s,
 )
 
-topo_change_prestorm = sim_topo_final - topo_prestorm
+sim_topo_change = sim_topo_final - topo_prestorm
 
 SimDuration = time.time() - start_time
 print()
@@ -108,58 +152,25 @@ print("Elapsed Time: ", SimDuration, "sec")
 
 longshore, crossshore = sim_topo_final.shape
 
-beach_duneface_mask = np.zeros(sim_topo_final.shape).astype(bool)  # [bool] Map of every cell seaward of dune crest
-for l in range(longshore):
-    beach_duneface_mask[l, :dune_crest[l]] = True
-
-subaerial_mask = sim_topo_final > MHW  # [bool] Map of every cell above water
-
 Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  # Load observed overwash mask
 OW_Mask = Florence_Overwash_Mask[xmin: xmax, :]
-
-Sim_Obs_OW_Mask = np.logical_or(OW_Mask, inundated) * (~beach_duneface_mask)  # [bool] Map of every cell landward of dune crest that was inundated in simulation or observation or both
 
 # Final Elevations
 obs_final_m = topo_final * slabheight_m  # [m] Observed final topo
 sim_final_m = sim_topo_final * slabheight_m  # [m] Simulated final topo
-obs_mean_m = np.mean(obs_final_m[Sim_Obs_OW_Mask])
-
-# Final Elevation Changes
 obs_change_m = (topo_final - topo_prestorm) * slabheight_m  # [m] Observed change
-sim_change_m = topo_change_prestorm * slabheight_m  # [m] Simulated change
-obs_change_masked = obs_change_m * OW_Mask * ~beach_duneface_mask  # [m]
-sim_change_masked = sim_change_m * ~beach_duneface_mask  # [m]
-obs_change_masked_beach = obs_change_m * OW_Mask * subaerial_mask  # [m] Includes beach, exclues water
-obs_change_mean_masked = np.mean(obs_change_m[Sim_Obs_OW_Mask])  # [m] Average change of observations, masked
-obs_change_mean = np.mean(obs_change_m)  # [m] Average change of observations
+sim_change_m = sim_topo_change * slabheight_m  # [m] Simulated change
 
-# _____________________________________________
-# Nash-Sutcliffe Model Efficiency
-A = np.mean(np.square(np.subtract(obs_change_masked[Sim_Obs_OW_Mask], sim_change_masked[Sim_Obs_OW_Mask])))
-B = np.mean(np.square(np.subtract(obs_change_masked[Sim_Obs_OW_Mask], obs_change_mean_masked)))
-NSE = 1 - A / B
-print("  --> NSE mask", NSE)
+subaerial_mask = sim_final_m > (MHW * slabheight_m)  # [bool] Map of every cell above water
 
-A2 = np.mean(np.square(np.subtract(obs_change_m, sim_change_m)))
-B2 = np.mean(np.square(np.subtract(obs_change_m, obs_change_mean)))
-NSE2 = 1 - A2 / B2
-# print("  --> NSE no mask", NSE2)
+beach_duneface_mask = np.zeros(sim_final_m.shape)
+for l in range(sim_final_m.shape[0]):
+    beach_duneface_mask[l, :dune_crest[l]] = True
+beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
 
-# _____________________________________________
-# Root Mean Square Error
-RMSE = np.sqrt(np.mean(np.square(sim_change_masked[Sim_Obs_OW_Mask] - obs_change_masked[Sim_Obs_OW_Mask])))
-print("  --> RMSE mask", RMSE)
+mask_all = np.logical_or(OW_Mask, inundated, beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell landward of dune crest that was inundated in simulation or observation or both
 
-RMSE2 = np.sqrt(np.mean(np.square(sim_change_m - obs_change_m)))
-# print("  --> RMSE no mask", RMSE2)
-
-# _____________________________________________
-# Brier Skill Score
-BSS = routine.brier_skill_score(sim_change_masked, obs_change_masked, np.zeros(sim_change_m.shape), Sim_Obs_OW_Mask)
-print("  --> BSS mask", BSS)
-
-BSS2 = routine.brier_skill_score(sim_change_m, obs_change_m, np.zeros(sim_change_m.shape), np.ones(sim_change_m.shape).astype(bool))
-# print("  --> BSS no mask", BSS2)
+nse, rmse, nmae, mass, bss = model_skill(obs_change_m, sim_change_m, np.zeros(obs_change_m.shape), mask_all)
 
 # _____________________________________________
 # Categorical
@@ -194,9 +205,9 @@ threshold = 0.02
 sim_erosion = sim_change_m < -threshold
 sim_deposition = sim_change_m > threshold
 sim_no_change = np.logical_and(sim_change_m <= threshold, -threshold <= sim_change_m)
-obs_erosion = obs_change_masked_beach < -threshold
-obs_deposition = obs_change_masked_beach > threshold
-obs_no_change = np.logical_and(obs_change_masked_beach <= threshold, -threshold <= obs_change_masked_beach)
+obs_erosion = np.logical_and(obs_change_m < -threshold, mask_all)
+obs_deposition = np.logical_and(obs_change_m > threshold, mask_all)
+obs_no_change = np.logical_and(obs_change_m <= threshold, np.logical_and(-threshold <= obs_change_m, mask_all))
 
 cat_Mask = np.zeros(obs_change_m.shape)
 cat_Mask[np.logical_and(sim_erosion, obs_erosion)] = 1          # Hit
@@ -206,26 +217,40 @@ cat_Mask[np.logical_and(sim_deposition, ~obs_deposition)] = 2   # False Alarm
 cat_Mask[np.logical_and(sim_no_change, obs_no_change)] = 3      # Correct Reject
 cat_Mask[np.logical_and(sim_no_change, ~obs_no_change)] = 4     # Miss
 
-hits_m = np.count_nonzero(cat_Mask[Sim_Obs_OW_Mask] == 1)
-false_alarms_m = np.count_nonzero(cat_Mask[Sim_Obs_OW_Mask] == 2)
-correct_rejects_m = np.count_nonzero(cat_Mask[Sim_Obs_OW_Mask] == 3)
-misses_m = np.count_nonzero(cat_Mask[Sim_Obs_OW_Mask] == 4)
+hits_m = np.count_nonzero(cat_Mask[mask_all] == 1)
+false_alarms_m = np.count_nonzero(cat_Mask[mask_all] == 2)
+correct_rejects_m = np.count_nonzero(cat_Mask[mask_all] == 3)
+misses_m = np.count_nonzero(cat_Mask[mask_all] == 4)
 J_m = hits_m + false_alarms_m + correct_rejects_m + misses_m
 
 # ----------
 # Percentage Correct
 PC = (hits + correct_rejects) / J
 PC_m = (hits_m + correct_rejects_m) / J_m
-print("  --> PC mask", PC_m)
 
 # Heidke Skill Score
 G_m = ((hits_m + false_alarms_m) * (hits_m + misses_m) / J_m ** 2) + ((misses_m + correct_rejects_m) * (false_alarms_m + correct_rejects_m) / J_m ** 2)  # Fraction of predictions of the correct categories (H and C) that would be expected from a random choice
-HSS2 = (PC_m - G_m) / (1 - G_m)   # The percentage correct, corrected for the number expected to be correct by chance
-print("  --> HSS mask", HSS2)
+HSS_m = (PC_m - G_m) / (1 - G_m)   # The percentage correct, corrected for the number expected to be correct by chance
 
 G = ((hits + false_alarms) * (hits + misses) / J ** 2) + ((misses + correct_rejects) * (false_alarms + correct_rejects) / J ** 2)  # Fraction of predictions of the correct categories (H and C) that would be expected from a random choice
 HSS = (PC - G) / (1 - G)   # The percentage correct, corrected for the number expected to be correct by chance
-# print("  --> HSS no mask", HSS)
+
+# _____________________________________________
+# Print
+
+# Print scores
+print()
+print(tabulate({
+    "Scores": ["Mask", "No Mask"],
+    "NSE": [nse],
+    "RMSE": [rmse],
+    "NMAE": [nmae],
+    "MASS": [mass],
+    "BSS": [bss],
+    "PC": [PC_m, PC],
+    "HSS": [HSS_m, HSS],
+}, headers="keys", floatfmt=(None, ".3f", ".3f", ".3f", ".3f", ".3f", ".3f", ".3f"))
+)
 
 # _____________________________________________
 # Plot
@@ -248,7 +273,7 @@ cbar2 = plt.colorbar(cax2, boundaries=bounds, ticks=[1, 2, 3, 4])
 cbar2.set_ticklabels(['Hit', 'False Alarm', 'Correct Reject', 'Miss'])
 
 # Change Comparisons
-cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
+cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 
 # Pre Storm (Observed) Topo
@@ -280,7 +305,9 @@ ax3.plot(dune_crest, np.arange(len(dune_crest)), c='black', alpha=0.6)
 
 # Observed Topo Change
 ax4 = Fig.add_subplot(224)
-cax4 = ax4.matshow(obs_change_masked_beach[:, pxmin: pxmax], cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
+obs_change_masked = obs_change_m.copy()
+obs_change_masked[~mask_all] = 0
+cax4 = ax4.matshow(obs_change_masked[:, pxmin: pxmax], cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
 ax4.plot(dune_crest, np.arange(len(dune_crest)), c='black', alpha=0.6)
 # cbar = Fig.colorbar(cax4)
 # cbar.set_label('Elevation Change [m]', rotation=270, labelpad=20)

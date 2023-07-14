@@ -16,88 +16,59 @@ import pyswarms as ps
 from joblib import Parallel, delayed
 
 
-
 # ___________________________________________________________________________________________________________________________________
 # ___________________________________________________________________________________________________________________________________
 # FUNCTIONS FOR RUNNING MODEL HINDCASTS AND CALCULATING SKILL
 
-def model_skill(obs_change, sim_change, obs_change_mean, mask):
-    """Perform suite of model skill assesments and return scores."""
-
-    if np.isnan(np.sum(sim_change)):
+def model_skill(obs, sim, t0, mask):
+    """
+    Perform suite of model skill assesments and return scores.
+    Mask is boolean array with same size as change maps, with cells to be excluded from skill analysis set to FALSE.
+    """
+    if np.isnan(np.sum(sim)):
         nse = -1e10
         rmse = -1e10
+        nmae = -1e10
+        mass = -1e10
         bss = -1e10
-        pc = -1e10
-        hss = -1e10
 
     else:
         # _____________________________________________
         # Nash-Sutcliffe Model Efficiency
         """The closer the score is to 1, the better the agreement. If the score is below 0, the mean observed value is a better predictor than the model."""
-        A = np.mean(np.square(np.subtract(obs_change[mask], sim_change[mask])))
-        B = np.mean(np.square(np.subtract(obs_change[mask], obs_change_mean)))
+        A = np.nanmean(np.square(np.subtract(obs[mask], sim[mask])))
+        B = np.nanmean(np.square(np.subtract(obs[mask], np.nanmean(obs[mask]))))
         nse = 1 - A / B
 
         # _____________________________________________
         # Root Mean Square Error
-        rmse = np.sqrt(np.mean(np.square(sim_change[mask] - obs_change[mask])))
+        rmse = np.sqrt(np.nanmean(np.square(sim[mask] - obs[mask])))
+
+        # _____________________________________________
+        # Normalized Mean Absolute Error
+        nmae = np.nanmean(np.abs(sim[mask] - obs[mask])) / (np.nanmax(obs[mask]) - np.nanmin(obs[mask]))  # (np.nanstd(np.abs(obs[mask])))
+
+        # _____________________________________________
+        # Mean Absolute Skill Score
+        mass = 1 - np.nanmean(np.abs(sim[mask] - obs[mask])) / np.nanmean(np.abs(t0[mask] - obs[mask]))
 
         # _____________________________________________
         # Brier Skill Score
         """A skill score value of zero means that the score for the predictions is merely as good as that of a set of baseline or reference or default predictions, 
         while a skill score value of one (100%) represents the best possible score. A skill score value less than zero means that the performance is even worse than 
         that of the baseline or reference predictions (i.e., the baseline matches the final field profile more closely than the simulation output)."""
-        bss = routine.brier_skill_score(sim_change, obs_change, np.zeros(sim_change.shape), mask)
+        MSE = np.nanmean(np.square(np.abs(np.subtract(sim[mask], obs[mask]))))
+        MSEref = np.nanmean(np.square(np.abs(np.subtract(t0[mask], obs[mask]))))
+        bss = 1 - MSE / MSEref
 
-        # _____________________________________________
-        # Categorical
-        threshold = 0.02
-        sim_erosion = sim_change < -threshold
-        sim_deposition = sim_change > threshold
-        sim_no_change = np.logical_and(sim_change <= threshold, -threshold <= sim_change)
-        obs_erosion = obs_change < -threshold
-        obs_deposition = obs_change > threshold
-        obs_no_change = np.logical_and(obs_change <= threshold, -threshold <= obs_change)
-
-        cat_Mask = np.zeros(obs_change.shape)
-        cat_Mask[np.logical_and(sim_erosion, obs_erosion)] = 1  # Hit
-        cat_Mask[np.logical_and(sim_deposition, obs_deposition)] = 1  # Hit
-        cat_Mask[np.logical_and(sim_erosion, ~obs_erosion)] = 2  # False Alarm
-        cat_Mask[np.logical_and(sim_deposition, ~obs_deposition)] = 2  # False Alarm
-        cat_Mask[np.logical_and(sim_no_change, obs_no_change)] = 3  # Correct Reject
-        cat_Mask[np.logical_and(sim_no_change, ~obs_no_change)] = 4  # Miss
-
-        hits = np.count_nonzero(cat_Mask[mask] == 1)
-        false_alarms = np.count_nonzero(cat_Mask[mask] == 2)
-        correct_rejects = np.count_nonzero(cat_Mask[mask] == 3)
-        misses = np.count_nonzero(cat_Mask[mask] == 4)
-        J = hits + false_alarms + correct_rejects + misses
-
-        if J > 0:
-            # Percentage Correct
-            """Ratio of correct predictions as a fraction of the total number of forecasts. Scores closer to 1 (100%) are better."""
-            pc = (hits + correct_rejects) / J
-
-            # Heidke Skill Score
-            """The percentage correct, corrected for the number expected to be correct by chance. Scores closer to 1 (100%) are better."""
-            G = ((hits + false_alarms) * (hits + misses) / J ** 2) + ((misses + correct_rejects) * (false_alarms + correct_rejects) / J ** 2)  # Fraction of predictions of the correct categories (H and C) that would be expected from a random choice
-            hss = (pc - G) / (1 - G)  # The percentage correct, corrected for the number expected to be correct by chance
-
-        else:
-            pc = -1e10
-            hss = -1e10
-
-    return nse, rmse, bss, pc, hss
+    return nse, rmse, nmae, mass, bss
 
 
 def storm_fitness(solution):
     """Run a storm with this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
-    topof = copy.deepcopy(topo_prestorm)
-
-    topof, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
-        topof,
+    sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
+        copy.deepcopy(topo_prestorm),
         Rhigh,
         Rlow,
         dur,
@@ -126,36 +97,28 @@ def storm_fitness(solution):
         x_s=x_s,
     )
 
-    sim_topo_final = topof * slabheight_m  # [m]
-    obs_topo_final_m = topo_final * slabheight_m  # [m]
-    topo_pre_m = topo_prestorm * slabheight_m  # [m]
-    topo_change_prestorm = sim_topo_final - topo_pre_m
+    # Final Elevations
+    obs_final_m = topo_final * slabheight_m  # [m] Observed final topo
+    sim_final_m = sim_topo_final * slabheight_m  # [m] Simulated final topo
+    obs_change_m = (topo_final - topo_prestorm) * slabheight_m  # [m] Observed change
+    sim_change_m = (sim_topo_final - topo_prestorm) * slabheight_m  # [m] Simulated change
 
-    # _____________________________________________
-    # Model Skill: Comparisons to Observations
+    # Masking
+    subaerial_mask = sim_final_m > (MHW * slabheight_m)  # [bool] Map of every cell above water
 
-    subaerial_mask = sim_topo_final > MHW  # [bool] Map of every cell above water
-
-    beach_duneface_mask = np.zeros(sim_topo_final.shape)
-    for l in range(topo_prestorm.shape[0]):
+    beach_duneface_mask = np.zeros(sim_final_m.shape)
+    for l in range(sim_final_m.shape[0]):
         beach_duneface_mask[l, :dune_crest[l]] = True
     beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
 
-    Sim_Obs_All_Mask = np.logical_or(OW_Mask, inundated, beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell landward of dune crest that was inundated in simulation or observation or both
+    mask_all = np.logical_or(OW_Mask, inundated, beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell landward of dune crest that was inundated in simulation or observation or both
 
-    # Final Elevation Changes
-    obs_change_m = (obs_topo_final_m - topo_pre_m)  # [m] Observed change
-    sim_change_m = topo_change_prestorm  # [m] Simulated change
-
-    # Mask
-    obs_change_masked = obs_change_m * Sim_Obs_All_Mask  # [m]
-    sim_change_masked = sim_change_m * Sim_Obs_All_Mask  # [m]
-    obs_change_mean_masked = np.mean(obs_change_m[Sim_Obs_All_Mask])  # [m] Average beach change of observations, masked
-
-    if np.isnan(np.sum(sim_change_masked)):
+    # Find Scores
+    if np.isnan(np.sum(sim_change_m)):
         score = -1e10
     else:
-        nse, rmse, bss, pc, hss = model_skill(obs_change_masked, sim_change_masked, obs_change_mean_masked, Sim_Obs_All_Mask)
+        # nse, rmse, bss, pc, hss = model_skill(obs_change_masked, sim_change_masked, obs_change_mean_masked, Sim_Obs_All_Mask)
+        nse, rmse, nmae, mass, bss = model_skill(obs_change_m, sim_change_m, np.zeros(obs_change_m.shape), mask_all)
         score = bss  # This is the skill score used in genetic algorithm
 
     return score
@@ -178,7 +141,7 @@ start_time = time.time()  # Record time at start of calibration
 # _____________________________________________
 # Define Variables
 Rhigh = 3.32
-Rlow = 0.9  # Actual Florence: 1.93
+Rlow = 1.93
 dur = 70
 slabheight_m = 0.1
 MHW = 0
@@ -233,7 +196,7 @@ topo_prestorm = copy.deepcopy(topo)
 # _____________________________________________
 # Prepare Particle Swarm Parameters
 
-iterations = 150
+iterations = 5
 swarm_size = 20
 dimensions = 10  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
@@ -311,4 +274,3 @@ print(tabulate({
 plt.plot(np.array(optimizer.cost_history) * -1)
 plt.ylabel('Fitness (BSS)')
 plt.xlabel('Iteration')
-
