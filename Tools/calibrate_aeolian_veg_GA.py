@@ -5,7 +5,7 @@ Calibrates based on fitess score for all morphologic and ecologic change between
 
 Can choose to calibrate for just aeolian, just veg, or both.
 
-IRBR 16 June 2023
+IRBR 29 June 2023
 """
 
 import numpy as np
@@ -100,13 +100,15 @@ def model_skill(obs, sim, t0, mask):
     return NSE, RMSE, NMAE, MASS, BSS, PC, HSS
 
 
-def storm_fitness(solution, solution_idx):
+def aeolian_fitness(solution, solution_idx):
     """Run a hindcast this particular combintion of parameter values, and return fitness value of simulated to observed."""
+
+    global BestScore
 
     # Create an instance of the BMI class
     meeb = MEEB(
-        name="SLR 0 mm/yr, 2004-2009 Hindcast",
-        simulation_time_yr=5.1,
+        name=name,
+        simulation_time_yr=hindcast_duration,
         alongshore_domain_boundary_min=xmin,
         alongshore_domain_boundary_max=xmax,
         RSLR=0.000,
@@ -116,14 +118,15 @@ def storm_fitness(solution, solution_idx):
         p_dep_sand_VegMax=solution[0] + solution[1],
         p_ero_sand=solution[2],
         entrainment_veg_limit=solution[3],
-        shadowangle=solution[4],
-        repose_bare=solution[5],
-        repose_veg=solution[5] + solution[6],
-        direction2=solution[7],
-        direction4=solution[8],
+        saltation_veg_limit=solution[4],
+        shadowangle=solution[5],
+        repose_bare=solution[6],
+        repose_veg=solution[6] + solution[7],
+        direction2=solution[8],
+        direction4=solution[9],
         init_filename=start,
         hindcast=True,
-        simulation_start_date='20040716',
+        simulation_start_date=startdate,
         storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
     )
 
@@ -182,10 +185,12 @@ def storm_fitness(solution, solution_idx):
     nse_dl, rmse_dl, nmae_dl, mass_dl, bss_dl, pc_dl, hss_dl = model_skill(crest_loc_obs.astype('float32'), crest_loc_sim.astype('float32'), crest_loc_obs_start.astype('float32'), np.full(crest_loc_obs.shape, True))  # Foredune location
     nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh, pc_dh, hss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, np.full(crest_height_change_obs.shape, True))  # Foredune elevation
 
-    # Combine skill scores, given relative weights for each score
-    # score = -1 * (nmae + nmae_dl + nmae_dh)  # This is the skill score used in genetic algorithm
+    # Combine skill scores
+    score = -1 * (nmae + nmae_dl + nmae_dh)  # This is the skill score used in genetic algorithm
 
-    score = bss  # This is the skill score used in genetic algorithm
+    if score > BestScore:
+        BestScore = score
+        print(' > New Best Score:', score)
 
     return score
 
@@ -197,28 +202,36 @@ start_time = time.time()  # Record time at start of calibration
 
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
-# # 0.92, 20161012
+# # 2016 - 2017
 # start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
 # stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
+# hindcast_duration = 0.92
+# startdate = '20161012'
 
-# 5.1, 20040716
+# 2004 - 2009
 start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
 stop = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
+hindcast_duration = 5.1
+startdate = '20040716'
 
-# # 3.44, 20140406
+# # 2014 - 2017
 # start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandyNCFMP.npy"
 # stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
+# hindcast_duration = 3.44
+# startdate = '20140406'
 
-# # 4.78, 20121129
+# # 2012 - 2017
 # start = "Init_NCB-NewDrum-Ocracoke_2012_PostSandyUSGS_NoThin.npy"
 # stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
+# hindcast_duration = 4.78
+# startdate = '20121129'
 
 # Define Alongshore Coordinates of Domain
 xmin = 6500  # 575, 2000, 2150, 2000, 3800  # 2650
 xmax = 6600  # 825, 2125, 2350, 2600, 4450  # 2850
 
 MHW = 0.4  # [m NAVD88]
-name = '6500-6600, 2004-2009, BSS'
+name = '6500-6600, 2004-2009, Saltation Mode, NMAE all'
 
 # ____________________________________
 
@@ -248,14 +261,15 @@ veg_end = spec1_e + spec2_e  # FINAL OBSERVED VEGETATION COVER
 veg_end[veg_end > 1] = 1
 veg_end[veg_end < 0] = 0
 
-
+BestScore = -1e10
 
 # _____________________________________________
 # Prepare Genetic Algoritm Parameters
 
 # Genes: Free parameters
-num_genes = 9
+num_genes = 10
 gene_type = [[float, 2],
+             [float, 2],
              [float, 2],
              [float, 2],
              [float, 2],
@@ -268,6 +282,7 @@ gene_space = [{'low': 0.02, 'high': 0.5},  # p_dep_sand
               {'low': 0.05, 'high': 0.5},  # p_dep_sand_VegMax
               {'low': 0.02, 'high': 0.5},  # p_ero_sand
               {'low': 0.05, 'high': 0.55},  # entrainment_veg_limit
+              {'low': 0.15, 'high': 0.4},  # saltation_veg_limit
               {'low': 5, 'high': 15},  # shadowangle
               {'low': 15, 'high': 30},  # repose_bare
               {'low': 5, 'high': 10},  # repose_veg
@@ -296,7 +311,7 @@ crossover_type = "single_point"
 # Create instance of GA class
 ga_instance = pygad.GA(num_generations=num_generations,
                        num_parents_mating=num_parents_mating,
-                       fitness_func=storm_fitness,
+                       fitness_func=aeolian_fitness,
                        sol_per_pop=sol_per_pop,
                        num_genes=num_genes,
                        gene_type=gene_type,
@@ -337,13 +352,14 @@ print(tabulate({
     "p_dep_sand_VegMax":  [best_solution[0] + best_solution[1]],
     "p_ero_sand":   [best_solution[2]],
     "entrainment_veg_limit":  [best_solution[3]],
-    "shadowangle":  [best_solution[4]],
-    "repose_bare": [best_solution[5]],
-    "repose_veg": [best_solution[5] + best_solution[6]],
-    "direction2":   [best_solution[7]],
-    "direction4":   [best_solution[8]],
+    "saltation_veg_limit":  [best_solution[4]],
+    "shadowangle":  [best_solution[5]],
+    "repose_bare": [best_solution[6]],
+    "repose_veg": [best_solution[6] + best_solution[7]],
+    "direction2":   [best_solution[8]],
+    "direction4":   [best_solution[9]],
     "Score": [solution_fitness]
-    }, headers="keys", floatfmt=(None, ".2f", ".2f", ".2f", ".2f", ".0f", ".0f", ".0f", ".0f", ".0f", ".4f"))
+    }, headers="keys", floatfmt=(None, ".2f", ".2f", ".2f", ".2f", ".2f", ".0f", ".0f", ".0f", ".0f", ".0f", ".4f"))
 )
 
 ga_instance.plot_fitness(title=name)
