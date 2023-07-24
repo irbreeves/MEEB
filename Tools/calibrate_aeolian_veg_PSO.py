@@ -183,8 +183,8 @@ def aeolian_fitness(solution):
     nse_dl, rmse_dl, nmae_dl, mass_dl, bss_dl, pc_dl, hss_dl = model_skill(crest_loc_obs.astype('float32'), crest_loc_sim.astype('float32'), crest_loc_obs_start.astype('float32'), np.full(crest_loc_obs.shape, True))  # Foredune location
     nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh, pc_dh, hss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, np.full(crest_height_change_obs.shape, True))  # Foredune elevation
 
-    # Combine skill scores
-    score = -1 * (nmae + nmae_dl + nmae_dh)  # This is the skill score used in genetic algorithm
+    # Combine Skill Scores (Multi-Objective Optimization)
+    score = -1 * (nmae + nmae_dl + nmae_dh)  # This is the skill score used in particle swarms optimization
 
     return score
 
@@ -192,7 +192,8 @@ def aeolian_fitness(solution):
 def opt_func(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
-    solutions = Parallel(n_jobs=10)(delayed(aeolian_fitness)(X[i, :]) for i in range(swarm_size))
+    n_jobs = int(min(10, swarm_size))  # Constrained by maximum number of cores on machine
+    solutions = Parallel(n_jobs=n_jobs)(delayed(aeolian_fitness)(X[i, :]) for i in range(swarm_size))
 
     return np.array(solutions) * -1
 
@@ -332,19 +333,19 @@ print("Complete.")
 
 print()
 print(tabulate({
-    "BEST SOLUTION": ["BSS"],
-    "Rin": [best_solution[0]],
-    "Cx": [best_solution[1]],
-    "MUS": [best_solution[2]],
-    "FLim": [best_solution[3]],
-    "Kr": [best_solution[4]],
-    "mm": [best_solution[5]],
-    "SSo": [best_solution[6]],
-    "Beq": [best_solution[7]],
-    "Et": [best_solution[8]],
-    "SSb": [best_solution[9]],
-    "Score": [solution_fitness * -1]
-}, headers="keys", floatfmt=(None, ".0f", ".0f", ".2f", ".2f", ".7f", ".2f", ".0f", ".3f", ".2f", ".0f", ".4f"))
+    "BEST SOLUTION": ["NMAE"],
+    "p_dep_sand":  [best_solution[0]],
+    "p_dep_sand_VegMax":  [best_solution[0] + best_solution[1]],
+    "p_ero_sand":   [best_solution[2]],
+    "entrainment_veg_limit":  [best_solution[3]],
+    "saltation_veg_limit":  [best_solution[4]],
+    "shadowangle":  [best_solution[5]],
+    "repose_bare": [best_solution[6]],
+    "repose_veg": [best_solution[6] + best_solution[7]],
+    "direction2":   [best_solution[8]],
+    "direction4":   [best_solution[9]],
+    "Score": [solution_fitness]
+    }, headers="keys", floatfmt=(None, ".2f", ".2f", ".2f", ".2f", ".2f", ".0f", ".0f", ".0f", ".0f", ".0f", ".4f"))
 )
 
 # _____________________________________________
