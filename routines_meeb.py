@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 14 July 2023
+Last update: 24 July 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -928,6 +928,7 @@ def storm_processes(
         beach_erosiveness,
         beach_substeps,
         x_s,
+        cellsize,
 ):
     """Resolves topographical change from storm events. Landward of dune crest: overwashes barrier interior where storm water levels exceed
     pre-storm dune crests following Barrier3D (Reeves et al., 2021) flow routing. Seaward of dune crest: determines topographic change of beach
@@ -989,6 +990,8 @@ def storm_processes(
         Number of substeps per iteration of beach/duneface model; instabilities will occur if too low.
     x_s : ndarray
         Alongshore array of ocean shoreline locations.
+    cellsize : float
+        [m] Horizontal dimension of model grid cells
 
     Returns
     ----------
@@ -1096,24 +1099,28 @@ def storm_processes(
         # if Shrubs:
         #     # Insert calculation of burial/erosion for each shrub
 
+        # Beach and Duneface Change
         if TS % substep == 0:
-            # Beach and Duneface Change
-            Elevation[TS, :, :], BeachDune_Volume_Change, wetMap = calc_dune_erosion_TS(
-                Elevation[TS, :, :],
-                1,
-                dune_crest_loc,
-                x_s,
-                MHW_m,
-                Rhigh_TS,
-                beach_equilibrium_slope,
-                beach_erosiveness,
-                beach_substeps,
-            )
+            beach_ss = beach_substeps  # Reset to default minimum value
+            valid = False
 
-            if np.isnan(np.sum(Elevation)):
-                print("  > Beach/Dune Model Instability Failure")
-                Elevation[-1, :, :] = np.nan
-                break
+            while not valid:
+                Elev_Out, BeachDune_Volume_Change, wetMap = calc_dune_erosion_TS(
+                    Elevation[TS, :, :].copy(),
+                    cellsize,
+                    dune_crest_loc,
+                    x_s,
+                    MHW_m,
+                    Rhigh_TS,
+                    beach_equilibrium_slope,
+                    beach_erosiveness,
+                    beach_ss,  # Beach substeps
+                )
+                if np.isnan(np.sum(Elev_Out)) or np.isinf(np.sum(Elev_Out)):
+                    beach_ss = int(beach_ss * 1.5)  # Increase beach substeps if instabilities arise and try again
+                else:  # Exit loop if no instabilities arise
+                    valid = True
+                    Elevation[TS, :, :] = Elev_Out
 
         inundated = np.logical_or(inundated, wetMap)  # Update inundated map with cells seaward of dune crest
 
@@ -1469,7 +1476,7 @@ def calc_dune_erosion_TS(topo,
     topo : ndarray
         [m] Elevation domain.
     dx : float
-        [m] Cell dimension.
+        [m] Cell horizontal dimension.
     crestline : ndarray
         Alongshore array of dune crest locations.
     x_s : ndarray

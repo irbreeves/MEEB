@@ -389,6 +389,7 @@ class MEEB:
                     beach_erosiveness=self._beach_erosiveness,
                     beach_substeps=self._beach_substeps,
                     x_s=self._x_s,
+                    cellsize=self._cellsize,
                 )
 
                 # Enforce angles of repose again after overwash
