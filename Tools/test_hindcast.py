@@ -157,6 +157,12 @@ hindcast_duration = 5.1
 # start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandyNCFMP.npy"
 # stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
 
+# # 2014 - 2016
+# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandyNCFMP.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
+# startdate = '20140406'
+# hindcast_duration = 2.52
+
 # # 2009 - 2018
 # start = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
 # stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
@@ -169,11 +175,11 @@ Init = np.load("Input/" + start)
 End = np.load("Input/" + stop)
 
 # Define Alongshore Coordinates of Domain
-xmin = 6500  # 575, 2000, 2150, 2000, 3800  # 2650 #6500  #20000 # 5880 # 18950
-xmax = 6600  # 825, 2125, 2350, 2600, 4450  # 2850 #6600         # 5980 # 19250
+xmin = 6300  # 575, 2000, 2150, 2000, 3800  # 2650 #6500  #20000 # 5880 # 18950
+xmax = 6500  # 825, 2125, 2350, 2600, 4450  # 2850 #6600         # 5980 # 19250
 
 MHW = 0.4  # [m NAVD88]
-name = '6500-6600, 2004-2009, 22-65-33-24-12-20-25-3-1'
+name = '6300-6500, 2004-2009, 18-41-24-20-16-10-20-28-484-204-95-217'
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
 
@@ -214,16 +220,15 @@ meeb = MEEB(
     jumplength=5,
     slabheight=0.02,
     seeded_random_numbers=True,
-    p_dep_sand=0.43,  # Q = hs * L * n * pe/pd
-    p_dep_sand_VegMax=0.80,
-    p_ero_sand=0.22,
-    entrainment_veg_limit=0.46,
-    saltation_veg_limit=0.18,
+    p_dep_sand=0.18,  # Q = hs * L * n * pe/pd
+    p_dep_sand_VegMax=0.41,
+    p_ero_sand=0.24,
+    entrainment_veg_limit=0.20,
+    saltation_veg_limit=0.16,
     shadowangle=10,
-    repose_bare=21,
+    repose_bare=20,
     repose_veg=28,
-    direction2=1,
-    direction4=1,
+    wind_rose=(0.484, 0.204, 0.095, 0.217),  # (right, down, left, up)
     init_filename=start,
     hindcast=True,
     simulation_start_date=startdate,
@@ -277,34 +282,36 @@ crest_height_sim = topo_end_sim[np.arange(topo_end_obs.shape[0]), crest_loc_sim]
 crest_height_change_obs = crest_height_obs - crest_height_obs_start
 crest_height_change_sim = crest_height_sim - crest_height_obs_start
 
+mask = subaerial_mask.copy()
+
 # # Temp limit interior in analysis to dunes
-subaerial_mask[:, :835] = False
-subaerial_mask[:, 950:] = False
-# subaerial_mask[:, :1100] = False
-# subaerial_mask[:, 1350:] = False
+mask[:, :835] = False
+mask[:, 950:] = False
+# mask[:, :1100] = False
+# mask[:, 1350:] = False
 
 # Limit interior in analysis by elevation
 elev_mask = topo_end_sim > 2.0  # [bool] Mask for every cell above water
 
 # Optional: Reduce Resolutions
 if ResReduc:
-    reduc = 5  # Reduction factor
     topo_change_obs = routine.reduce_raster_resolution(topo_change_obs, reduc)
     topo_change_sim = routine.reduce_raster_resolution(topo_change_sim, reduc)
+    mask = (routine.reduce_raster_resolution(mask, reduc)) == 1
     subaerial_mask = (routine.reduce_raster_resolution(subaerial_mask, reduc)) == 1
 
 # Model Skill
-nse, rmse, nmae, mass, bss, pc, hss = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), subaerial_mask)  # All cells (excluding masked areas)
+nse, rmse, nmae, mass, bss, pc, hss = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask)  # All cells (excluding masked areas)
 nse_dl, rmse_dl, nmae_dl, mass_dl, bss_dl, pc_dl, hss_dl = model_skill(crest_loc_obs.astype('float32'), crest_loc_sim.astype('float32'), crest_loc_obs_start.astype('float32'), np.full(crest_loc_obs.shape, True))  # Foredune location
 nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh, pc_dh, hss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, np.full(crest_height_change_obs.shape, True))  # Foredune elevation
 
 # Combine Skill Scores (Multi-Objective Optimization)
-multiobjective_score = -1 * (nmae + nmae_dl + nmae_dh)  # This is the skill score used in particle swarms optimization
+multiobjective_score = np.average([nmae, nmae_dl, nmae_dh], weights=[1, 1, 1])  # This is the skill score used in particle swarms optimization
 
 # Print scores
 print()
 print(tabulate({
-    "Scores": ["All Cells", "Foredune Location", "Foredune Elevation", "Weighted Combined"],
+    "Scores": ["All Cells", "Foredune Location", "Foredune Elevation", "Multi-Objective Score"],
     "NSE": [nse, nse_dl, nse_dh],
     "RMSE": [rmse, rmse_dl, rmse_dh],
     "NMAE": [nmae, nmae_dl, nmae_dh, multiobjective_score],
@@ -362,6 +369,7 @@ maxx = max(abs(np.min(tco)), abs(np.max(tco)))
 maxxx = max(abs(np.min(tcs)), abs(np.max(tcs)))
 maxxxx = max(maxx, maxxx)
 
+#
 Fig = plt.figure(figsize=(14, 7.5))
 Fig.suptitle(meeb.name, fontsize=13)
 ax1 = Fig.add_subplot(221)
@@ -396,6 +404,7 @@ plt.plot(np.mean(topo_end_obs[:, xmin: xmax], axis=0), 'k')
 plt.plot(np.mean(topo_end_sim[:, xmin: xmax], axis=0), 'r')
 plt.legend(['Start', 'Observed', 'Simulated'])
 plt.title("Average Profile")
+
 
 # Animation: Elevation and Vegetation Over Time
 

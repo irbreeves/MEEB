@@ -51,11 +51,7 @@ class MEEB:
 
             # AEOLIAN
             groundwater_depth=0.8,  # Proportion of the smoothend topography used to set groundwater profile
-            direction1=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
-            direction2=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
-            direction3=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
-            direction4=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
-            direction5=1,  # Direction 1 of the slab movement. 1 = right, 2 = down, 3 = left and 4 = up
+            wind_rose=(0.8, 0, 0.2, 0),  # Proportion of wind TOWARDS (right, down, left, up)
             p_dep_sand=0.1,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
             p_dep_sand_VegMax=0.2,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover. Must be greater than or equal to p_dep_sand/p_dep_base.
             p_dep_base=0.1,  # [0-1] Probability of deposition of base cells
@@ -144,6 +140,7 @@ class MEEB:
         self._hindcast_timseries_start_date = hindcast_timeseries_start_date
         self._save_data = save_data
         self._groundwater_depth = groundwater_depth
+        self._wind_rose = wind_rose
         self._p_dep_sand = p_dep_sand
         self._p_dep_sand_VegMax = p_dep_sand_VegMax
         self._p_dep_base = p_dep_base
@@ -262,7 +259,7 @@ class MEEB:
             raise ValueError("Simulation length is greater than hindcast timeSeries length.")
 
         # MODEL PARAMETERS
-        self._direction = self._RNG.choice(np.tile([direction1, direction2, direction3, direction4, direction5], (1, 2000))[0, :], 10000, replace=False)
+        self._wind_direction = np.zeros([self._iterations], dtype=int)
         self._slabheight = round(self._slabheight_m * 100) / 100
         self._balance = self._topo * 0  # Initialise the sedimentation balance map [slabs]
         self._stability = self._topo * 0  # Initialise the stability map [slabs]
@@ -311,7 +308,7 @@ class MEEB:
 
         # --------------------------------------
         # SAND TRANSPORT
-
+        self._wind_direction[it] = self._RNG.choice(np.arange(1, 5), p=self._wind_rose).astype(int)  # Randomly select and record wind direction for this iteration
         before = copy.deepcopy(self._topo)
 
         # Get present groundwater elevations
@@ -320,19 +317,19 @@ class MEEB:
 
         # Find sandy and shadowed cells
         sandmap = self._topo > self._MHW  # Boolean array, Returns True for sandy cells
-        shadowmap = routine.shadowzones(self._topo, self._slabheight, self._shadowangle, self._longshore, self._crossshore, direction=self._direction[it])  # Returns map of True for in shadow, False not in shadow
+        shadowmap = routine.shadowzones(self._topo, self._slabheight, self._shadowangle, self._longshore, self._crossshore, direction=self._wind_direction[it])  # Returns map of True for in shadow, False not in shadow
 
         # Erosion/Deposition Probabilities
         erosmap = routine.erosprobs(self._veg, shadowmap, sandmap, self._topo, self._groundwater_elevation, self._p_ero_sand, self._entrainment_veg_limit)  # Returns map of erosion probabilities
         deposmap = routine.depprobs(self._veg, shadowmap, sandmap, self._p_dep_base, self._p_dep_sand, self._p_dep_sand_VegMax, self._topo, self._groundwater_elevation)  # Returns map of deposition probabilities
 
         # Move sand slabs
-        if self._direction[it] == 1 or self._direction[it] == 3:  # Left or Right wind direction
+        if self._wind_direction[it] == 1 or self._wind_direction[it] == 3:  # Left or Right wind direction
             contour = np.linspace(0, round(self._crossshore) - 1, self._n_contour + 1)  # Contours to account for transport
-            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._direction[it], True, self._RNG)  # Returns map of height changes
+            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._wind_direction[it], True, self._RNG)  # Returns map of height changes
         else:  # Up or Down wind direction
             contour = np.linspace(0, round(self._longshore) - 1, self._n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This may produce slightly different results than Matlab version - need to verify
-            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._direction[it], True, self._RNG)  # Returns map of height changes
+            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._wind_direction[it], True, self._RNG)  # Returns map of height changes
 
         # Apply changes, make calculations
         self._topo = self._topo + changemap  # Changes applied to the topography
