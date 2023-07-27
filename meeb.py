@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 14 July 2023
+Last update: 27 July 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -244,6 +244,8 @@ class MEEB:
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
         self._veg[self._veg < 0] = 0
 
+        self._effective_veg = scipy.ndimage.filters.gaussian_filter(self._veg, [1.5, 1.5], mode='constant')  # Effective vegetation cover represents effect of nearby vegetation on local wind
+
         self._growth_reduction_timeseries = np.linspace(0, self._VGR / 100, int(np.ceil(self._simulation_time_yr)))
 
         # STORMS
@@ -320,16 +322,16 @@ class MEEB:
         shadowmap = routine.shadowzones(self._topo, self._slabheight, self._shadowangle, self._longshore, self._crossshore, direction=self._wind_direction[it])  # Returns map of True for in shadow, False not in shadow
 
         # Erosion/Deposition Probabilities
-        erosmap = routine.erosprobs(self._veg, shadowmap, sandmap, self._topo, self._groundwater_elevation, self._p_ero_sand, self._entrainment_veg_limit)  # Returns map of erosion probabilities
-        deposmap = routine.depprobs(self._veg, shadowmap, sandmap, self._p_dep_base, self._p_dep_sand, self._p_dep_sand_VegMax, self._topo, self._groundwater_elevation)  # Returns map of deposition probabilities
+        erosmap = routine.erosprobs(self._effective_veg, shadowmap, sandmap, self._topo, self._groundwater_elevation, self._p_ero_sand, self._entrainment_veg_limit)  # Returns map of erosion probabilities
+        deposmap = routine.depprobs(self._effective_veg, shadowmap, sandmap, self._p_dep_base, self._p_dep_sand, self._p_dep_sand_VegMax, self._topo, self._groundwater_elevation)  # Returns map of deposition probabilities
 
         # Move sand slabs
         if self._wind_direction[it] == 1 or self._wind_direction[it] == 3:  # Left or Right wind direction
             contour = np.linspace(0, round(self._crossshore) - 1, self._n_contour + 1)  # Contours to account for transport
-            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._wind_direction[it], True, self._RNG)  # Returns map of height changes
+            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._effective_veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._wind_direction[it], True, self._RNG)  # Returns map of height changes
         else:  # Up or Down wind direction
             contour = np.linspace(0, round(self._longshore) - 1, self._n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This may produce slightly different results than Matlab version - need to verify
-            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._wind_direction[it], True, self._RNG)  # Returns map of height changes
+            changemap, slabtransp, sum_contour = routine.shiftslabs(erosmap, deposmap, self._jumplength, self._effective_veg, self._saltation_veg_limit, contour, self._longshore, self._crossshore, self._wind_direction[it], True, self._RNG)  # Returns map of height changes
 
         # Apply changes, make calculations
         self._topo = self._topo + changemap  # Changes applied to the topography
@@ -416,7 +418,7 @@ class MEEB:
                 self._k_sf,
                 self._s_sf_eq,
                 self._RSLR,
-                Qbe,  # [m^3] Volume of sediment imported from (+) or exported to (-) the upper shoreface by beach change
+                Qbe,  # [m^3] Volume of sediment imported from (+) or exported to (-) the upper shoreface by storm beach/duneface change
                 self._OWflux,
                 self._x_s,
                 self._x_t,
@@ -514,6 +516,9 @@ class MEEB:
             self._veg = spec1_geom + spec2_geom  # Update vegmap
             self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Limit to effective range
             self._veg[self._veg < 0] = 0
+
+            # Determine effective vegetation cover by smoothing; represents effect of nearby vegetation on local wind
+            self._effective_veg = scipy.ndimage.filters.gaussian_filter(self._veg, [1.5, 1.5], mode='constant')
 
             self._vegcount = self._vegcount + 1  # Update counter
 
