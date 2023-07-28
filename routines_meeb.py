@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 27 July 2023
+Last update: 28 July 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -16,13 +16,13 @@ import numpy as np
 import math
 import copy
 import scipy
-from scipy import signal, stats
+from scipy import signal
 from AST.alongshore_transporter import AlongshoreTransporter
 from AST.waves import ashton
-from numba import njit, prange
+from numba import njit
 
 
-def shadowzones(topof, sh, shadowangle, longshore, crossshore, direction):
+def shadowzones(topof, sh, shadowangle, direction):
     """Returns a boolean map with all shadowzones identified as ones. Wind from left to right, along the +2 dimension.
 
     Parameters
@@ -33,10 +33,6 @@ def shadowzones(topof, sh, shadowangle, longshore, crossshore, direction):
         Slab height.
     shadowangle : float
         Shadow angle.
-    longshore : int
-        Alongshore length of domain
-    crossshore : int
-        Cross-shore width of domain
     direction : int
         Wind direction (1 right, 2 down, 3 left, 4 up).
 
@@ -46,6 +42,7 @@ def shadowzones(topof, sh, shadowangle, longshore, crossshore, direction):
         Boolean map of shaded cells, now with open boundaries
     """
 
+    longshore, crossshore = topof.shape
     steplimit = math.tan(shadowangle * math.pi / 180) / sh  # The maximum step difference allowed given the slabheight and shadowangle
 
     search_range = int(math.ceil(np.max(topof) / steplimit))  # Identifies highest elevation and uses that to determine what the largest search distance needs to be
@@ -149,7 +146,7 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg, topof, grou
     return Pd
 
 
-def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, longshore, crossshore, direction, random_hoplength, RNG):
+def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, direction, random_hoplength, RNG):
     """Shifts the sand from wind. Returns a map of surface elevation change. Open boundaries, no feeding from the sea side.
 
     Follows modifications by Teixeira et al. (2023) that allow larger hop lengths while still accounting for vegetation interactions
@@ -172,10 +169,6 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, longshore, crossshore, 
         Threshold vegetation effectiveness needed for a cell along a slab saltation path needed to be considered vegetated.
     contour : ndarray
         Contours to account for transport.
-    longshore : int
-        Alongshore length of domain.
-    crossshore : int
-        Cross-shore width of domain.
     direction : int
         Wind direction (1 right, 2 down, 3 left, 4 up).
     random_hoplength : bool
@@ -187,6 +180,8 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, longshore, crossshore, 
     -------
     elevation_change
         [slabs] Net change in surface elevation."""
+
+    longshore, crossshore = vegf.shape
 
     shift = 1  # [cell length] Shift increment
 
@@ -256,13 +251,32 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, longshore, crossshore, 
 
 
 def enforceslopes(topof, vegf, sh, anglesand, angleveg, th, RNG):
-    """Function to enforce the angle of repose; open boundaries (18 oct 2010). Returns an updated topography.
-    - topof         : topography map [topo]
-    - vegf          : map of combined vegetation effectiveness [veg] [0,1]
-    - sh            : slab height [slabheight]
-    - anglesand     : angle of repose for bare sand [repose_bare]
-    - angleveg      : angle of repose for vegetated cells [repose_veg]
-    - th            : switching threshold [repose_threshold]"""
+    """Function to enforce the angle of repose, with open boundaries.
+
+    Parameters
+    ----------
+    topof : ndarray
+        [slabs] Elevation domain.
+    vegf : ndarray
+        Map of combined vegetation effectiveness.
+    sh : float
+        [m] Slab height.
+    anglesand : int
+        [deg] Angle of repose for bare sand cells.
+    angleveg : int
+        [deg] Angle of repose for vegetated cells
+    th : float
+        Vegetation effectiveness threshold for applying vegetated angle of repose (versus bare angle of repose)
+    RNG :
+        Random Number Generator object.
+
+    Returns
+    ----------
+    topo :
+        Topography updated with enforced angles of repose.
+    moved_slabs:
+        Number of slabs moved this iteration
+    """
 
     steplimitsand = np.floor(np.tan(anglesand * np.pi / 180) / sh)  # Maximum allowed height difference for sandy cells
     steplimitsanddiagonal = np.floor(np.sqrt(2) * np.tan(anglesand * np.pi / 180) / sh)  # Maximum allowed height difference for sandy cells along diagonal
@@ -273,10 +287,10 @@ def enforceslopes(topof, vegf, sh, anglesand, angleveg, th, RNG):
     steplimitdiagonal = (vegf < th) * steplimitsanddiagonal + (vegf >= th) * steplimitvegdiagonal  # Idem for diagonal
 
     M, N = topof.shape  # Retrieve dimensions of area
-    slopes = np.zeros([M, N, 8])  # Pre-allocating matrix to improve calculation speed
-    exceeds = np.zeros([M, N, 8])  # Pre-allocating matrix to improve calculation speed
+    slopes = np.zeros([M, N, 8])  # Initialize
+    exceeds = np.zeros([M, N, 8])  # Initialize
 
-    total = 0  # Number of avalanches
+    avalanched_cells = 0  # Number of avalanched cells
     slabsmoved = 1  # Initial number to get the loop going
 
     while slabsmoved > 0:
@@ -284,7 +298,7 @@ def enforceslopes(topof, vegf, sh, anglesand, angleveg, th, RNG):
         topof = np.column_stack((topof[:, 0], topof, topof[:, -1]))
         topof = np.vstack((topof[0, :], topof, topof[-1, :]))
 
-        # All height differences relative to centre cell (positive is sloping upward away, negative is sloping downward away)
+        # All height differences relative to center cell (positive is sloping upward away, negative is sloping downward away)
         # Directions are clockwise starting from upward/North [-1,0]=1, and so-on
         central = topof[1: -1, 1: -1]  # (2: -1 -1) --> (1 : -1)
         slopes[:, :, 0] = topof[0: -2, 1: -1] - central  # dir 1 [-1,0]
@@ -329,15 +343,34 @@ def enforceslopes(topof, vegf, sh, anglesand, angleveg, th, RNG):
 
         topof = topof[1: -1, 1: -1]  # Remove padding
         slabsmoved = np.sum(exceeds)  # Count moved slabs during this loop
-        total = total + slabsmoved  # Total number of moved slabs since beginning of m-file
+        avalanched_cells = avalanched_cells + slabsmoved  # Total number of moved slabs this iteration
 
-    return topof, total
+    return topof, avalanched_cells
 
 
-def growthfunction1_sens(spec, sed, A1, B1, C1, D1, E1, P1):
-    """Input is the vegetation map, and the sedimentation balance in units of cell dimension (!), i.e. already adjusted by the slabheight
-    Output is the change in vegetation effectiveness
-    Ammophilia-like vegetation"""
+def growthfunction1_sens(species, sed, A1, B1, C1, D1, E1, P1):
+    """Grows (or reduces) vegetation by updating the vegetation effectiveness. Growth/reduction is based on sedimentation balance and growth curve.
+
+    For Ammophilia-like dune-growing grasses.
+
+    Parameters
+    ----------
+    species : ndarray
+        Map of vegetation effectiveness for specific species.
+    sed : ndarray
+        [m] Map of sedimentation balance (i.e., aggregate change in elevation) from last vegetation iteration.
+    A1
+    B1
+    C1
+    D1
+    E1
+    P1
+
+    Returns
+    ----------
+    spec :
+        Topography updated with enforced angles of repose.
+  """
 
     # Physiological range (needs to be specified)
     minimum = 0.0
@@ -368,18 +401,36 @@ def growthfunction1_sens(spec, sed, A1, B1, C1, D1, E1, P1):
     fourthleg = (sed >= x4) * (sed < x5) * ((sed - x4) * s45 + y4)
     rightextension = (sed >= x5) * -1
 
-    spec = spec + leftextension + firstleg + secondleg + thirdleg + fourthleg + rightextension
+    species = species + leftextension + firstleg + secondleg + thirdleg + fourthleg + rightextension
 
-    spec[spec < minimum] = minimum
-    spec[spec > maximum] = maximum
+    species[species < minimum] = minimum
+    species[species > maximum] = maximum
 
-    return spec
+    return species
 
 
-def growthfunction2_sens(spec, sed, A2, B2, D2, E2, P2):
-    """Input is the vegetation map, and the sedimentation balance in units of cell dimension (!), i.e. already adjusted by the slabheight
-    Output is the change in vegetation effectiveness
-    Buckthorn-type vegetation"""
+def growthfunction2_sens(species, sed, A2, B2, D2, E2, P2):
+    """Grows (or reduces) vegetation by updating the vegetation effectiveness. Growth/reduction is based on sedimentation balance and growth curve.
+
+    For Buckthorn-like woody vegetation.
+
+    Parameters
+    ----------
+    species : ndarray
+        Map of vegetation effectiveness for specific species.
+    sed : ndarray
+        [m] Map of sedimentation balance (i.e., aggregate change in elevation) from last vegetation iteration.
+    A2
+    B2
+    D2
+    E2
+    P2
+    
+    Returns
+    ----------
+    spec :
+        Topography updated with enforced angles of repose.
+    """
 
     # Physiological range (needs to be specified)
     minimum = 0.0  # was -0.5
@@ -410,19 +461,33 @@ def growthfunction2_sens(spec, sed, A2, B2, D2, E2, P2):
     fourthleg = (sed >= x4) * (sed < x5) * ((sed - x4) * s45 + y4)
     rightextension = (sed >= x5) * -1
 
-    spec = spec + leftextension + firstleg + secondleg + thirdleg + fourthleg + rightextension
+    species = species + leftextension + firstleg + secondleg + thirdleg + fourthleg + rightextension
 
-    spec[spec < minimum] = minimum
-    spec[spec > maximum] = maximum
+    species[species < minimum] = minimum
+    species[species > maximum] = maximum
 
-    return spec
+    return species
 
 
 def lateral_expansion(veg, dist, prob, RNG):
-    """LATERAL_EXPANSION implements lateral expansion of existing vegetation patches.
-    1) mark cells that lie within <dist> of existing patches: probability for new vegetated cells = 1
-    2) cells not adjacent to existing patches get probability depending on elevation: pioneer most likely to establish between 3 and 5 m + sea level.
-    Returns logical array of which cells veg has successfully expanded into."""
+    """Implements lateral expansion of existing vegetation patches. Marks cells that lie within specified distance of existing vegetated cells and
+    probabilistically determines whether veg can expanded to each of those cells.
+
+    Parameters
+    ----------
+    veg : ndarray
+        Map of vegetation effectiveness for specific species.
+    dist : float
+        [cell_length] Distance vegetation can expand laterally over one vegetation iteration.
+    prob : float
+        Probability of lateral expansion of existing vegetation.
+    RNG :
+        Random Number Generator object.
+    Returns
+    ----------
+    lateral_expansion_allowed : ndarray
+        [bool] Cells into which vegetation has successfully expanded.
+    """
 
     # Pad vegetation matrix with zeros for rolling
     veg = veg > 0
@@ -452,13 +517,28 @@ def lateral_expansion(veg, dist, prob, RNG):
 
 
 @njit
-def establish_new_vegetation(topof, mht, prob, RNG):
-    """Establishment of pioneer veg in previously bare cells.
-    Represents the germination and development of veg from seeds or rhizome fragments distributed by the sea or wind.
-    Returns logical array of which cells new veg has successfully established in."""
+def establish_new_vegetation(topof, MHW, prob, RNG):
+    """Establishes pioneer vegetation in previously bare cells. Represents the germination and development of veg from seeds or rhizome fragments
+    distributed by water or wind.
+
+    Parameters
+    ----------
+    topof : ndarray
+        [slabs] Elevation domain.
+    MHW : float
+        [slabs] Mean high water.
+    prob : float
+        Probability of new pioneer vegetation establishing.
+    RNG :
+        Random Number Generator object.
+    Returns
+    ----------
+    pioneer_established : ndarray
+        [bool] Cells into which new vegetation has successfully established.
+    """
 
     # Convert topography to height above current sea level
-    topof = topof - mht
+    topof = topof - MHW
 
     # Vertices (these need to be specified)
     x1 = 0.0
@@ -1591,7 +1671,7 @@ def shoreline_change_from_AST(x_s,
     wave_high_angle_fraction : ndarray
         Fraction of waves approaching at angles higher than 45 degrees from shore normal (Ashton & Murray, 2006).
     dy : float
-        [m] Cell dimension for alongshore axis
+        [m] Distance alongshore between shoreline positions used in the shoreline diffusion calculations
     time_step : ndarray
         [yr] Length of time for model iteration.
 
@@ -1600,8 +1680,6 @@ def shoreline_change_from_AST(x_s,
     x_s
         Cross-shore coordinates for shoreline position updated for alongshore sediment transport.
     """
-
-    dy = 50  # [m] Distance alongshore between shoreline positions used in the shoreline diffusion calculations
 
     # Sample shoreline location at every dy [m] alongshore
     x_s_ast = x_s[0::dy].copy()
@@ -1750,6 +1828,6 @@ def reduce_raster_resolution(raster, reduction_factor):
     """
 
     shape = tuple(int(ti / reduction_factor) for ti in raster.shape)
-    sh = shape[0],raster.shape[0]//shape[0],shape[1],raster.shape[1]//shape[1]
+    sh = shape[0], raster.shape[0]//shape[0], shape[1], raster.shape[1]//shape[1]
 
     return raster.reshape(sh).mean(-1).mean(1)
