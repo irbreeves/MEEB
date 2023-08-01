@@ -67,8 +67,14 @@ def model_skill(obs, sim, t0, mask):
 def storm_fitness(solution):
     """Run a storm with this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
-    sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
-        copy.deepcopy(topo_prestorm),
+    # Find Dune Crest, Shoreline Positions
+    dune_crest_loc = routine.foredune_crest(topo_start, MHW)
+    shoreline_loc = routine.ocean_shoreline(topo_start, MHW)
+
+    # Run Model
+    topo_start_copy = copy.deepcopy(topo_start)
+    topo_end_sim, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
+        topo_start_copy,
         Rhigh,
         Rlow,
         dur,
@@ -94,32 +100,39 @@ def storm_fitness(solution):
         beach_equilibrium_slope=solution[7],
         beach_erosiveness=solution[8],
         beach_substeps=int(round(solution[9])),
-        x_s=x_s,
+        x_s=shoreline_loc,
+        cellsize=1,
     )
 
-    # Final Elevations
-    obs_final_m = topo_final * slabheight_m  # [m] Observed final topo
-    sim_final_m = sim_topo_final * slabheight_m  # [m] Simulated final topo
-    obs_change_m = (topo_final - topo_prestorm) * slabheight_m  # [m] Observed change
-    sim_change_m = (sim_topo_final - topo_prestorm) * slabheight_m  # [m] Simulated change
+    topo_end_sim *= slabheight_m  # [m]
+    topo_start_obs = topo_start * slabheight_m  # [m]
+    topo_change_sim = topo_end_sim - topo_start_obs  # [m] Simulated change
+    topo_change_obs = copy.deepcopy(topo_final_m) - topo_start_obs  # [m] Observed change
 
-    # Masking
-    subaerial_mask = sim_final_m > (MHW * slabheight_m)  # [bool] Map of every cell above water
+    # _____________________________________________
+    # Model Skill: Comparisons to Observations
 
-    beach_duneface_mask = np.zeros(sim_final_m.shape)
-    for l in range(sim_final_m.shape[0]):
-        beach_duneface_mask[l, :dune_crest[l]] = True
+    subaerial_mask = topo_end_sim > MHW  # [bool] Map of every cell above water
+
+    beach_duneface_mask = np.zeros(topo_end_sim.shape)
+    for q in range(topo_start_obs.shape[0]):
+        beach_duneface_mask[q, :dune_crest_loc[q]] = True
     beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
 
-    mask_all = np.logical_or(OW_Mask, inundated, beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell landward of dune crest that was inundated in simulation or observation or both
+    overwash_mask = np.logical_and(OW_Mask, subaerial_mask)
+    overwash_mask_all = np.logical_and(np.logical_or(OW_Mask, inundated), ~beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell involved in observed or simulated overwash (landward of dune crest)
 
-    # Find Scores
-    if np.isnan(np.sum(sim_change_m)):
-        score = -1e10
-    else:
-        # nse, rmse, bss, pc, hss = model_skill(obs_change_masked, sim_change_masked, obs_change_mean_masked, Sim_Obs_All_Mask)
-        nse, rmse, nmae, mass, bss = model_skill(obs_change_m, sim_change_m, np.zeros(obs_change_m.shape), mask_all)
-        score = bss  # This is the skill score used in genetic algorithm
+    mask_all = np.logical_or(overwash_mask, inundated, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in simulation or observation or both
+    mask_obs = np.logical_or(overwash_mask, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in observation
+    topo_change_obs[~mask_obs] = 0
+
+    nse, rmse, nmae, mass, bss = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask_all)
+    nse_ow, rmse_ow, nmae_ow, mass_ow, bss_ow = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), overwash_mask_all)  # Skill scores for just overwash
+    nse_bd, rmse_bd, nmae_bd, mass_bd, bss_bd = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), beach_duneface_mask)  # Skill scores for just beach/dune
+
+    weighted_bss = np.average([bss_ow, bss_bd], weights=[2, 1])
+
+    score = weighted_bss  # This is the skill score used in particle swarms optimization
 
     return score
 
@@ -158,7 +171,7 @@ Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  
 xmin = 575  # 575, 2000, 2150, 2000, 3800  # 2650
 xmax = 825  # 825, 2125, 2350, 2600, 4450  # 2850
 
-name = '575-825, KQ(S+C), 150 itr'
+name = '575-825, KQ(S+C), weighted_bss'
 
 # _____________________________________________
 # Conversions & Initializations
@@ -167,9 +180,11 @@ name = '575-825, KQ(S+C), 150 itr'
 topo_init = Init[0, xmin: xmax, :]  # [m]
 topo0 = topo_init / slabheight_m  # [slabs] Transform from m into number of slabs
 topo = copy.deepcopy(topo0)  # [slabs] Initialise the topography map
+topo_start = copy.deepcopy(topo)
 
 # Transform Final Observed Topo
 topo_final = End[0, xmin:xmax, :] / slabheight_m  # [slabs] Transform from m into number of slabs
+topo_final_m = topo_final * slabheight_m  # [m]
 OW_Mask = Florence_Overwash_Mask[xmin: xmax, :]  # [bool]
 
 # Set Veg Domain
@@ -196,8 +211,8 @@ topo_prestorm = copy.deepcopy(topo)
 # _____________________________________________
 # Prepare Particle Swarm Parameters
 
-iterations = 5
-swarm_size = 20
+iterations = 25
+swarm_size = 9
 dimensions = 10  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """

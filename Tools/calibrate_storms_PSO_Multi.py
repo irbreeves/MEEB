@@ -102,6 +102,7 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
         beach_erosiveness=solution[8],
         beach_substeps=int(round(solution[9])),
         x_s=x_s,
+        cellsize=1,
     )
 
     topo_end_sim *= slabheight_m  # [m]
@@ -119,10 +120,20 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
         beach_duneface_mask[l, :dune_crest[l]] = True
     beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
 
-    mask_all = np.logical_or(OW_Mask, inundated, beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell landward of dune crest that was inundated in simulation or observation or both
+    OW_Mask = np.logical_and(OW_Mask, subaerial_mask)
+    mask_overwash_all = np.logical_and(np.logical_or(OW_Mask, inundated), ~beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell involved in observed or simulated overwash (landward of dune crest)
+
+    mask_all = np.logical_or(OW_Mask, inundated, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in simulation or observation or both
+    mask_obs = np.logical_or(OW_Mask, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in observation
+    topo_change_obs[~mask_obs] = 0
 
     nse, rmse, nmae, mass, bss = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask_all)
-    score = bss  # This is the skill score used in genetic algorithm
+    nse_ow, rmse_ow, nmae_ow, mass_ow, bss_ow = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask_overwash_all)  # Skill scores for just overwash
+    nse_bd, rmse_bd, nmae_bd, mass_bd, bss_bd = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), beach_duneface_mask)  # Skill scores for just beach/dune
+
+    weighted_bss = np.average([bss_ow, bss_bd], weights=[2, 1])
+
+    score = weighted_bss  # This is the skill score used in particle swarms optimization
 
     return score
 
@@ -191,7 +202,7 @@ MHW = 0  # [slabs??]
 
 # Observed Overwash Mask
 Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  # Load observed overwash mask
-name = 'Multi-Location Storm GA, Florence'
+name = 'Multi-Location Storm (Florence), Particle Swarms Optimization'
 
 BestScore = -1e10
 BestScores = []
@@ -216,9 +227,9 @@ storm_dur = [70]  # 70
 
 # _____________________________________________
 # Define Multiple Locations
-x_min = [575, 1450, 2000, 2150]  # 3000
-x_max = [825, 1900, 2150, 2350]  # 3100
-# small flat, large flat, small gap, large gap  # tall ridge
+x_min = [575, 1450, 2000, 2150, 2600]
+x_max = [825, 1900, 2150, 2350, 2700]
+# small flat, large flat, small gap, large gap, tall ridge
 
 
 
@@ -229,7 +240,7 @@ x_max = [825, 1900, 2150, 2350]  # 3100
 # _____________________________________________
 # Prepare Particle Swarms Parameters
 
-iterations = 25
+iterations = 50
 swarm_size = 20
 dimensions = 10  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
