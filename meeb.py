@@ -219,7 +219,7 @@ class MEEB:
                 self._simulation_start_iteration -= 1  # Round simulation start iteration to even number
         else:
             self._simulation_start_iteration = 0
-        self._iteration_dates = [self._simulation_start_date + timedelta(minutes=10512 * x) for x in range(self._iterations)]  # List of dates corresponding to each model iteration TODO: Need to round start date to nearest 1/50th
+        self._iteration_dates = [self._simulation_start_date + timedelta(minutes=10512 * x) for x in range(self._iterations)]  # List of dates corresponding to each model iteration
 
         # TOPOGRAPHY
         Init = np.load(inputloc + init_filename)

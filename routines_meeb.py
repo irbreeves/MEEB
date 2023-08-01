@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 28 July 2023
+Last update: 31 July 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -706,11 +706,17 @@ def foredune_crest(topo, MHW):
     shoreline = ocean_shoreline(topo, MHW)  # [m] Ocean shoreline locations
     max_crossshore = np.max(shoreline) + 400  # [m] Limit cross-shore distance over which algorithm searches for foredune crest
     buff = 25  # [m] Buffer for searching for foredune crests around rough estimate of dune location
+    window_XL = 150  # Window size for alongshore moving average of topography
+    if window_XL > topo.shape[0]:
+        window_XL = topo.shape[0]
     window_large = 75  # Window size for primary broad savgol smoothening
+    if window_large > topo.shape[0]:
+        window_large = topo.shape[0]
     window_small = 11  # Window size for secondary narrow savgol smoothening
 
     # Step 1: Find cross-shore location of maximum elevation for each cell alongshore
-    crestline = np.argmax(topo[:, :max_crossshore], axis=1)
+    moving_avg_elevation = scipy.ndimage.uniform_filter1d(topo.copy(), axis=0, size=window_XL)  # Rolling average in alongshore direction
+    crestline = np.argmax(moving_avg_elevation, axis=1)  # Cross-shore location of maximum elevation of averaged topography
 
     # Step 2: Broad smoothening of maximum-elevation line. This gives a rough area of where the dunes are or should be
     crestline = np.round(scipy.signal.savgol_filter(crestline, window_large, 1)).astype(int)
@@ -731,7 +737,7 @@ def foredune_crest(topo, MHW):
     # # Debugging
     # tempfig = plt.figure(figsize=(8, 8))
     # ax_1 = tempfig.add_subplot(111)
-    # ax_1.matshow(topo[:, :500], cmap='terrain', vmin=-1.1, vmax=4.0)
+    # ax_1.matshow(topo[:, :], cmap='terrain', vmin=-1.1, vmax=4.0)
     # ax_1.plot(crestline, np.arange(len(crestline)), color='blue')
     # plt.show()
 
@@ -825,9 +831,9 @@ def find_crests(profile, MHW, threshold, crest_pct):
     if len(pks_idx) > 0:
         pks_idx = pks_idx[profile[pks_idx] > MHW]
 
-    # If there aren't any peaks just take the maximum value
+    # If there aren't any peaks, return NaN
     if len(pks_idx) == 0:
-        idx = np.argmax(profile)
+        idx = np.nan
 
     else:
 
@@ -1272,7 +1278,7 @@ def route_overwash(
         inundation_regime_count = np.count_nonzero(inundation_regime)
         runup_regime_count = np.count_nonzero(runup_regime)
         # if inundation_regime_count / (inundation_regime_count + runup_regime_count) >= threshold_in:  # If greater than threshold % of overtopped dune cells are inunundation regime -> inundation overwash regime
-        #     inundation = True  # TODO: Inundation regime parameterization needs work...
+        #     inundation = True  # TODO: Inundation and run-up regime??
         #     Rin = Rin_i
         #     print("  INUNDATION OVERWASH")
         # else:  # Run-up overwash regime
@@ -1293,14 +1299,14 @@ def route_overwash(
         flow_start = int(np.min(dune_crest_loc))
 
         for d in range(flow_start, domain_width - 1):
-            #  TODO: Break out of flow routing if zero discharge enters next row
+            #  Break out of flow routing if negligible discharge enters next landward row
+            if d > np.max(dune_crest_loc) + 2 and np.sum(Discharge[TS, :, d]) <= 0:
+                break
 
             # Reduce discharge across row via infiltration
             if d > 0:
                 Discharge[TS, :, d][Discharge[TS, :, d] > 0] -= Rin  # Constant Rin, old method
-                # Rin_r = 0.075   # [1/m] Logistic growth rate
-                # Rin_eff += Rin_r * Rin_eff * (1 - (Rin_eff / Rin))  # Increase Rin logistically with distance across domain
-                # Discharge[TS, :, d][Discharge[TS, :, d] > 0] -= Rin_eff  # New logistic growth of Rin parameter towards maximum, limits deposition where discharge is introduced
+
             Discharge[TS, :, d][Discharge[TS, :, d] < 0] = 0
 
             for i in range(longshore):
