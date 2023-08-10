@@ -313,8 +313,8 @@ print("Elapsed Time: ", SimDuration, "sec")
 # ASSESS MODEL SKILL
 
 # Topo change
-topo_end_sim = meeb.topo * meeb.slabheight  # [m NAVDD88]
-mhw_end_sim = meeb.MHW * meeb.slabheight  # [m NAVD88]
+topo_end_sim = meeb.topo  # [m NAVDD88]
+mhw_end_sim = meeb.MHW  # [m NAVD88]
 topo_change_sim = topo_end_sim - topo_start  # [m]
 topo_change_obs = topo_end_obs - topo_start  # [m]
 
@@ -408,7 +408,7 @@ xmax = xmin + 400  # topo_start.shape[1]
 # Final Elevation & Vegetation
 Fig = plt.figure(figsize=(14, 7.5))
 Fig.suptitle(meeb.name, fontsize=13)
-topo = meeb.topo[:, xmin: xmax] * meeb.slabheight
+topo = meeb.topo[:, xmin: xmax]
 topo = np.ma.masked_where(topo <= mhw_end_sim, topo)  # Mask cells below MHW
 cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps["terrain"]), 0.5, 0.9)  # Truncate colormap
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
@@ -532,7 +532,7 @@ plt.title("Average Profile")
 def ani_frame(timestep):
     mhw = meeb.RSLR * timestep + MHW
 
-    elev = meeb.topo_TS[:, xmin: xmax, timestep] * meeb.slabheight  # [m]
+    elev = meeb.topo_TS[:, xmin: xmax, timestep]  # [m]
     elev = np.ma.masked_where(elev <= mhw, elev)  # Mask cells below MHW
     cax1.set_data(elev)
     yrstr = "Year " + str(timestep * meeb.writeyear)
@@ -548,7 +548,7 @@ def ani_frame(timestep):
 
 # Set animation base figure
 Fig = plt.figure(figsize=(14, 8))
-topo = meeb.topo_TS[:, xmin: xmax, 0] * meeb.slabheight  # [m]
+topo = meeb.topo_TS[:, xmin: xmax, 0] # [m]
 topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
 cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps["terrain"]), 0.5, 0.9)  # Truncate colormap
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue

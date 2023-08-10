@@ -65,7 +65,7 @@ def model_skill(obs, sim, t0, mask):
     return nse, rmse, nmae, mass, bss
 
 
-def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_Mask):
+def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_Mask, spec1, spec2):
     """Run a storm with this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
     # Find Dune Crest, Shoreline Positions
@@ -79,7 +79,6 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
         Rhigh,
         Rlow,
         dur,
-        slabheight_m=slabheight_m,
         threshold_in=0.25,
         Rin_i=5,
         Rin_r=int(round(solution[0])),
@@ -87,11 +86,11 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
         AvgSlope=2 / 200,
         nn=0.5,
         MaxUpSlope=solution[2],
-        fluxLimit=solution[3],
+        fluxLimit=1,
         Qs_min=1,
         Kr=solution[4],
         Ki=5e-06,
-        mm=solution[5],
+        mm=1,
         MHW=MHW,
         Cbb_i=0.85,
         Cbb_r=0.7,
@@ -103,10 +102,12 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
         beach_substeps=int(round(solution[9])),
         x_s=x_s,
         cellsize=1,
+        spec1=spec1,
+        spec2=spec2,
+        flow_reduction_max_spec1=solution[3],  # Grass
+        flow_reduction_max_spec2=solution[5],  # Shrub
     )
 
-    topo_end_sim *= slabheight_m  # [m]
-    topo_start_obs *= slabheight_m  # [m]
     topo_change_sim = topo_end_sim - topo_start_obs  # [m] Simulated change
     topo_change_obs = topo_end_obs - topo_start_obs  # [m] Observed change
 
@@ -155,19 +156,23 @@ def multi_fitness(solution):
             End = np.load(storm_stop[s])
 
             # Transform Initial Observed Topo
-            topo_init = Init[0, x_min[x]: x_max[x], :] / slabheight_m  # [slabs] Transform from m into number of slabs
-            topo_start = copy.deepcopy(topo_init)  # [slabs] Initialise the topography map
+            topo_init = Init[0, x_min[x]: x_max[x], :]  # [m]
+            topo_start = copy.deepcopy(topo_init)  # [m] Initialise the topography map
 
             # Transform Final Observed Topo
             topo_final = End[0, x_min[x]: x_max[x], :]  # [m]
             OW_Mask = Florence_Overwash_Mask[x_min[x]: x_max[x], :]  # [bool]
+
+            # Set Veg Domain
+            spec1 = Init[2, x_min[x]: x_max[x], :]
+            spec2 = Init[3, x_min[x]: x_max[x], :]
 
             # Initialize storm stats
             Rhigh = storm_Rhigh[s] * np.ones(topo_final.shape[0])
             Rlow = storm_Rlow[s] * np.ones(topo_final.shape[0])
             dur = storm_dur[s]
 
-            score = storm_fitness(solution, topo_start, topo_final, Rhigh, Rlow, dur, OW_Mask)
+            score = storm_fitness(solution, topo_start, topo_final, Rhigh, Rlow, dur, OW_Mask, spec1, spec2)
 
             score_list.append(score)
 
@@ -197,8 +202,7 @@ start_time = time.time()  # Record time at start of calibration
 
 # _____________________________________________
 # Define Variables
-slabheight_m = 0.1
-MHW = 0  # [slabs??]
+MHW = 0.39  # [m NAVD88]
 
 # Observed Overwash Mask
 Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  # Load observed overwash mask

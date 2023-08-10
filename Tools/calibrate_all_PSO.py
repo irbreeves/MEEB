@@ -3,7 +3,7 @@ Script for calibrating MEEB parameters using Particle Swarms Optimization.
 
 Calibrates based on fitess score for morphologic and ecologic change between two timesteps.
 
-IRBR 7 August 2023
+IRBR 10 August 2023
 """
 
 import numpy as np
@@ -161,8 +161,8 @@ def meeb_fitness(solution):
     # __________________________________________________________________________________________________________________________________
     # ASSESS MODEL SKILL
 
-    topo_end_sim = meeb.topo * meeb.slabheight  # [m NAVDD88]
-    mhw_end_sim = meeb.MHW * meeb.slabheight  # [m NAVD88]
+    topo_end_sim = meeb.topo  # [m NAVDD88]
+    mhw_end_sim = meeb.MHW  # [m NAVD88]
     topo_change_sim = topo_end_sim - topo_start  # [m]
     topo_change_obs = topo_end_obs - topo_start  # [m]
 
@@ -269,7 +269,7 @@ hindcast_duration = 4.5
 xmin = 18950  # 575, 2000, 2150, 2000, 3800  # 2650
 xmax = 19250  # 825, 2125, 2350, 2600, 4450  # 2850
 
-MHW = 0.39  # [m NAVD88]
+MHW = 0.39  # [m NAVD88] Initial
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
 name = '18950-19250, 2014-2018, NMAE multi-objective'

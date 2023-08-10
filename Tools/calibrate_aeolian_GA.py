@@ -139,8 +139,8 @@ def aeolian_fitness(solution, solution_idx):
     # __________________________________________________________________________________________________________________________________
     # ASSESS MODEL SKILL
 
-    topo_end_sim = meeb.topo * meeb.slabheight  #  [m NAVDD88]
-    mhw_end_sim = meeb.MHW * meeb.slabheight  # [m NAVD88]
+    topo_end_sim = meeb.topo  # [m NAVDD88]
+    mhw_end_sim = meeb.MHW  # [m NAVD88]
     topo_change_sim = topo_end_sim - topo_start  # [m]
     topo_change_obs = topo_end_obs - topo_start  # [m]
 

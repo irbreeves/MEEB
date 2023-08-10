@@ -22,15 +22,13 @@ from AST.waves import ashton
 from numba import njit
 
 
-def shadowzones(topof, sh, shadowangle, direction):
+def shadowzones(topof, shadowangle, direction):
     """Returns a boolean map with all shadowzones identified as ones. Wind from left to right, along the +2 dimension.
 
     Parameters
     ----------
     topof : ndarray
-        Topography map.  TODO: Units?
-    sh : float
-        Slab height.
+        [m NAV88] Topography map.
     shadowangle : float
         Shadow angle.
     direction : int
@@ -39,11 +37,11 @@ def shadowzones(topof, sh, shadowangle, direction):
     Returns
     -------
     inshade
-        Boolean map of shaded cells, now with open boundaries
+        [Bool] Map of cells in shadow zones
     """
 
     longshore, crossshore = topof.shape
-    steplimit = math.tan(shadowangle * math.pi / 180) / sh  # The maximum step difference allowed given the slabheight and shadowangle
+    steplimit = math.tan(shadowangle * math.pi / 180)  # The maximum step difference allowed given the shadowangle
 
     search_range = int(math.ceil(np.max(topof) / steplimit))  # Identifies highest elevation and uses that to determine what the largest search distance needs to be
     inshade = np.zeros([longshore, crossshore]).astype(bool)  # Define the zeroed logical map
@@ -79,13 +77,13 @@ def erosprobs(vegf, shade, sand, topof, groundw, p_er, entrainment_veg_limit):
     vegf : ndarray
         [%] Map of combined vegetation effectiveness.
     shade : ndarray
-        [Bool] Map of shadowzones.
+        [bool] Map of shadowzones.
     sand : ndarray
         [bool] Map of sandy cells.
     topof : ndarray
-        [slabs] Topography map.
+        [m NAVD88] Topography map.
     groundw : ndarray
-        [slabs] Groundwater elevation map.
+        [m NAVD88] Groundwater elevation map.
     p_er : float
         Probability of erosion of base/sandy cell with zero vegetation.
     entrainment_veg_limit : float
@@ -109,9 +107,9 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg, topof, grou
     Parameters
     ----------
     vegf : ndarray
-        [%] Map of combined vegetation effectiveness
+        [%] Map of combined vegetation effectiveness.
     shade : ndarray
-        [Bool] Map of shadowzones.
+        [bool] Map of shadowzones.
     sand : ndarray
         [bool] Map of sandy cells.
     dep_base : float
@@ -121,9 +119,9 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg, topof, grou
     dep_sand_MaxVeg : float
         Probability of deposition in sandy cell with 100% vegetation cover.
     topof : ndarray
-        [slabs] Topography map.
+        [m NAVD88] Topography map.
     groundw : ndarray
-        [slabs] Groundwater elevation map.
+        [m NAVD88] Groundwater elevation map.
 
     Returns
     -------
@@ -142,11 +140,12 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg, topof, grou
     pds[(topof <= groundw)] = 1  # 100% probability of deposition in where groundwater level is at or above surfae level
 
     Pd = pdb + pds + shade  # Combine both types of cells + shadowzones
+    Pd[Pd > 1] = 1
 
     return Pd
 
 
-def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, direction, random_hoplength, RNG):
+def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, direction, random_hoplength, RNG):
     """Shifts the sand from wind. Returns a map of surface elevation change. Open boundaries, no feeding from the sea side.
 
     Follows modifications by Teixeira et al. (2023) that allow larger hop lengths while still accounting for vegetation interactions
@@ -162,13 +161,11 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, direction, random_hople
     Pd : float
         Map of deposition probabilities.
     hop_avg : int
-        [cell L] Slab hop length.
+        [cell length] Slab hop length.
     vegf : ndarray
         Map of combined vegetation effectiveness.
     vegf_lim : float
         Threshold vegetation effectiveness needed for a cell along a slab saltation path needed to be considered vegetated.
-    contour : ndarray
-        Contours to account for transport.
     direction : int
         Wind direction (1 right, 2 down, 3 left, 4 up).
     random_hoplength : bool
@@ -179,7 +176,7 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, direction, random_hople
     Returns
     -------
     elevation_change
-        [slabs] Net change in surface elevation."""
+        [slabs] Net change in surface elevation in vertical units of slabs."""
 
     longshore, crossshore = vegf.shape
 
@@ -194,16 +191,12 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, direction, random_hople
 
     totaldeposit = np.zeros([longshore, crossshore])
     inmotion = copy.deepcopy(pickedup)  # Make copy of original erosion map
-    numshifted = 0  # [slabs] Number of shifted cells weighted for transport distance
-    transportdist = 0  # Transport distance [slab lengths] or [hop length]
-    sum_contour = np.zeros([len(contour)])
+    transportdist = 0  # [cell length] Transport distance counter
 
     while np.sum(inmotion) > 0:  # While still any slabs moving
         transportdist += 1  # Every time in the loop the slaps are transported one slab length
         if direction == 1:
             inmotion = np.roll(inmotion, shift, axis=1)  # Shift the moving slabs one hop length to the right
-            transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
-            sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
             if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
                 depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
             else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
@@ -212,8 +205,6 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, direction, random_hople
             deposited[:, 0: hop] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 2:
             inmotion = np.roll(inmotion, shift, axis=0)  # Shift the moving slabs one hop length to the down
-            transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
-            sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
             if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
                 depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
             else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
@@ -222,8 +213,6 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, direction, random_hople
             deposited[0: hop, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 3:
             inmotion = np.roll(inmotion, -shift, axis=1)  # Shift the moving slabs one hop length to the left
-            transp_contour = np.nansum(inmotion[:, contour.astype(np.int64)], axis=0)  # Account ammount of slabs that are in motion in specific contours
-            sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
             if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
                 depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
             else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
@@ -232,8 +221,6 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, direction, random_hople
             deposited[:, -1 - hop: -1] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 4:
             inmotion = np.roll(inmotion, -shift, axis=0)  # Shift the moving slabs one hop length to the up
-            transp_contour = np.nansum(inmotion[contour.astype(np.int64), :], axis=1)  # Account ammount of slabs that are in motion in specific contours
-            sum_contour = sum_contour + transp_contour  # Sum the slabs to the others accounted before
             if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
                 depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
             else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
@@ -242,21 +229,21 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, contour, direction, random_hople
             deposited[-1 - hop: -1, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
 
         inmotion[deposited] = False  # Left over in transport after this round of deposition
-        numshifted = numshifted + np.sum(deposited) * transportdist  # Number of slabs deposited, weighted for transport distance
+
         totaldeposit = totaldeposit + deposited  # Total slabs deposited so far
 
-    elevation_change = totaldeposit - pickedup  # deposition - erosion
+    elevation_change = totaldeposit - pickedup  # [slabs] Deposition - erosion
 
-    return elevation_change, numshifted, sum_contour
+    return elevation_change
 
 
-def enforceslopes(topof, vegf, sh, anglesand, angleveg, th, RNG):
+def enforceslopes(topo, vegf, sh, anglesand, angleveg, th, RNG):
     """Function to enforce the angle of repose, with open boundaries.
 
     Parameters
     ----------
-    topof : ndarray
-        [slabs] Elevation domain.
+    topo : ndarray
+        [m NAVD88] Elevation domain.
     vegf : ndarray
         Map of combined vegetation effectiveness.
     sh : float
@@ -277,6 +264,8 @@ def enforceslopes(topof, vegf, sh, anglesand, angleveg, th, RNG):
     moved_slabs:
         Number of slabs moved this iteration
     """
+
+    topof = topo.copy() / sh  # [slabs] Convert from m to slabs NAVD88
 
     steplimitsand = np.floor(np.tan(anglesand * np.pi / 180) / sh)  # Maximum allowed height difference for sandy cells
     steplimitsanddiagonal = np.floor(np.sqrt(2) * np.tan(anglesand * np.pi / 180) / sh)  # Maximum allowed height difference for sandy cells along diagonal
@@ -345,7 +334,9 @@ def enforceslopes(topof, vegf, sh, anglesand, angleveg, th, RNG):
         slabsmoved = np.sum(exceeds)  # Count moved slabs during this loop
         avalanched_cells = avalanched_cells + slabsmoved  # Total number of moved slabs this iteration
 
-    return topof, avalanched_cells
+    topof_updated = topof.copy() * sh  # [m NAVD88] Convert back to m
+
+    return topof_updated, avalanched_cells
 
 
 def growthfunction1_sens(species, sed, A1, B1, C1, D1, E1, P1):
@@ -583,20 +574,18 @@ def shoreline_change_from_CST(
         x_s,
         x_t,
         MHW,
-        cellsize,
-        slabheight,
 ):
     """Shoreline change from cross-shore sediment transport following Lorenzo-Trueba and Ashton (2014).
 
     Parameters
     ----------
     topof : ndarray
-        [slabs] Present elevation domain
+        [m NAVD88] Present elevation domain
     d_sf : float
         [m] Shoreface depth
     k_sf : flaot
-        [] Shoreface flux constant  TODO: Units?
-    s_sf_eq : flaot
+        [k^m/m/yr] Shoreface flux constant
+    s_sf_eq : float
         Shoreface equilibrium slope
     RSLR :  float
         [m/ts] Relative sea-level rise rate
@@ -609,23 +598,21 @@ def shoreline_change_from_CST(
     x_t : ndarray
         [m] Cross-shore shoreface toe position relative to start of simulation
     MHW : float
-        [slabs] Present mean high water
-    cellsize : float
-        [m] Horizontal dimension of model grid cells
-    slabheight : float
-        [m] Vertical dimension of model grid cells
+        [m NAVD88] Present mean high water
 
     Returns
     ----------
     x_s
-        [m] New cross-shore shoreline position relative to start of simulation
+        [m] New cross-shore shoreline position relative to start of simulation for each cell length alongshore
     x_t
-        [m] New cross-shore shoreface toe position relative to start of simulation
+        [m] New cross-shore shoreface toe position relative to start of simulation for each cell length alongshore
+    s_sf
+        [m/m] Slope of the shoreface for each row cell length alongshore
     """
 
     Qow[Qow < 0] = 0
 
-    h_b = np.average(topof, weights=(topof >= MHW), axis=1) * slabheight  # [m] Average height of barrier
+    h_b = np.average(topof, weights=(topof >= MHW), axis=1)  # [m NAV88] Average height of subaerial barrier for each cell length alongshore
 
     # Shoreface Flux
     s_sf = d_sf / (x_s - x_t)
@@ -991,7 +978,6 @@ def storm_processes(
         Rhigh,
         Rlow,
         dur,
-        slabheight_m,
         threshold_in,
         Rin_i,
         Rin_r,
@@ -1027,15 +1013,13 @@ def storm_processes(
     Parameters
     ----------
     topof : ndarray
-        [slabs NAVD88] Current elevation domain.
+        [m NAVD88] Current elevation domain.
     Rhigh : ndarray
         [m NAVD88] Highest elevation of the landward margin of runup (i.e. total water level).
     Rlow : ndarray
         [m NAVD88] Lowest elevation of the landward margin of runup.
     dur: ndarray
         [hrs] Duration of storm.
-    slabheight_m : float
-        [m] Height of slabs.
     threshold_in : float
         [%] Threshold percentage of overtopped dune cells needed to be in inundation overwash regime.
     Rin_i : float
@@ -1061,7 +1045,7 @@ def storm_processes(
     mm : float
         Inundation overwash constant.
     MHW : float
-        [slabs] Mean high water.
+        [m NAVD88] Mean high water.
     Cbb_i : float
         [%] Coefficient for exponential decay of sediment load entering back-barrier bay, inundation regime.
     Cbb_r : float
@@ -1094,19 +1078,20 @@ def storm_processes(
     Returns
     ----------
     topof
-        [slabs] Updated elevation domain.
-    topof_change_effective
-        [slabs] Array of topographic change from storm overwash processes, in units of full slabs.
+        [m NAVD88] Updated elevation domain.
+    topof_change
+        [m] Array of topographic change from storm overwash processes.
     OWloss
         [m^3] Volume of overwash deposition landward of dune crest for each cell unit alongshore.
     netDischarge
         [m^3] Map of discharge aggregated for duration of entire storm.
     inundated
         [bool] Map of cells inundated during storm event
+    BeachDune_Volume_Change
+        [m^3/m] Dune & beach volumetric change summed for each row alongshore.
     """
 
     longshore, crossshore = topof.shape
-    MHW_m = MHW * slabheight_m  # Convert from slabs to meters NAVD88
     inundated = np.zeros(topof.shape).astype(bool)  # Initialize
 
     # --------------------------------------
@@ -1119,8 +1104,8 @@ def storm_processes(
     domain_width_end = int(crossshore)  # [m]
     domain_width = domain_width_end - domain_width_start
     Elevation = np.zeros([iterations, longshore, domain_width])
-    domain_topo_start = topof[:, domain_width_start:] * slabheight_m  # [m NAVD88]
-    Elevation[0, :, :] = domain_topo_start  # [ m NAVD88]
+    domain_topo_start = topof[:, domain_width_start:].copy()  # [m NAVD88]
+    Elevation[0, :, :] = domain_topo_start.copy()  # [m NAVD88]
 
     # Initialize Memory Storage Arrays
     Discharge = np.zeros([iterations, longshore, domain_width])
@@ -1154,7 +1139,7 @@ def storm_processes(
         # Rhigh_TS = Rhigh.copy()  # This line prescribes a static TWL over course of storm
 
         # Find dune crest locations and heights for this storm iteration
-        dune_crest_loc = foredune_crest(Elevation[TS, :, :], MHW_m)  # Cross-shore location of pre-storm dune crest
+        dune_crest_loc = foredune_crest(Elevation[TS, :, :], MHW)  # Cross-shore location of pre-storm dune crest
 
         Elevation, Discharge, SedFluxIn, SedFluxOut = route_overwash(
             TS,
@@ -1163,7 +1148,7 @@ def storm_processes(
             SedFluxIn,
             SedFluxOut,
             dune_crest_loc,
-            MHW_m,
+            MHW,
             domain_width,
             domain_width_start,
             longshore,
@@ -1214,7 +1199,7 @@ def storm_processes(
                     cellsize,
                     dune_crest_loc,
                     x_s,
-                    MHW_m,
+                    MHW,
                     Rhigh_TS,
                     beach_equilibrium_slope,
                     beach_erosiveness,
@@ -1230,17 +1215,16 @@ def storm_processes(
         inundated = np.logical_or(inundated, wetMap)  # Update inundated map with cells seaward of dune crest
 
     # Update Interior Domain After Storm
-    domain_topo_change_m = Elevation[-1, :, :] - domain_topo_start  # [m] Change in elevation of barrier
+    topo_change = Elevation[-1, :, :] - domain_topo_start  # [m] Change in elevation of barrier
 
     # Update interior domain
-    topof_change = domain_topo_change_m / slabheight_m  # [slabs]
-    topof += topof_change  # [slabs] Not rounded
+    topof += topo_change  # [m NAVD88]
 
     # Variable Calculations
     netDischarge = np.hstack((np.zeros([longshore, domain_width_start]), np.sum(Discharge, axis=0)))
     inundated[netDischarge > 1] = True  # Update inundated map to include cells landward of dune crest (i.e., inundated by overwash)
 
-    return topof, topof_change, OWloss, netDischarge, inundated, BeachDune_Volume_Change
+    return topof, topo_change, OWloss, netDischarge, inundated, BeachDune_Volume_Change
 
 
 @njit
@@ -1251,7 +1235,7 @@ def route_overwash(
         SedFluxIn,
         SedFluxOut,
         dune_crest_loc,
-        MHW_m,
+        MHW,
         domain_width,
         domain_width_start,
         longshore,
@@ -1433,7 +1417,7 @@ def route_overwash(
                         if np.isnan(Q3):
                             Q3 = 0
 
-                        if Elevation[TS, i, d] > MHW_m:  # If subaerial
+                        if Elevation[TS, i, d] > MHW:  # If subaerial
                             if abs(S1) > MaxUpSlope:
                                 Q1 = 0
                             else:
@@ -1530,7 +1514,7 @@ def route_overwash(
 
                     # Calculate Net Erosion/Accretion
                     # If cell is subaerial, elevation change is determined by difference between flux in vs. flux out
-                    if Elevation[TS, i, d] > MHW_m or np.sum(np.greater(Elevation[TS, i, d + 1: d + 10], MHW_m)) > 0:
+                    if Elevation[TS, i, d] > MHW or np.sum(np.greater(Elevation[TS, i, d + 1: d + 10], MHW)) > 0:
                         if i > 0:
                             SedFluxIn[TS, i - 1, d + 1] += Qs1
 
@@ -1797,7 +1781,6 @@ def adjust_ocean_shoreline(
         prev_shoreline,
         MHW,
         shoreface_slope,
-        slabheight_m,
         RSLR,
 ):
     """Adjust topography domain to according to amount of shoreline change.
@@ -1805,24 +1788,22 @@ def adjust_ocean_shoreline(
     Parameters
     ----------
     topo : ndarray
-        [slabs] Current elevation domain.
+        [m NAVD88] Current elevation domain.
     shoreline_change : ndarray
         [m] Amount of shoreline change for each cell alongshore. Positive (negative) = erosion (progradation).
     prev_shoreline : ndarray
         [m] Cross-shore coordinates for shoreline position at previous time step.
     MHW : float
-        [slabs] Mean high water.
+        [m NAVD88] Mean high water.
     shoreface_slope : ndarray
-        Active slope of the shoreface for each cell alongshore.
-    slabheight_m : float
-        [m] Height of slabs.
+        [m/m] Active slope of the shoreface for each cell alongshore.
     RSLR : float
         [m/yr] Relative sea-level rise rate
 
     Returns
     ----------
     topo
-        Topobathy updated for ocean shoreline change.
+        [m NAVD88] Topobathy updated for ocean shoreline change.
     """
 
     for ls in range(topo.shape[0]):
@@ -1830,15 +1811,15 @@ def adjust_ocean_shoreline(
         new_shoreline = prev_shoreline[ls] + sc_ls
         if sc_ls > 0:  # Shoreline erosion
             # Adjust shoreline
-            topo[ls, new_shoreline] = MHW - (RSLR / slabheight_m)  # [slabs]
+            topo[ls, new_shoreline] = MHW - RSLR  # [m NAVD88]
             # Adjust shoreface
-            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] / slabheight_m + MHW  # New shoreface cells  TODO: Is dividing slope by slabheight correct?
+            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] + MHW  # New shoreface cells
             topo[ls, :new_shoreline] = shoreface  # Insert into domain
         elif sc_ls < 0:  # Shoreline progradation
             # Adjust shoreline
-            topo[ls, new_shoreline: prev_shoreline[ls]] = MHW + (RSLR / slabheight_m)  # [slabs]
+            topo[ls, new_shoreline: prev_shoreline[ls]] = MHW + RSLR  # [m NAVD88]
             # Adjust shoreface
-            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] / slabheight_m + MHW  # New shoreface cells  TODO: Is dividing slope by slabheight correct?
+            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] + MHW  # New shoreface cells
             if len(shoreface) > new_shoreline:
                 raise ValueError("Out-Of-Bounds: Ocean shoreline progradaded beyond simulation domain boundary.")
             topo[ls, :new_shoreline] = shoreface  # Insert into domain

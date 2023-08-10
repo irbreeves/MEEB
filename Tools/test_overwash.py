@@ -63,7 +63,6 @@ start_time = time.time()  # Record time at start of run
 Rhigh = 3.32  # [m NAVD88]
 Rlow = 1.93  # [m NAVD88]
 dur = 70  # [hr]
-slabheight_m = 0.02  # [m]
 cellsize = 1  # [m]
 MHW = 0.39  # [m NAVD88]
 flow_reduction_max_spec1 = 0.05
@@ -82,13 +81,12 @@ xmax = 825  # 825, 2125, 2350, 2600, 4450
 # _____________________________________________
 # Conversions & Initializations
 
-# Transform Initial Observed Topo
-topo_m = Init[0, xmin: xmax, :]  # [m NAVD88]
-topo0 = topo_m / slabheight_m  # [slabs NAVD88] Transform from m into number of slabs
-topo = copy.deepcopy(topo0)  # np.round(topo0)  # [slabs NAVD88] Initialise the topography map
+# Initial Observed Topo
+topo0 = Init[0, xmin: xmax, :]  # [m NAVD88]
+topo = copy.deepcopy(topo0)  # [m NAVD88] Initialise the topography map
 
-# Transform Final Observed Topo
-topo_final = End[0, xmin:xmax, :] / slabheight_m  # [slabs NAVD88] Transform from m into number of slabs
+# Final Observed Topo
+obs_topo_final = End[0, xmin:xmax, :]  # [m NAVD88]
 
 # Set Veg Domain
 spec1 = Init[2, xmin: xmax, :]
@@ -98,17 +96,17 @@ veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or la
 veg[veg < 0] = 0
 
 # Find Dune Crest, Shoreline Positions
-dune_crest = routine.foredune_crest(topo_m, MHW)
-x_s = routine.ocean_shoreline(topo_m, MHW)
+dune_crest = routine.foredune_crest(topo, MHW)
+x_s = routine.ocean_shoreline(topo, MHW)
 
 # Transform water levels to vectors
-Rhigh = Rhigh * np.ones(topo_final.shape[0])
-Rlow = Rlow * np.ones(topo_final.shape[0])
+Rhigh = Rhigh * np.ones(obs_topo_final.shape[0])
+Rlow = Rlow * np.ones(obs_topo_final.shape[0])
 
 
 # _____________________________________________
 # Overwash, Beach, & Dune Change
-topo_prestorm = copy.deepcopy(topo)  # [slabs NAVD88]
+topo_prestorm = copy.deepcopy(topo)  # [m NAVD88]
 
 name = "575-825, KQ(S+C), Florence"
 print(name)
@@ -118,7 +116,6 @@ sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = rou
     Rhigh,
     Rlow,
     dur,
-    slabheight_m,
     threshold_in=0.25,
     Rin_i=5,
     Rin_r=183,
@@ -131,7 +128,7 @@ sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = rou
     Kr=0.0000575,
     Ki=5e-06,
     mm=1,
-    MHW=MHW / slabheight_m,  # [slabs NAVD88]
+    MHW=MHW,
     Cbb_i=0.85,
     Cbb_r=0.7,
     Qs_bb_min=1,
@@ -148,8 +145,6 @@ sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = rou
     flow_reduction_max_spec2=flow_reduction_max_spec2,
 )
 
-sim_topo_change = sim_topo_final - topo_prestorm
-
 SimDuration = time.time() - start_time
 print()
 print("Elapsed Time: ", SimDuration, "sec")
@@ -160,20 +155,18 @@ print("Elapsed Time: ", SimDuration, "sec")
 
 longshore, crossshore = sim_topo_final.shape
 
-# Final Elevations
-obs_final_m = topo_final * slabheight_m  # [m] Observed final topo
-sim_final_m = sim_topo_final * slabheight_m  # [m] Simulated final topo
-obs_change_m = (topo_final - topo_prestorm) * slabheight_m  # [m] Observed change
-sim_change_m = sim_topo_change * slabheight_m  # [m] Simulated change
+# Final Elevation Change
+obs_change_m = obs_topo_final - topo_prestorm  # [m] Observed change
+sim_change_m = sim_topo_final - topo_prestorm  # [m] Simulated change
 
 # Masks for skill scoring
-subaerial_mask = sim_final_m > MHW  # [bool] Map of every cell above water
+subaerial_mask = sim_topo_final > MHW  # [bool] Map of every cell above water
 
 Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  # Load observed overwash mask
 Florence_OW_Mask = np.logical_and(Florence_Overwash_Mask[xmin: xmax, :], subaerial_mask)
 
-beach_duneface_mask = np.zeros(sim_final_m.shape)
-for l in range(sim_final_m.shape[0]):
+beach_duneface_mask = np.zeros(sim_topo_final.shape)
+for l in range(sim_topo_final.shape[0]):
     beach_duneface_mask[l, :dune_crest[l]] = True
 beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
 
@@ -297,8 +290,7 @@ cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 # Pre Storm (Observed) Topo
 Fig = plt.figure(figsize=(14, 7.5))
 ax1 = Fig.add_subplot(221)
-# topo1 = topo_prestorm[:, pxmin: pxmax] * slabheight_m  # [m] Pre-storm
-topo1 = obs_final_m[:, pxmin: pxmax]  # [m] Post-storm
+topo1 = obs_topo_final[:, pxmin: pxmax]  # [m] Post-storm
 topo1 = np.ma.masked_where(topo1 < MHW, topo1)  # Mask cells below MHW
 cax1 = ax1.matshow(topo1, cmap=cmap1, vmin=0, vmax=5.0)
 ax1.plot(dune_crest, np.arange(len(dune_crest)), c='black', alpha=0.6)
@@ -307,7 +299,7 @@ plt.suptitle(name)
 
 # Post-Storm (Simulated) Topo
 ax2 = Fig.add_subplot(222)
-topo2 = sim_topo_final[:, pxmin: pxmax] * slabheight_m  # [m]
+topo2 = sim_topo_final[:, pxmin: pxmax]  # [m]
 topo2 = np.ma.masked_where(topo2 < MHW, topo2)  # Mask cells below MHW
 cax2 = ax2.matshow(topo2, cmap=cmap1, vmin=0, vmax=5.0)
 plt.title('Simulated')

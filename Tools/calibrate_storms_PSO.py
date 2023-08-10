@@ -74,7 +74,6 @@ def storm_fitness(solution):
         Rhigh,
         Rlow,
         dur,
-        slabheight_m=slabheight_m,
         threshold_in=0.25,
         Rin_i=5,
         Rin_r=int(round(solution[0])),
@@ -87,7 +86,7 @@ def storm_fitness(solution):
         Kr=solution[4],
         Ki=5e-06,
         mm=1,
-        MHW=MHW_m / slabheight_m,  # [slabs]
+        MHW=MHW,
         Cbb_i=0.85,
         Cbb_r=0.7,
         Qs_bb_min=1,
@@ -104,15 +103,14 @@ def storm_fitness(solution):
         flow_reduction_max_spec2=solution[5],  # Shrub
     )
 
-    topo_end_sim *= slabheight_m  # [m]
-    topo_start_obs = topo_start * slabheight_m  # [m]
+    topo_start_obs = topo_start.copy()
     topo_change_sim = topo_end_sim - topo_start_obs  # [m] Simulated change
-    topo_change_obs = copy.deepcopy(topo_final_m) - topo_start_obs  # [m] Observed change
+    topo_change_obs = copy.deepcopy(topo_final) - topo_start_obs  # [m] Observed change
 
     # _____________________________________________
     # Model Skill: Comparisons to Observations
 
-    subaerial_mask = topo_end_sim > MHW_m  # [bool] Map of every cell above water
+    subaerial_mask = topo_end_sim > MHW  # [bool] Map of every cell above water
 
     beach_duneface_mask = np.zeros(topo_end_sim.shape)
     for q in range(topo_start_obs.shape[0]):
@@ -156,8 +154,7 @@ start_time = time.time()  # Record time at start of calibration
 Rhigh = 3.32
 Rlow = 1.93
 dur = 70
-slabheight_m = 0.02
-MHW_m = 0.39  # [m NAVD88]
+MHW = 0.39  # [m NAVD88]
 
 # Initial Observed Topo
 Init = np.load("Input/Init_NorthernNCB_2017_PreFlorence.npy")
@@ -177,15 +174,12 @@ name = '575-825, KQ(S+C), weighted_bss'
 # Conversions & Initializations
 
 # Transform Initial Observed Topo
-topo_init = Init[0, xmin: xmax, :]  # [m]
-topo_start_m = copy.deepcopy(topo_init)
-topo0 = topo_init / slabheight_m  # [slabs] Transform from m into number of slabs
-topo = copy.deepcopy(topo0)  # [slabs] Initialise the topography map
-topo_start = copy.deepcopy(topo)
+topo_init = Init[0, xmin: xmax, :]  # [m NAVD88]
+topo_start = copy.deepcopy(topo_init)  # [m NAVD88]
+topo = copy.deepcopy(topo_start)  # [m] Initialise the topography map
 
 # Transform Final Observed Topo
-topo_final = End[0, xmin:xmax, :] / slabheight_m  # [slabs] Transform from m into number of slabs
-topo_final_m = topo_final * slabheight_m  # [m]
+topo_final = End[0, xmin:xmax, :]  # [m]
 OW_Mask = Florence_Overwash_Mask[xmin: xmax, :]  # [bool]
 
 # Set Veg Domain
@@ -196,8 +190,8 @@ veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or la
 veg[veg < 0] = 0
 
 # Find Dune Crest, Shoreline Positions
-dune_crest = routine.foredune_crest(topo_start_m, MHW_m)
-x_s = routine.ocean_shoreline(topo_start_m, MHW_m)
+dune_crest = routine.foredune_crest(topo_start, MHW)
+x_s = routine.ocean_shoreline(topo_start, MHW)
 
 # Transform water levels to vectors
 Rhigh = Rhigh * np.ones(topo_final.shape[0])

@@ -3,7 +3,7 @@ Script for calibrating MEEB vegetation parameters using Particle Swarms Optimiza
 
 Calibrates based on fitess score for morphologic and ecologic change between two timesteps.
 
-IRBR 2 August 2023
+IRBR 10 August 2023
 """
 
 import numpy as np
@@ -136,8 +136,8 @@ def veg_fitness(solution):
     veg_present_obs = veg_end_obs > 0.05  # [bool]
 
     # Topo changes
-    topo_end_sim = meeb.topo * meeb.slabheight  # [m MHW]
-    mhw_end_sim = meeb.MHW * meeb.slabheight  # [m NAVD88]
+    topo_end_sim = meeb.slabheight  # [m MHW]
+    mhw_end_sim = meeb.slabheight  # [m NAVD88]
 
     # Subaerial mask
     subaerial_mask = topo_end_sim > mhw_end_sim  # [bool] Mask for every cell above water
@@ -223,7 +223,7 @@ hindcast_duration = 4.5
 xmin = 6400  # 575, 2000, 2150, 2000, 3800  # 2650
 xmax = 6500  # 825, 2125, 2350, 2600, 4450  # 2850
 
-MHW = 0.4  # [m NAVD88]
+MHW = 0.39  # [m NAVD88] Initial
 ResReduc = True  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
 name = '6400-6600, 2014-2018, HSS Present/Absent'

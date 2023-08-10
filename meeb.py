@@ -61,9 +61,8 @@ class MEEB:
             repose_veg=30,  # [deg]
             repose_threshold=0.3,  # Vegetation threshold for applying repose_veg
             saltation_veg_limit=0.25,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path needed to be considered vegetated
-            jumplength=5,  # [slabs] Hop length for slabs (5, Teixeira et al. 2023)
+            jumplength=5,  # [cell length] Hop length for slabs (5, Teixeira et al. 2023)
             clim=0.5,  # Vegetation cover that limits erosion
-            n_contour=10,  # Number of contours to be used to calculate fluxes. Multiples of 10
 
             # SHOREFACE, BEACH, & SHORELINE
             beach_equilibrium_slope=0.039,  # Equilibrium slope of the beach
@@ -123,14 +122,13 @@ class MEEB:
 
         self._name = name
         self._simnum = simnum
-        self._MHW = MHW / slabheight  # [slabs NAVD88]
+        self._MHW = MHW
         self._RSLR = RSLR
         self._qpotseries = qpotseries
         self._save_frequency = save_frequency
         self._simulation_time_yr = simulation_time_yr
         self._cellsize = cellsize
         self._slabheight = slabheight
-        self._slabheight_m = cellsize * slabheight  # [m] Slab height
         self._alongshore_domain_boundary_min = alongshore_domain_boundary_min
         self._alongshore_domain_boundary_max = alongshore_domain_boundary_max
         self._inputloc = inputloc
@@ -153,7 +151,6 @@ class MEEB:
         self._saltation_veg_limit = saltation_veg_limit
         self._jumplength = jumplength
         self._clim = clim
-        self._n_contour = n_contour
         self._beach_equilibrium_slope = beach_equilibrium_slope
         self._beach_erosiveness = beach_erosiveness
         self._beach_substeps = beach_substeps
@@ -229,9 +226,9 @@ class MEEB:
         Init = np.load(inputloc + init_filename)
         self._alongshore_domain_boundary_max = min(self._alongshore_domain_boundary_max, Init[0, :, :].shape[0])
         self._topo_initial = Init[0, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, :]  # [m NAVD88] 2D array of initial topography
-        self._topo = self._topo_initial / self._slabheight_m  # [slabs NAVD88] Initialise the topography, transform from m into number of slabs
+        self._topo = self._topo_initial.copy()  # [m NAVD88] Initialise the topography
         self._longshore, self._crossshore = self._topo.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
-        self._groundwater_elevation = np.zeros(self._topo.shape)  # [slabs NAVD88] Initialize
+        self._groundwater_elevation = np.zeros(self._topo.shape)  # [m NAVD88] Initialize
 
         # SHOREFACE & SHORELINE
         self._x_s = routine.ocean_shoreline(self._topo, self._MHW)  # [m] Start locations of shoreline according to initial topography and MHW
@@ -258,9 +255,9 @@ class MEEB:
         # MODEL PARAMETERS
         self._MHW_init = copy.deepcopy(self._MHW)
         self._wind_direction = np.zeros([self._iterations], dtype=int)
-        self._slabheight = round(self._slabheight_m * 100) / 100
-        self._sedimentation_balance = self._topo * 0  # [slabs] Initialize map of the sedimentation balance: difference between erosion and deposition for 1 model year; (+) = net deposition, (-) = net erosion
-        self._topographic_change = self._topo * 0  # [slabs] Map of the absolute value of topographic change over 1 model year (i.e., a measure of if the topography is changing or stable)
+        self._slabheight = round(self._slabheight, 2)  # Round slabheight to 2 decimals
+        self._sedimentation_balance = self._topo * 0  # [m] Initialize map of the sedimentation balance: difference between erosion and deposition for 1 model year; (+) = net deposition, (-) = net erosion
+        self._topographic_change = self._topo * 0  # [m] Map of the absolute value of topographic change over 1 model year (i.e., a measure of if the topography is changing or stable)
         self._x_s_TS = [self._x_s]  # Initialize storage array for shoreline position
         self._x_t_TS = [self._x_t]  # Initialize storage array for shoreface toe position
         self._sp1_peak_at0 = copy.deepcopy(self._sp1_peak)  # Store initial peak growth of sp. 1
@@ -287,7 +284,6 @@ class MEEB:
         self._sedimentation_balance_sumB = np.zeros([self._longshore, self._crossshore])  # Sum of all balanceb maps
         self._topographic_change_sumA = np.zeros([self._longshore, self._crossshore])  # Sum of all stabilitya maps over the simulation period
         self._topographic_change_sumB = np.zeros([self._longshore, self._crossshore])  # Sum of all stabilityb maps over the simulation period
-        self._windtransp_slabs = np.zeros([self._iterations])  # Initialize; number of slabs transported by wind for each iteration
         self._avalanched_cells = np.zeros([self._iterations])  # Initialize; number of avalanched cells for each iteration
 
     # __________________________________________________________________________________________________________________________________
@@ -298,8 +294,8 @@ class MEEB:
 
         year = math.ceil(it / self._iterations_per_cycle)
 
-        # Update sea level
-        self._MHW += self._RSLR / self._iterations_per_cycle / self._slabheight_m  # [slabs NAVD88]
+        # Update sea level for this iteration
+        self._MHW += self._RSLR / self._iterations_per_cycle  # [m NAVD88]
 
         # --------------------------------------
         # AEOLIAN
@@ -307,12 +303,12 @@ class MEEB:
         topo_iteration_start = copy.deepcopy(self._topo)
 
         # Get present groundwater elevations
-        self._groundwater_elevation = scipy.ndimage.gaussian_filter(self._topo, sigma=12) * self._groundwater_depth  # [slabs NAVD88] IRBR 4May23: New groundwater parameterization based on smoothened topography
-        self._groundwater_elevation[self._groundwater_elevation < self._MHW] = self._MHW  # [slabs NAVD88]
+        self._groundwater_elevation = scipy.ndimage.gaussian_filter(self._topo, sigma=12) * self._groundwater_depth  # [m NAVD88] Groundwater based on smoothed topography
+        self._groundwater_elevation[self._groundwater_elevation < self._MHW] = self._MHW  # [m NAVD88]
 
         # Find subaerial and shadow cells
-        subaerial = self._topo > self._MHW  # Boolean array, Returns True for subaerial cells
-        wind_shadows = routine.shadowzones(self._topo, self._slabheight, self._shadowangle, direction=self._wind_direction[it])  # Returns map of True for in shadow, False not in shadow
+        subaerial = self._topo > self._MHW  # [bool] True for subaerial cells
+        wind_shadows = routine.shadowzones(self._topo, self._shadowangle, direction=self._wind_direction[it])  # [bool] Map of True for in shadow, False not in shadow
 
         # Erosion/Deposition Probabilities
         aeolian_erosion_prob = routine.erosprobs(self._effective_veg, wind_shadows, subaerial, self._topo, self._groundwater_elevation, self._p_ero_sand, self._entrainment_veg_limit)  # Returns map of erosion probabilities
@@ -320,18 +316,16 @@ class MEEB:
 
         # Move sand slabs
         if self._wind_direction[it] == 1 or self._wind_direction[it] == 3:  # Left or Right wind direction
-            contour = np.linspace(0, round(self._crossshore) - 1, self._n_contour + 1)  # Contours to account for transport
-            changemap, slabtransp, sum_contour = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._jumplength, self._effective_veg, self._saltation_veg_limit, contour, self._wind_direction[it], True, self._RNG)  # Returns map of height changes
+            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._jumplength, self._effective_veg, self._saltation_veg_limit, self._wind_direction[it], True, self._RNG)  # Returns map of height changes in units of slabs
         else:  # Up or Down wind direction
-            contour = np.linspace(0, round(self._longshore) - 1, self._n_contour + 1)  # Contours to account for transport  #  IRBR 21Oct22: This may produce slightly different results than Matlab version - need to verify
-            changemap, slabtransp, sum_contour = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._jumplength, self._effective_veg, self._saltation_veg_limit, contour, self._wind_direction[it], True, self._RNG)  # Returns map of height changes
+            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._jumplength, self._effective_veg, self._saltation_veg_limit, self._wind_direction[it], True, self._RNG)  # Returns map of height changes in units of slabs
 
         # Apply changes, make calculations
-        self._topo = self._topo + changemap  # Changes applied to the topography
+        self._topo += aeolian_elevation_change * self._slabheight  # [m NAVD88] Changes applied to the topography; convert aeolian_elevation_change from slabs to meters
         self._topo, aval = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)  # Enforce angles of repose: avalanching
-        self._sedimentation_balance = self._sedimentation_balance + (self._topo - topo_iteration_start)  # Update the sedimentation balance map
+        self._sedimentation_balance = self._sedimentation_balance + (self._topo - topo_iteration_start)  # [m] Update the sedimentation balance map
         balance_init = self._sedimentation_balance + (self._topo - topo_iteration_start)
-        self._topographic_change = self._topographic_change + abs(self._topo - topo_iteration_start)
+        self._topographic_change = self._topographic_change + abs(self._topo - topo_iteration_start)  # [m]
         stability_init = self._topographic_change + abs(self._topo - topo_iteration_start)
 
         # --------------------------------------
@@ -344,10 +338,10 @@ class MEEB:
             if self._hindcast:  # Empirical storm time series
                 storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._simulation_start_iteration)  # [m NAVD88]
             else:  # Stochastic storm model
-                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, self._beach_equilibrium_slope, self._RNG)  # [m MSL]
-                # Account for change in mean sea-level on synthetic storm elevations by adding present MSL (convert to m NAVD88)
-                Rhigh += (self._MHW - self._MHW_init) * self._slabheight_m  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
-                Rlow += (self._MHW - self._MHW_init) * self._slabheight_m  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
+                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, self._beach_equilibrium_slope, self._RNG)  # [m initial MSL]
+                # Account for change in mean sea-level on synthetic storm elevations by adding aggregate RSLR since simulation start (i.e., convert from initial MSL to m NAVD88)
+                Rhigh += self._MHW - self._MHW_init  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
+                Rlow += self._MHW - self._MHW_init  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
 
             if storm:
 
@@ -358,7 +352,6 @@ class MEEB:
                     Rhigh=Rhigh,
                     Rlow=Rlow,
                     dur=dur,
-                    slabheight_m=self._slabheight_m,
                     threshold_in=self._threshold_in,
                     Rin_i=self._Rin_in,
                     Rin_r=self._Rin_ru,
@@ -389,7 +382,7 @@ class MEEB:
                 )
 
                 # Enforce angles of repose again after overwash
-                self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]
+                self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # [m NAVD88]
 
                 # Update vegetation from storm effects
                 self._spec1[inundated] = 0  # Remove species where beach is inundated
@@ -397,11 +390,11 @@ class MEEB:
 
             else:
                 self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
-                topo_change = np.zeros(self._topo.shape)
+                topo_change = np.zeros(self._topo.shape)  # [m NAVD88]
                 Qbe = np.zeros([self._longshore])  # [m^3] No overwash if no storm
 
-            self._sedimentation_balance = self._sedimentation_balance + topo_change
-            self._topographic_change = self._topographic_change + abs(topo_change)
+            self._sedimentation_balance = self._sedimentation_balance + topo_change  # [m]
+            self._topographic_change = self._topographic_change + abs(topo_change)  # [m]
 
             # --------------------------------------
             # SHORELINE CHANGE
@@ -418,8 +411,6 @@ class MEEB:
                 self._x_s,
                 self._x_t,
                 self._MHW,
-                self._cellsize,
-                self._slabheight_m,
             )
 
             # # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)
@@ -451,7 +442,6 @@ class MEEB:
                     prev_shoreline,
                     self._MHW,
                     shoreface_slope,
-                    self._slabheight_m,
                     self._RSLR,
                 )
 
@@ -471,8 +461,8 @@ class MEEB:
             self._sp2_peak = self._sp2_peak_at0 * veg_multiplier
             spec1_prev = copy.deepcopy(self._spec1)
             spec2_prev = copy.deepcopy(self._spec2)
-            self._spec1 = routine.growthfunction1_sens(self._spec1, self._sedimentation_balance * self._slabheight_m, self._sp1_a, self._sp1_b, self._sp1_c, self._sp1_d, self._sp1_e, self._sp1_peak)
-            self._spec2 = routine.growthfunction2_sens(self._spec2, self._sedimentation_balance * self._slabheight_m, self._sp2_a, self._sp2_b, self._sp2_d, self._sp2_e, self._sp2_peak)
+            self._spec1 = routine.growthfunction1_sens(self._spec1, self._sedimentation_balance, self._sp1_a, self._sp1_b, self._sp1_c, self._sp1_d, self._sp1_e, self._sp1_peak)
+            self._spec2 = routine.growthfunction2_sens(self._spec2, self._sedimentation_balance, self._sp2_a, self._sp2_b, self._sp2_d, self._sp2_e, self._sp2_peak)
 
             # Lateral Expansion
             lateral1 = routine.lateral_expansion(spec1_prev, 1, self._lateral_probability * veg_multiplier, self._RNG)
@@ -481,8 +471,8 @@ class MEEB:
             lateral2[self._topo <= self._MHW] = False
 
             # Pioneer Establishment
-            pioneer1 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHW * self._slabheight_m, self._pioneer_probability * veg_multiplier, self._RNG) * (spec1_prev <= 0)
-            pioneer2 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHW * self._slabheight_m, self._pioneer_probability * veg_multiplier, self._RNG) * (spec2_prev <= 0) * (self._topographic_change == 0)
+            pioneer1 = routine.establish_new_vegetation(self._topo, self._MHW, self._pioneer_probability * veg_multiplier, self._RNG) * (spec1_prev <= 0)
+            pioneer2 = routine.establish_new_vegetation(self._topo, self._MHW, self._pioneer_probability * veg_multiplier, self._RNG) * (spec2_prev <= 0) * (self._topographic_change == 0)
             pioneer1[self._topo <= self._MHW] = False  # Constrain to subaerial
             pioneer2[self._topo <= self._MHW] = False
 
@@ -499,10 +489,10 @@ class MEEB:
             self._spec1 = spec1_prev + spec1_change_allowed + spec1_loss  # Re-assemble gain and loss and add to original vegetation cover
             self._spec2 = spec2_prev + spec2_change_allowed + spec2_loss  # Re-assemble gain and loss and add to original vegetation cover
 
-            Spec1_elev_min_mht = self._Spec1_elev_min / self._slabheight_m + self._MHW  # [m MHW]
-            Spec2_elev_min_mht = self._Spec2_elev_min / self._slabheight_m + self._MHW  # [m MHW]
-            self._spec1[self._topo <= Spec1_elev_min_mht] = 0  # Remove species where below elevation minimum
-            self._spec2[self._topo <= Spec2_elev_min_mht] = 0  # Remove species where below elevation minimum
+            Spec1_elev_min_mhw = self._Spec1_elev_min + self._MHW  # [m MHW]
+            Spec2_elev_min_mhw = self._Spec2_elev_min + self._MHW  # [m MHW]
+            self._spec1[self._topo <= Spec1_elev_min_mhw] = 0  # Remove species where below elevation minimum
+            self._spec2[self._topo <= Spec2_elev_min_mhw] = 0  # Remove species where below elevation minimum
 
             # Limit to geomorphological range
             spec1_geom = copy.deepcopy(self._spec1)
@@ -536,14 +526,13 @@ class MEEB:
         self._sedimentation_balance_sumB = self._sedimentation_balance_sumB + self._sedimentation_balance
         self._topographic_change_sumA = self._topographic_change_sumA + stability_init
         self._topographic_change_sumB = self._topographic_change_sumB + self._topographic_change
-        self._windtransp_slabs[it] = (slabtransp * self._slabheight_m * self._cellsize ** 2) / self._longshore
         self._avalanched_cells[it] = aval
 
         # --------------------------------------
         # RESET DOMAINS
 
-        self._sedimentation_balance[:] = 0  # Reset the balance map
-        self._topographic_change[:] = 0  # Reset the balance map
+        self._sedimentation_balance[:] = 0  # [m] Reset the balance map
+        self._topographic_change[:] = 0  # [m] Reset the balance map
 
 
     @property
