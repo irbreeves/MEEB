@@ -1,6 +1,6 @@
 """
 Script for testing MEEB overwash function.
-IRBR 14 July 2023
+IRBR 10 August 2023
 """
 
 import numpy as np
@@ -60,12 +60,14 @@ start_time = time.time()  # Record time at start of run
 
 # _____________________________________________
 # Define Variables
-Rhigh = 3.32
-Rlow = 1.93
-dur = 70
-slabheight_m = 0.1
-cellsize = 1
-MHW = 0
+Rhigh = 3.32  # [m NAVD88]
+Rlow = 1.93  # [m NAVD88]
+dur = 70  # [hr]
+slabheight_m = 0.02  # [m]
+cellsize = 1  # [m]
+MHW = 0.39  # [m NAVD88]
+flow_reduction_max_spec1 = 0.05
+flow_reduction_max_spec2 = 0.2
 
 # Initial Observed Topo
 Init = np.load("Input/Init_NorthernNCB_2017_PreFlorence.npy")
@@ -73,20 +75,20 @@ Init = np.load("Input/Init_NorthernNCB_2017_PreFlorence.npy")
 End = np.load("Input/Init_NorthernNCB_2018_PostFlorence.npy")
 
 # Define Alongshore Coordinates of Domain
-xmin = 500  # 575, 2000, 2150, 2000, 3800
-xmax = 900  # 825, 2125, 2350, 2600, 4450
+xmin = 575  # 575, 2000, 2150, 2000, 3800
+xmax = 825  # 825, 2125, 2350, 2600, 4450
 
 
 # _____________________________________________
 # Conversions & Initializations
 
 # Transform Initial Observed Topo
-topo_init = Init[0, xmin: xmax, :]  # [m]
-topo0 = topo_init / slabheight_m  # [slabs] Transform from m into number of slabs
-topo = copy.deepcopy(topo0)  # np.round(topo0)  # [slabs] Initialise the topography map
+topo_m = Init[0, xmin: xmax, :]  # [m NAVD88]
+topo0 = topo_m / slabheight_m  # [slabs NAVD88] Transform from m into number of slabs
+topo = copy.deepcopy(topo0)  # np.round(topo0)  # [slabs NAVD88] Initialise the topography map
 
 # Transform Final Observed Topo
-topo_final = End[0, xmin:xmax, :] / slabheight_m  # [slabs] Transform from m into number of slabs
+topo_final = End[0, xmin:xmax, :] / slabheight_m  # [slabs NAVD88] Transform from m into number of slabs
 
 # Set Veg Domain
 spec1 = Init[2, xmin: xmax, :]
@@ -96,8 +98,8 @@ veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or la
 veg[veg < 0] = 0
 
 # Find Dune Crest, Shoreline Positions
-dune_crest = routine.foredune_crest(topo, MHW)
-x_s = routine.ocean_shoreline(topo, MHW)
+dune_crest = routine.foredune_crest(topo_m, MHW)
+x_s = routine.ocean_shoreline(topo_m, MHW)
 
 # Transform water levels to vectors
 Rhigh = Rhigh * np.ones(topo_final.shape[0])
@@ -106,9 +108,9 @@ Rlow = Rlow * np.ones(topo_final.shape[0])
 
 # _____________________________________________
 # Overwash, Beach, & Dune Change
-topo_prestorm = copy.deepcopy(topo)
+topo_prestorm = copy.deepcopy(topo)  # [slabs NAVD88]
 
-name = "500-900, KQ(S+C), Florence, weighted_bss 2-1"
+name = "575-825, KQ(S+C), Florence"
 print(name)
 
 sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
@@ -119,27 +121,31 @@ sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = rou
     slabheight_m,
     threshold_in=0.25,
     Rin_i=5,
-    Rin_r=106,
-    Cx=48,
+    Rin_r=183,
+    Cx=56,
     AvgSlope=2/200,
     nn=0.5,
-    MaxUpSlope=1.02,
+    MaxUpSlope=2.05,
     fluxLimit=1,
     Qs_min=1,
-    Kr=0.0000732,
+    Kr=0.0000575,
     Ki=5e-06,
     mm=1,
-    MHW=MHW,
+    MHW=MHW / slabheight_m,  # [slabs NAVD88]
     Cbb_i=0.85,
     Cbb_r=0.7,
     Qs_bb_min=1,
     substep_i=6,
-    substep_r=3,
-    beach_equilibrium_slope=0.02,
-    beach_erosiveness=2.68,
-    beach_substeps=17,
+    substep_r=6,
+    beach_equilibrium_slope=0.023,
+    beach_erosiveness=2.73,
+    beach_substeps=22,
     x_s=x_s,
     cellsize=1,
+    spec1=spec1,
+    spec2=spec2,
+    flow_reduction_max_spec1=flow_reduction_max_spec1,
+    flow_reduction_max_spec2=flow_reduction_max_spec2,
 )
 
 sim_topo_change = sim_topo_final - topo_prestorm
@@ -161,7 +167,7 @@ obs_change_m = (topo_final - topo_prestorm) * slabheight_m  # [m] Observed chang
 sim_change_m = sim_topo_change * slabheight_m  # [m] Simulated change
 
 # Masks for skill scoring
-subaerial_mask = sim_final_m > (MHW * slabheight_m)  # [bool] Map of every cell above water
+subaerial_mask = sim_final_m > MHW  # [bool] Map of every cell above water
 
 Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  # Load observed overwash mask
 Florence_OW_Mask = np.logical_and(Florence_Overwash_Mask[xmin: xmax, :], subaerial_mask)
@@ -291,7 +297,7 @@ cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 # Pre Storm (Observed) Topo
 Fig = plt.figure(figsize=(14, 7.5))
 ax1 = Fig.add_subplot(221)
-# topo1 = topo_prestorm[:, pxmin: pxmax] * 0.1  # [m] Pre-storm
+# topo1 = topo_prestorm[:, pxmin: pxmax] * slabheight_m  # [m] Pre-storm
 topo1 = obs_final_m[:, pxmin: pxmax]  # [m] Post-storm
 topo1 = np.ma.masked_where(topo1 < MHW, topo1)  # Mask cells below MHW
 cax1 = ax1.matshow(topo1, cmap=cmap1, vmin=0, vmax=5.0)
@@ -301,7 +307,7 @@ plt.suptitle(name)
 
 # Post-Storm (Simulated) Topo
 ax2 = Fig.add_subplot(222)
-topo2 = sim_topo_final[:, pxmin: pxmax] * 0.1  # [m]
+topo2 = sim_topo_final[:, pxmin: pxmax] * slabheight_m  # [m]
 topo2 = np.ma.masked_where(topo2 < MHW, topo2)  # Mask cells below MHW
 cax2 = ax2.matshow(topo2, cmap=cmap1, vmin=0, vmax=5.0)
 plt.title('Simulated')

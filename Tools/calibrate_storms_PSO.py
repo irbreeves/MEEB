@@ -3,7 +3,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 
 Calibrates based on fitess score for all beach/dune/overwash morphologic change.
 
-IRBR 13 July 2023
+IRBR 10 August 2023
 """
 
 import numpy as np
@@ -67,10 +67,6 @@ def model_skill(obs, sim, t0, mask):
 def storm_fitness(solution):
     """Run a storm with this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
-    # Find Dune Crest, Shoreline Positions
-    dune_crest_loc = routine.foredune_crest(topo_start, MHW)
-    shoreline_loc = routine.ocean_shoreline(topo_start, MHW)
-
     # Run Model
     topo_start_copy = copy.deepcopy(topo_start)
     topo_end_sim, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
@@ -86,12 +82,12 @@ def storm_fitness(solution):
         AvgSlope=2 / 200,
         nn=0.5,
         MaxUpSlope=solution[2],
-        fluxLimit=solution[3],
+        fluxLimit=1,
         Qs_min=1,
         Kr=solution[4],
         Ki=5e-06,
-        mm=solution[5],
-        MHW=MHW,
+        mm=1,
+        MHW=MHW_m / slabheight_m,  # [slabs]
         Cbb_i=0.85,
         Cbb_r=0.7,
         Qs_bb_min=1,
@@ -100,8 +96,12 @@ def storm_fitness(solution):
         beach_equilibrium_slope=solution[7],
         beach_erosiveness=solution[8],
         beach_substeps=int(round(solution[9])),
-        x_s=shoreline_loc,
+        x_s=x_s,
         cellsize=1,
+        spec1=spec1,
+        spec2=spec2,
+        flow_reduction_max_spec1=solution[3],  # Grass
+        flow_reduction_max_spec2=solution[5],  # Shrub
     )
 
     topo_end_sim *= slabheight_m  # [m]
@@ -112,11 +112,11 @@ def storm_fitness(solution):
     # _____________________________________________
     # Model Skill: Comparisons to Observations
 
-    subaerial_mask = topo_end_sim > MHW  # [bool] Map of every cell above water
+    subaerial_mask = topo_end_sim > MHW_m  # [bool] Map of every cell above water
 
     beach_duneface_mask = np.zeros(topo_end_sim.shape)
     for q in range(topo_start_obs.shape[0]):
-        beach_duneface_mask[q, :dune_crest_loc[q]] = True
+        beach_duneface_mask[q, :dune_crest[q]] = True
     beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
 
     overwash_mask = np.logical_and(OW_Mask, subaerial_mask)
@@ -156,8 +156,8 @@ start_time = time.time()  # Record time at start of calibration
 Rhigh = 3.32
 Rlow = 1.93
 dur = 70
-slabheight_m = 0.1
-MHW = 0
+slabheight_m = 0.02
+MHW_m = 0.39  # [m NAVD88]
 
 # Initial Observed Topo
 Init = np.load("Input/Init_NorthernNCB_2017_PreFlorence.npy")
@@ -178,6 +178,7 @@ name = '575-825, KQ(S+C), weighted_bss'
 
 # Transform Initial Observed Topo
 topo_init = Init[0, xmin: xmax, :]  # [m]
+topo_start_m = copy.deepcopy(topo_init)
 topo0 = topo_init / slabheight_m  # [slabs] Transform from m into number of slabs
 topo = copy.deepcopy(topo0)  # [slabs] Initialise the topography map
 topo_start = copy.deepcopy(topo)
@@ -195,8 +196,8 @@ veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or la
 veg[veg < 0] = 0
 
 # Find Dune Crest, Shoreline Positions
-dune_crest = routine.foredune_crest(topo, MHW)
-x_s = routine.ocean_shoreline(topo, MHW)
+dune_crest = routine.foredune_crest(topo_start_m, MHW_m)
+x_s = routine.ocean_shoreline(topo_start_m, MHW_m)
 
 # Transform water levels to vectors
 Rhigh = Rhigh * np.ones(topo_final.shape[0])
@@ -226,9 +227,9 @@ bounds = (
     np.array([50,  # Rin
               1,  # Cx
               0.5,  # MaxUpSlope
-              1,  # fluxLimit
+              0.05,  # flow_reduction_max_spec1
               8e-06,  # Kr
-              2,  # mm
+              0.05,  # flow_reduction_max_spec2
               1,  # OW substep
               0.002,  # Beq
               0.25,  # Et
@@ -237,9 +238,9 @@ bounds = (
     np.array([450,
               100,
               2.5,
-              1.00001,
+              0.75,  # flow_reduction_max_spec1
               1e-04,
-              2.00001,
+              0.75,  # flow_reduction_max_spec2
               12,
               0.03,
               3,
@@ -273,9 +274,9 @@ print(tabulate({
     "Rin": [best_solution[0]],
     "Cx": [best_solution[1]],
     "MUS": [best_solution[2]],
-    "FLim": [best_solution[3]],
+    "flow_reduction_max_spec1": [best_solution[3]],
     "Kr": [best_solution[4]],
-    "mm": [best_solution[5]],
+    "flow_reduction_max_spec2": [best_solution[5]],
     "SSo": [best_solution[6]],
     "Beq": [best_solution[7]],
     "Et": [best_solution[8]],
