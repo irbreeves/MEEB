@@ -1,5 +1,5 @@
 """
-Script for calibrating MEEB aeolian and vegetation parameters using Particle Swarms Optimization.
+Script for calibrating MEEB aeolian parameters using Particle Swarms Optimization.
 
 Calibrates based on fitess score for morphologic and ecologic change between two timesteps.
 
@@ -104,9 +104,9 @@ def aeolian_fitness(solution):
     """Run a hindcast this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
     # Construct wind rose
-    wind_dir_1 = solution[8] / (solution[8] + solution[9] + solution[10] + solution[11])  # Proportion towards left
+    wind_dir_1 = solution[8] / (solution[8] + solution[9] + solution[10] + solution[11])  # Proportion towards right
     wind_dir_2 = solution[9] / (solution[8] + solution[9] + solution[10] + solution[11])  # Proportion towards down
-    wind_dir_3 = solution[10] / (solution[8] + solution[9] + solution[10] + solution[11])  # Proportion towards right
+    wind_dir_3 = solution[10] / (solution[8] + solution[9] + solution[10] + solution[11])  # Proportion towards left
     wind_dir_4 = 1 - (wind_dir_1 + wind_dir_2 + wind_dir_3)  # Proportion towards up
     rose = (wind_dir_1, wind_dir_2, wind_dir_3, wind_dir_4)  # Tuple that sums to 1.0
 
@@ -119,6 +119,11 @@ def aeolian_fitness(solution):
         RSLR=0.000,
         MHW=MHW,
         seeded_random_numbers=True,
+        init_filename=start,
+        hindcast=True,
+        simulation_start_date=startdate,
+        storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
+        # --- Aeolian --- #
         p_dep_sand=solution[0],
         p_dep_sand_VegMax=solution[0] + solution[1],
         p_ero_sand=solution[2],
@@ -128,10 +133,24 @@ def aeolian_fitness(solution):
         repose_bare=int(round(solution[6])),
         repose_veg=int(round(solution[6] + solution[7])),
         wind_rose=rose,
-        init_filename=start,
-        hindcast=True,
-        simulation_start_date=startdate,
-        storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
+        # --- Storms --- #
+        Rin_ru=183,
+        Cx=56,
+        MaxUpSlope=2.05,
+        K_ru=0.0000575,
+        substep_ru=6,
+        beach_equilibrium_slope=0.02,
+        beach_erosiveness=2.73,
+        beach_substeps=22,
+        # --- Veg --- #
+        # sp1_c=1.20,
+        # sp2_c=-0.47,
+        # sp1_peak=0.307,
+        # sp2_peak=0.148,
+        # lateral_probability=0.34,
+        # pioneer_probability=0.11,
+        # Spec1_elev_min=0.60,
+        # Spec2_elev_min=0.13,
     )
 
     # Loop through time
@@ -159,8 +178,10 @@ def aeolian_fitness(solution):
 
     # Cross-shore range mask
     range_mask = np.ones(topo_end_sim.shape)  # [bool] Mask for every cell between two cross-shore locations
-    range_mask[:, :835] = False
-    range_mask[:, 950:] = False
+    # range_mask[:, :835] = False
+    # range_mask[:, 950:] = False
+    range_mask[:, :1100] = False
+    range_mask[:, 1350:] = False
 
     # Elevation mask
     elev_mask = topo_end_sim > 2.0  # [bool] Mask for every cell above water
@@ -201,10 +222,9 @@ def aeolian_fitness(solution):
 def opt_func(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
-    n_jobs = int(min(10, swarm_size))  # Constrained by maximum number of cores on machine
-    solutions = Parallel(n_jobs=n_jobs)(delayed(aeolian_fitness)(X[i, :]) for i in range(swarm_size))
+    solutions = Parallel(n_jobs=9)(delayed(aeolian_fitness)(X[i, :]) for i in range(swarm_size))
 
-    return np.array(solutions) * -1
+    return np.array(solutions)
 
 
 # ___________________________________________________________________________________________________________________________________
@@ -221,11 +241,11 @@ start_time = time.time()  # Record time at start of calibration
 # hindcast_duration = 0.92
 # startdate = '20161012'
 
-# 2004 - 2009
-start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
-stop = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
-hindcast_duration = 5.1
-startdate = '20040716'
+# # 2004 - 2009
+# start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
+# hindcast_duration = 5.1
+# startdate = '20040716'
 
 # # 2014 - 2017
 # start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandyNCFMP.npy"
@@ -239,14 +259,20 @@ startdate = '20040716'
 # hindcast_duration = 4.78
 # startdate = '20121129'
 
-# Define Alongshore Coordinates of Domain
-xmin = 6300  # 575, 2000, 2150, 2000, 3800  # 2650
-xmax = 6500  # 825, 2125, 2350, 2600, 4450  # 2850
+# 2014 - 2018
+start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy_NCFMP-Planet.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
+startdate = '20140406'
+hindcast_duration = 4.5
 
-MHW = 0.4  # [m NAVD88]
+# Define Alongshore Coordinates of Domain
+xmin = 18950  # 575, 2000, 2150, 2000, 3800  # 2650
+xmax = 19250  # 825, 2125, 2350, 2600, 4450  # 2850
+
+MHW = 0.39  # [m NAVD88]
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
-name = '6300-600, 2004-2009, NMAE multi-objective'
+name = '18950-19250, 2014-2018, NMAE multi-objective'
 
 # ____________________________________
 
@@ -285,8 +311,8 @@ veg_end[veg_end < 0] = 0
 # _____________________________________________
 # Prepare Particle Swarm Parameters
 
-iterations = 25
-swarm_size = 10
+iterations = 30
+swarm_size = 18
 dimensions = 12  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
@@ -367,6 +393,6 @@ print(tabulate({
 
 # _____________________________________________
 # Plot Results
-plt.plot(np.array(optimizer.cost_history) * -1)
+plt.plot(np.array(optimizer.cost_history) * 1)
 plt.ylabel('Fitness (Multi-Objective NMAE)')
 plt.xlabel('Iteration')

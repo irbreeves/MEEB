@@ -104,9 +104,9 @@ def meeb_fitness(solution):
     """Run a hindcast this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
     # Construct wind rose
-    wind_dir_1 = solution[4] / (solution[4] + solution[5] + solution[6] + solution[7])  # Proportion towards left
+    wind_dir_1 = solution[4] / (solution[4] + solution[5] + solution[6] + solution[7])  # Proportion towards right
     wind_dir_2 = solution[5] / (solution[4] + solution[5] + solution[6] + solution[7])  # Proportion towards down
-    wind_dir_3 = solution[6] / (solution[4] + solution[5] + solution[6] + solution[7])  # Proportion towards right
+    wind_dir_3 = solution[6] / (solution[4] + solution[5] + solution[6] + solution[7])  # Proportion towards left
     wind_dir_4 = 1 - (wind_dir_1 + wind_dir_2 + wind_dir_3)  # Proportion towards up
     rose = (wind_dir_1, wind_dir_2, wind_dir_3, wind_dir_4)  # Tuple that sums to 1.0
 
@@ -122,7 +122,7 @@ def meeb_fitness(solution):
         init_filename=start,
         hindcast=True,
         simulation_start_date=startdate,
-        storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
+        storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
         # --- Aeolian --- #
         p_dep_sand=solution[0],
         p_dep_sand_VegMax=solution[0] + solution[1],
@@ -214,7 +214,7 @@ def meeb_fitness(solution):
     nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh, pc_dh, hss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, np.full(crest_height_change_obs.shape, True))  # Foredune elevation
 
     # Combine Skill Scores (Multi-Objective Optimization)
-    score = np.average([nmae, nmae_dl, nmae_dh], weights=[1, 1, 1])  # This is the skill score used in particle swarms optimization
+    score = np.average([nmae, nmae_dl, nmae_dh], weights=[3, 1, 2])  # This is the skill score used in particle swarms optimization
 
     return score
 
@@ -309,9 +309,9 @@ veg_end[veg_end < 0] = 0
 # _____________________________________________
 # Prepare Particle Swarm Parameters
 
-iterations = 30
+iterations = 25
 swarm_size = 18
-dimensions = 12  # Number of free paramters
+dimensions = 13  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
 w: Inertia weight constant. [0-1] Determines how much the particle keeps on with its previous velocity (i.e., speed and direction of the search). 
@@ -386,16 +386,17 @@ print(tabulate({
     "p_dep_sand_VegMax": [best_solution[0] + best_solution[1]],
     "p_ero_sand": [best_solution[2]],
     "entrainment_veg_limit": [best_solution[3]],
-    "saltation_veg_limit": [best_solution[4]],
-    "shadowangle": [best_solution[5]],
-    "repose_bare": [best_solution[6]],
-    "repose_veg": [best_solution[6] + best_solution[7]],
-    "direction1": [best_solution[8] / (best_solution[8] + best_solution[9] + best_solution[10] + best_solution[11])],
-    "direction2": [best_solution[9] / (best_solution[8] + best_solution[9] + best_solution[10] + best_solution[11])],
-    "direction3": [best_solution[10] / (best_solution[8] + best_solution[9] + best_solution[10] + best_solution[11])],
-    "direction4": [best_solution[11] / (best_solution[8] + best_solution[9] + best_solution[10] + best_solution[11])],
+    "direction1": [best_solution[4] / (best_solution[4] + best_solution[5] + best_solution[6] + best_solution[7])],
+    "direction2": [best_solution[5] / (best_solution[4] + best_solution[5] + best_solution[6] + best_solution[7])],
+    "direction3": [best_solution[6] / (best_solution[4] + best_solution[5] + best_solution[6] + best_solution[7])],
+    "direction4": [best_solution[7] / (best_solution[4] + best_solution[5] + best_solution[6] + best_solution[7])],
+    "Rin": [best_solution[8]],
+    "Cx": [best_solution[9]],
+    "MUS": [best_solution[10]],
+    "Kr": [best_solution[11]],
+    "OWss": [best_solution[12]],
     "Score": [solution_fitness]
-}, headers="keys", floatfmt=(None, ".2f", ".2f", ".2f", ".2f", ".2f", ".0f", ".0f", ".0f", ".3f", ".3f", ".3f", ".3f", ".4f"))
+}, headers="keys", floatfmt=(None, ".2f", ".2f", ".2f", ".2f", ".3f", ".3f", ".3f", ".3f", ".0f", ".0f", ".3f", ".7f", ".0f", ".4f"))
 )
 
 # _____________________________________________
