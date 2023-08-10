@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 28 July 2023
+Last update: 10 August 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -95,6 +95,8 @@ class MEEB:
             maxvegeff=1.0,  # [0-1] Value of maximum vegetation effectiveness allowed
             Spec1_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 1 (1 m MHW for A. brevigulata from Young et al., 2011)
             Spec2_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 2
+            flow_reduction_max_spec1=0.05,  # Proportion of overwash flow reduction through a cell populated with species 1 at full density
+            flow_reduction_max_spec2=0.20,  # Proportion of overwash flow reduction through a cell populated with species 2 at full density
 
             # STORM OVERWASH AND DUNE EROSION
             storm_list_filename="VCRStormList.npy",
@@ -121,7 +123,7 @@ class MEEB:
 
         self._name = name
         self._simnum = simnum
-        self._MHW = MHW * slabheight  # [slabs NAVD88]
+        self._MHW = MHW / slabheight  # [slabs NAVD88]
         self._RSLR = RSLR
         self._qpotseries = qpotseries
         self._save_frequency = save_frequency
@@ -179,6 +181,8 @@ class MEEB:
         self._maxvegeff = maxvegeff
         self._Spec1_elev_min = Spec1_elev_min
         self._Spec2_elev_min = Spec2_elev_min
+        self._flow_reduction_max_spec1 = flow_reduction_max_spec1
+        self._flow_reduction_max_spec2 = flow_reduction_max_spec2
         self._threshold_in = threshold_in
         self._Rin_in = Rin_in
         self._Rin_ru = Rin_ru
@@ -252,6 +256,7 @@ class MEEB:
             raise ValueError("Simulation length is greater than hindcast timeSeries length.")
 
         # MODEL PARAMETERS
+        self._MHW_init = copy.deepcopy(self._MHW)
         self._wind_direction = np.zeros([self._iterations], dtype=int)
         self._slabheight = round(self._slabheight_m * 100) / 100
         self._sedimentation_balance = self._topo * 0  # [slabs] Initialize map of the sedimentation balance: difference between erosion and deposition for 1 model year; (+) = net deposition, (-) = net erosion
@@ -337,12 +342,12 @@ class MEEB:
 
             # Generate Storms Stats
             if self._hindcast:  # Empirical storm time series
-                storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._simulation_start_iteration)
+                storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._simulation_start_iteration)  # [m NAVD88]
             else:  # Stochastic storm model
                 storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, self._beach_equilibrium_slope, self._RNG)  # [m MSL]
-                # Convert storm water elevation datum from MSL to datum of topo grid by adding present MSL
-                Rhigh += self._MHW * self._slabheight_m
-                Rlow += self._MHW * self._slabheight_m
+                # Account for change in mean sea-level on synthetic storm elevations by adding present MSL (convert to m NAVD88)
+                Rhigh += (self._MHW - self._MHW_init) * self._slabheight_m  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
+                Rlow += (self._MHW - self._MHW_init) * self._slabheight_m  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
 
             if storm:
 
@@ -377,6 +382,10 @@ class MEEB:
                     beach_substeps=self._beach_substeps,
                     x_s=self._x_s,
                     cellsize=self._cellsize,
+                    spec1=self._spec1,
+                    spec2=self._spec2,
+                    flow_reduction_max_spec1=self._flow_reduction_max_spec1,
+                    flow_reduction_max_spec2=self._flow_reduction_max_spec2,
                 )
 
                 # Enforce angles of repose again after overwash
@@ -472,8 +481,8 @@ class MEEB:
             lateral2[self._topo <= self._MHW] = False
 
             # Pioneer Establishment
-            pioneer1 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHW, self._pioneer_probability * veg_multiplier, self._RNG) * (spec1_prev <= 0)
-            pioneer2 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHW, self._pioneer_probability * veg_multiplier, self._RNG) * (spec2_prev <= 0) * (self._topographic_change == 0)
+            pioneer1 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHW * self._slabheight_m, self._pioneer_probability * veg_multiplier, self._RNG) * (spec1_prev <= 0)
+            pioneer2 = routine.establish_new_vegetation(self._topo * self._slabheight_m, self._MHW * self._slabheight_m, self._pioneer_probability * veg_multiplier, self._RNG) * (spec2_prev <= 0) * (self._topographic_change == 0)
             pioneer1[self._topo <= self._MHW] = False  # Constrain to subaerial
             pioneer2[self._topo <= self._MHW] = False
 

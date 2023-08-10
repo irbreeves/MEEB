@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 31 July 2023
+Last update: 10 August 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -28,7 +28,7 @@ def shadowzones(topof, sh, shadowangle, direction):
     Parameters
     ----------
     topof : ndarray
-        Topography map.
+        Topography map.  TODO: Units?
     sh : float
         Slab height.
     shadowangle : float
@@ -524,9 +524,9 @@ def establish_new_vegetation(topof, MHW, prob, RNG):
     Parameters
     ----------
     topof : ndarray
-        [slabs] Elevation domain.
+        [m] Elevation domain.
     MHW : float
-        [slabs] Mean high water.
+        [m] Mean high water.
     prob : float
         Probability of new pioneer vegetation establishing.
     RNG :
@@ -591,11 +591,11 @@ def shoreline_change_from_CST(
     Parameters
     ----------
     topof : ndarray
-        [m] Present elevation domain
+        [slabs] Present elevation domain
     d_sf : float
         [m] Shoreface depth
     k_sf : flaot
-        [] Shoreface flux constant
+        [] Shoreface flux constant  TODO: Units?
     s_sf_eq : flaot
         Shoreface equilibrium slope
     RSLR :  float
@@ -1015,6 +1015,10 @@ def storm_processes(
         beach_substeps,
         x_s,
         cellsize,
+        spec1,
+        spec2,
+        flow_reduction_max_spec1,
+        flow_reduction_max_spec2,
 ):
     """Resolves topographical change from storm events. Landward of dune crest: overwashes barrier interior where storm water levels exceed
     pre-storm dune crests following Barrier3D (Reeves et al., 2021) flow routing. Seaward of dune crest: determines topographic change of beach
@@ -1023,11 +1027,11 @@ def storm_processes(
     Parameters
     ----------
     topof : ndarray
-        [slabs] Current elevation domain.
+        [slabs NAVD88] Current elevation domain.
     Rhigh : ndarray
-        [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
+        [m NAVD88] Highest elevation of the landward margin of runup (i.e. total water level).
     Rlow : ndarray
-        [m MHW] Lowest elevation of the landward margin of runup.
+        [m NAVD88] Lowest elevation of the landward margin of runup.
     dur: ndarray
         [hrs] Duration of storm.
     slabheight_m : float
@@ -1078,6 +1082,14 @@ def storm_processes(
         Alongshore array of ocean shoreline locations.
     cellsize : float
         [m] Horizontal dimension of model grid cells
+    spec1 : ndarray
+        [%] Map of  vegetation effectiveness for species 1
+    spec2 : ndarray
+        [%] Map of  vegetation effectiveness for species 2
+    flow_reduction_max_spec1 : float
+        Proportion of overwash flow reduction through a cell populated with species 1 at full effectiveness (i.e., full density)
+    flow_reduction_max_spec2 : float
+        Proportion of overwash flow reduction through a cell populated with species 2 at full effectiveness (i.e., full density)
 
     Returns
     ----------
@@ -1094,7 +1106,7 @@ def storm_processes(
     """
 
     longshore, crossshore = topof.shape
-    MHW_m = MHW * slabheight_m  # Convert from slabs to meters
+    MHW_m = MHW * slabheight_m  # Convert from slabs to meters NAVD88
     inundated = np.zeros(topof.shape).astype(bool)  # Initialize
 
     # --------------------------------------
@@ -1107,8 +1119,8 @@ def storm_processes(
     domain_width_end = int(crossshore)  # [m]
     domain_width = domain_width_end - domain_width_start
     Elevation = np.zeros([iterations, longshore, domain_width])
-    domain_topo_start = topof[:, domain_width_start:] * slabheight_m  # [m]
-    Elevation[0, :, :] = domain_topo_start
+    domain_topo_start = topof[:, domain_width_start:] * slabheight_m  # [m NAVD88]
+    Elevation[0, :, :] = domain_topo_start  # [ m NAVD88]
 
     # Initialize Memory Storage Arrays
     Discharge = np.zeros([iterations, longshore, domain_width])
@@ -1116,7 +1128,7 @@ def storm_processes(
     SedFluxOut = np.zeros([iterations, longshore, domain_width])
     OWloss = np.zeros([longshore])  # [m^3] Aggreagate volume of overwash deposition landward of dune crest for this storm
 
-    # Modify based on number of substeps    # Temp: keeping substeps same between regimes
+    # Modify based on number of substeps
     substep = substep_r
     fluxLimit /= substep  # [m/hr] Maximum elevation change during one storm hour allowed
     Qs_min /= substep
@@ -1171,6 +1183,10 @@ def storm_processes(
             Cbb_r,
             Cbb_i,
             Qs_bb_min,
+            spec1,
+            spec2,
+            flow_reduction_max_spec1,
+            flow_reduction_max_spec2,
         )
 
         # Update Elevation After Every Storm Hour of Overwash
@@ -1255,13 +1271,17 @@ def route_overwash(
         Cbb_r,
         Cbb_i,
         Qs_bb_min,
+        spec1,
+        spec2,
+        flow_reduction_max_spec1,
+        flow_reduction_max_spec2,
 ):
     """Routes overwash and sediment for one storm iteration based off of Barrier3D (Reeves et al., 2021)"""
 
     # Find height of dune crest alongshore
     dune_crest_height_m = np.zeros(longshore)
     for ls in range(longshore):
-        dune_crest_height_m[ls] = Elevation[TS, ls, dune_crest_loc[ls]]  # [m]
+        dune_crest_height_m[ls] = Elevation[TS, ls, dune_crest_loc[ls]]  # [m NAVD88]
 
     overwash = Rhigh > dune_crest_height_m  # [bool] Identifies rows alongshore where dunes crest is overwashed
 
@@ -1430,18 +1450,27 @@ def route_overwash(
                                 Q3 = Q3 * (1 - (abs(S3) / MaxUpSlope))
 
                     # Save Discharge
-                    # if Shrubs:  # Reduce Overwash Through Shrub Cells
-                    #     # Insert shrub effects here
-                    # else:
                     # Cell 1
                     if i > 0:
+                        if spec1[i - 1, d] > 0:
+                            Q1 = Q1 * (1 - (flow_reduction_max_spec1 * spec1[i - 1, d]))
+                        else:
+                            Q1 = Q1 * (1 - (flow_reduction_max_spec2 * spec2[i - 1, d]))
                         Discharge[TS, i - 1, d + 1] += Q1
 
                     # Cell 2
+                    if spec1[i, d] > 0:
+                        Q2 = Q2 * (1 - (flow_reduction_max_spec1 * spec1[i, d]))
+                    else:
+                        Q2 = Q2 * (1 - (flow_reduction_max_spec2 * spec2[i, d]))
                     Discharge[TS, i, d + 1] += Q2
 
                     # Cell 3
                     if i < (longshore - 1):
+                        if spec1[i + 1, d] > 0:
+                            Q3 = Q3 * (1 - (flow_reduction_max_spec1 * spec1[i + 1, d]))
+                        else:
+                            Q3 = Q3 * (1 - (flow_reduction_max_spec2 * spec2[i + 1, d]))
                         Discharge[TS, i + 1, d + 1] += Q3
 
                     # Calculate Sed Movement
@@ -1803,13 +1832,13 @@ def adjust_ocean_shoreline(
             # Adjust shoreline
             topo[ls, new_shoreline] = MHW - (RSLR / slabheight_m)  # [slabs]
             # Adjust shoreface
-            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] / slabheight_m + MHW  # New shoreface cells
+            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] / slabheight_m + MHW  # New shoreface cells  TODO: Is dividing slope by slabheight correct?
             topo[ls, :new_shoreline] = shoreface  # Insert into domain
         elif sc_ls < 0:  # Shoreline progradation
             # Adjust shoreline
             topo[ls, new_shoreline: prev_shoreline[ls]] = MHW + (RSLR / slabheight_m)  # [slabs]
             # Adjust shoreface
-            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] / slabheight_m + MHW  # New shoreface cells
+            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] / slabheight_m + MHW  # New shoreface cells  TODO: Is dividing slope by slabheight correct?
             if len(shoreface) > new_shoreline:
                 raise ValueError("Out-Of-Bounds: Ocean shoreline progradaded beyond simulation domain boundary.")
             topo[ls, :new_shoreline] = shoreface  # Insert into domain
