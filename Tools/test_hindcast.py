@@ -53,7 +53,6 @@ def model_skill(obs, sim, t0, mask):
     that of the baseline or reference predictions (i.e., the baseline matches the final field profile more closely than the simulation output)."""
     BSS = routine.brier_skill_score(sim, obs, t0, mask)
 
-
     return NSE, RMSE, NMAE, MASS, BSS
 
 
@@ -123,11 +122,11 @@ def model_skill_categorical(obs, sim, catmask):
 # startdate = '20161012'
 # hindcast_duration = 1.96
 
-# 2017 - 2018
-start = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
-startdate = '20170916'
-hindcast_duration = 1.06
+# # 2017 - 2018
+# start = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
+# startdate = '20170916'
+# hindcast_duration = 1.06
 
 # # 2004 - 2014
 # start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
@@ -189,11 +188,11 @@ hindcast_duration = 1.06
 # startdate = '20140406'
 # hindcast_duration = 4.5
 
-# # 2014 - 2019
-# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandyNCFMP.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2019_PreDorian.npy"
-# startdate = '20140406'
-# hindcast_duration = 5.4
+# 2014 - 2019
+start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandyNCFMP.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2019_PreDorian.npy"
+startdate = '20140406'
+hindcast_duration = 5.4
 
 # # 2009 - 2019
 # start = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
@@ -282,6 +281,9 @@ meeb = MEEB(
     beach_equilibrium_slope=0.02,
     beach_erosiveness=2.73,
     beach_substeps=22,
+    # --- Shoreline --- #
+    wave_asymetry=0.5,
+    wave_high_angle_fraction=0.5,
     # --- Veg --- #
     # sp1_c=1.20,
     # sp2_c=-0.47,
@@ -405,6 +407,7 @@ print(tabulate({
 xmin = 950#700  # 950
 xmax = xmin + 400  # topo_start.shape[1]
 
+# -----------------
 # Final Elevation & Vegetation
 Fig = plt.figure(figsize=(14, 7.5))
 Fig.suptitle(meeb.name, fontsize=13)
@@ -426,7 +429,8 @@ cbar = Fig.colorbar(cax2)
 cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
 plt.tight_layout()
 
-# Topo Change, Observed vs Simulated
+# -----------------
+# Prepare For Plotting
 if ResReduc:
     # Reduced Resolutions
     xmin_reduc = int(xmin / reduc)
@@ -457,7 +461,8 @@ maxx = max(abs(np.min(tco)), abs(np.max(tco)))
 maxxx = max(abs(np.min(tcs)), abs(np.max(tcs)))
 maxxxx = max(maxx, maxxx)
 
-# Topo
+# -----------------
+# Topo Change, Observed vs Simulated
 Fig = plt.figure(figsize=(14, 7.5))
 Fig.suptitle(meeb.name, fontsize=13)
 ax1 = Fig.add_subplot(221)
@@ -479,7 +484,8 @@ ax4 = Fig.add_subplot(224)
 cax4 = ax4.matshow(tcs, cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
 plt.tight_layout()
 
-# Veg
+# -----------------
+# Vegetation Change
 Fig = plt.figure(figsize=(14, 7.5))
 Fig.suptitle(meeb.name, fontsize=13)
 ax1 = Fig.add_subplot(221)
@@ -500,7 +506,8 @@ cax4 = ax4.matshow(vcs, cmap='BrBG', vmin=-1, vmax=1)
 # cbar = Fig.colorbar(cax4)
 # cbar.set_label('Vegetation Change [%]', rotation=270, labelpad=20)
 
-# Cat
+# -----------------
+# Categorical Vegetation Change
 catfig = plt.figure(figsize=(14, 7.5))
 cmapcat = colors.ListedColormap(['green', 'yellow', 'gray', 'red'])
 bounds = [0.5, 1.5, 2.5, 3.5, 4.5]
@@ -511,6 +518,7 @@ plt.title('Vegetation Presence/Absence')
 cbar1 = plt.colorbar(cax1cat, boundaries=bounds, ticks=[1, 2, 3, 4])
 cbar1.set_ticklabels(['Hit', 'False Alarm', 'Correct Reject', 'Miss'])
 
+# -----------------
 # Profiles: Observed vs Simulated
 Fig = plt.figure(figsize=(14, 7.5))
 ax1 = Fig.add_subplot(211)
@@ -526,16 +534,25 @@ plt.plot(np.mean(topo_end_sim[:, xmin: xmax], axis=0), 'r')
 plt.legend(['Start', 'Observed', 'Simulated'])
 plt.title("Average Profile")
 
+# -----------------
+# Shoreline Position Over Time
+step = 1  # [yr] Plotting interval
+plt.figure(figsize=(14, 7.5))
+plt.xlabel('Cross-shore Position [m]')
+plt.ylabel('Alongshore Position [m]')
+for t in range(0, meeb.x_s_TS.shape[0], int(step * meeb.storm_iterations_per_year)):
+    plt.plot(meeb.x_s_TS[t, :], np.arange(len(dune_crest)))
 
+
+# -----------------
 # Animation: Elevation and Vegetation Over Time
-
 def ani_frame(timestep):
     mhw = meeb.RSLR * timestep + MHW
 
     elev = meeb.topo_TS[:, xmin: xmax, timestep]  # [m]
     elev = np.ma.masked_where(elev <= mhw, elev)  # Mask cells below MHW
     cax1.set_data(elev)
-    yrstr = "Year " + str(timestep * meeb.writeyear)
+    yrstr = "Year " + str(timestep * meeb.save_frequency)
     text1.set_text(yrstr)
 
     veggie = meeb.veg_TS[:, xmin: xmax, timestep]
@@ -548,7 +565,7 @@ def ani_frame(timestep):
 
 # Set animation base figure
 Fig = plt.figure(figsize=(14, 8))
-topo = meeb.topo_TS[:, xmin: xmax, 0] # [m]
+topo = meeb.topo_TS[:, xmin: xmax, 0]  # [m]
 topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
 cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps["terrain"]), 0.5, 0.9)  # Truncate colormap
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
@@ -556,7 +573,7 @@ ax1 = Fig.add_subplot(211)
 cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=6.0)
 cbar = Fig.colorbar(cax1)
 cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
-timestr = "Year " + str(0 * meeb.writeyear)
+timestr = "Year " + str(0 * meeb.save_frequency)
 text1 = plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
 
 veg = meeb.veg_TS[:, xmin: xmax, 0]
@@ -567,12 +584,12 @@ ax2 = Fig.add_subplot(212)
 cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
 cbar = Fig.colorbar(cax2)
 cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
-timestr = "Year " + str(0 * meeb.writeyear)
+timestr = "Year " + str(0 * meeb.save_frequency)
 text2 = plt.text(2, meeb.veg.shape[0] - 2, timestr, c='darkblue')
 plt.tight_layout()
 
 # Create and save animation
-ani = animation.FuncAnimation(Fig, ani_frame, frames=int(meeb.simulation_time_yr / meeb.writeyear) + 1, interval=300, blit=True)
+ani = animation.FuncAnimation(Fig, ani_frame, frames=int(meeb.simulation_time_yr / meeb.save_frequency) + 1, interval=300, blit=True)
 ani.save("Output/SimFrames/meeb_elev.gif", dpi=150, writer="imagemagick")
 
 plt.show()

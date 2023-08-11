@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 10 August 2023
+Last update: 11 August 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -32,7 +32,9 @@ class MEEB:
             simnum=1,  # Reference number of the simulation. Used for personal reference.
             MHW=0,  # [m NAVD88] Initial mean high water
             RSLR=0.000,  # [m/yr] Relative sea-level rise rate
-            qpotseries=2,  # Number reference to calculate how many iterations represent one year. 4 is standard year of 100 iterations, corresponds to qpot (#1 = 25 it, #2 = 50 it, #3 = 75 it, #4 = 100 it, #5 = 125 it) (*25 = qpot)
+            aeolian_iterations_per_year=50,  # Number of aeolian updates in 1 model year
+            storm_iterations_per_year=25,  # Number of storm and shoreline change updates in 1 model year
+            vegetation_iterations_per_year=1,  # Number of vegetation updates in 1 model year
             save_frequency=0.5,  # [years] Save results every n years
             simulation_time_yr=15.0,  # [yr] Length of the simulation time
             cellsize=1,  # [m] Interpreted cell size
@@ -124,7 +126,9 @@ class MEEB:
         self._simnum = simnum
         self._MHW = MHW
         self._RSLR = RSLR
-        self._qpotseries = qpotseries
+        self._aeolian_iterations_per_year = aeolian_iterations_per_year
+        self._storm_iterations_per_year = storm_iterations_per_year
+        self._vegetation_iterations_per_year = vegetation_iterations_per_year
         self._save_frequency = save_frequency
         self._simulation_time_yr = simulation_time_yr
         self._cellsize = cellsize
@@ -207,10 +211,10 @@ class MEEB:
             self._RNG = np.random.default_rng()  # Non-seeded random numbers (e.g., model simulations)
 
         # TIME
-        self._vegetationupdate = round(self._qpotseries * 25)
-        self._iterations_per_cycle = round(self._qpotseries * 25)  # [iterations/year] Number of iterations in 1 model year
-        self._stormreset = round(self._qpotseries * 1)
-        self._iterations = int(self._iterations_per_cycle * self._simulation_time_yr)  # Number of iterations
+        self._iterations_per_cycle = self._aeolian_iterations_per_year  # [iterations/year] Number of iterations in 1 model year
+        self._vegetation_update_frequency = round(self.iterations_per_cycle / self._vegetation_iterations_per_year)  # Frequency of vegetation updates (i.e., every n iterations)
+        self._storm_update_frequency = round(self.iterations_per_cycle / self._storm_iterations_per_year)  # Frequency of storm updates (i.e., every n iterations)
+        self._iterations = int(self._iterations_per_cycle * self._simulation_time_yr)  # Total number of iterations
         self._simulation_start_date = datetime.strptime(self._simulation_start_date, '%Y%m%d').date()  # Convert to datetime
         if hindcast:
             self._hindcast_timeseries_start_date = datetime.strptime(self._hindcast_timseries_start_date, '%Y%m%d').date()  # Convert to datetime
@@ -331,7 +335,7 @@ class MEEB:
         # --------------------------------------
         # STORMS
 
-        if it % self._stormreset == 0:
+        if it % self._storm_update_frequency == 0:
             iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
 
             # Generate Storms Stats
@@ -413,13 +417,13 @@ class MEEB:
                 self._MHW,
             )
 
-            # # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)
-            # self._x_s = routine.shoreline_change_from_AST(self._x_s,
-            #                                               self._wave_asymetry,
-            #                                               self._wave_high_angle_fraction,  # TODO: High-angle waves create problems, needs to be fixed; need to check rest of it too
-            #                                               50,  # self._cellsize,
-            #                                               self._stormreset / self._iterations_per_cycle
-            #                                               )
+            # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)
+            self._x_s = routine.shoreline_change_from_AST(self._x_s,
+                                                          self._wave_asymetry,
+                                                          self._wave_high_angle_fraction,  # Note: High-angle waves seem to create problems if the alongshore domain length is small (< 1km or so)
+                                                          25,  # self._cellsize,
+                                                          self._storm_update_frequency / self._iterations_per_cycle
+                                                          )
 
             prev_shoreline = self._x_s_TS[-1].astype(int)  # Shoreline positions from previous time step
             shoreline_change = (self._x_s - prev_shoreline) * self._cellsize  # [cellsize] Shoreline change from last time step
@@ -580,7 +584,7 @@ class MEEB:
         return self._save_data
 
     @property
-    def writeyear(self):
+    def save_frequency(self):
         return self._save_frequency
 
     @property
@@ -606,6 +610,14 @@ class MEEB:
     @property
     def StormRecord(self):
         return self._StormRecord
+
+    @property
+    def x_s_TS(self):
+        return self._x_s_TS
+
+    @property
+    def storm_iterations_per_year(self):
+        return self._storm_iterations_per_year
 
 
 # # __________________________________________________________________________________________________________________________________
