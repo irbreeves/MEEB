@@ -217,7 +217,6 @@ xmin = 18950  # 575, 2000, 2150, 2000, 3800  # 2650 #6500  #20000 # 5880 # 18950
 xmax = 19250  # 825, 2125, 2350, 2600, 4450  # 2850 #6600         # 5980 # 19250
 
 MHW = 0.39  # [m NAVD88]
-name = '18950-19250, 2017-2018, 10-52-56-11-55-5-22-18/183-56-2.05-575-6, BermEl 1.78, r=0.004'
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
 
@@ -241,6 +240,9 @@ spec2_e = End[2, xmin: xmax, :]
 veg_end = spec1_e + spec2_e  # Determine the initial cumulative vegetation effectiveness
 veg_end[veg_end > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or larger than one
 veg_end[veg_end < 0] = 0
+
+name = '18950-19250, 2017-2018, 10-52-56-11-55-5-22-18/183-56-2.05-575-6, BermEl 1.78, r=0.004'
+
 
 # __________________________________________________________________________________________________________________________________
 # RUN MODEL
@@ -282,8 +284,11 @@ meeb = MEEB(
     beach_erosiveness=2.73,
     beach_substeps=22,
     # --- Shoreline --- #
-    wave_asymetry=0.5,
-    wave_high_angle_fraction=0.5,
+    wave_asymetry=0.6,
+    wave_high_angle_fraction=0.39,
+    mean_wave_height=0.98,
+    mean_wave_period=6.6,
+    alongshore_section_length=25,
     # --- Veg --- #
     # sp1_c=1.20,
     # sp2_c=-0.47,
@@ -542,6 +547,8 @@ plt.xlabel('Cross-shore Position [m]')
 plt.ylabel('Alongshore Position [m]')
 for t in range(0, meeb.x_s_TS.shape[0], int(step * meeb.storm_iterations_per_year)):
     plt.plot(meeb.x_s_TS[t, :], np.arange(len(dune_crest)))
+ax = plt.gca()
+ax.invert_yaxis()
 
 
 # -----------------
@@ -569,7 +576,10 @@ topo = meeb.topo_TS[:, xmin: xmax, 0]  # [m]
 topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
 cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps["terrain"]), 0.5, 0.9)  # Truncate colormap
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-ax1 = Fig.add_subplot(211)
+if topo.shape[0] > topo.shape[1]:
+    ax1 = Fig.add_subplot(121)
+else:
+    ax1 = Fig.add_subplot(211)
 cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=6.0)
 cbar = Fig.colorbar(cax1)
 cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
@@ -580,7 +590,10 @@ veg = meeb.veg_TS[:, xmin: xmax, 0]
 veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
 cmap2 = copy.copy(plt.colormaps["YlGn"])
 cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-ax2 = Fig.add_subplot(212)
+if topo.shape[0] > topo.shape[1]:
+    ax2 = Fig.add_subplot(122)
+else:
+    ax2 = Fig.add_subplot(212)
 cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
 cbar = Fig.colorbar(cax2)
 cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)

@@ -1674,6 +1674,8 @@ def calc_dune_erosion_TS(topo,
 def shoreline_change_from_AST(x_s,
                               wave_asymetry,
                               wave_high_angle_fraction,
+                              mean_wave_height,
+                              mean_wave_period,
                               dy,
                               time_step,
                               ):
@@ -1689,6 +1691,10 @@ def shoreline_change_from_AST(x_s,
         Fraction of waves approaching from the left, looking offshore (Ashton & Murray, 2006).
     wave_high_angle_fraction : ndarray
         Fraction of waves approaching at angles higher than 45 degrees from shore normal (Ashton & Murray, 2006).
+    mean_wave_height: float, optional
+        [m] Mean offshore significant wave height.
+    mean_wave_period: float, optional
+        [s] Mean wave period.
     dy : float
         [m] Distance alongshore between shoreline positions used in the shoreline diffusion calculations
     time_step : ndarray
@@ -1701,7 +1707,7 @@ def shoreline_change_from_AST(x_s,
     """
 
     # Sample shoreline location at every dy [m] alongshore
-    x_s_ast = x_s[0::dy].copy()
+    x_s_ast = x_s[0::dy].copy()  # TODO: Take mean of each section instead of every nth location
     if (len(x_s) - 1) % dy > 0:
         x_s_ast = np.append(x_s_ast, x_s[-1])  # Append last shoreline value if remainder
         alongshore_section_length = np.append(np.ones([len(x_s_ast) - 1]) * dy, (len(x_s) - 1) % dy)  # Array of dy, plus remainder at end
@@ -1711,15 +1717,13 @@ def shoreline_change_from_AST(x_s,
     # Create Wave Distribution
     waves = ashton(a=wave_asymetry, h=wave_high_angle_fraction, loc=-np.pi/2, scale=np.pi)
 
-    # plt.figure()
-    # plt.plot(x_s, c='black')
-
     # Initialize AlongshoreTransporter
-    transporter = AlongshoreTransporter(shoreline_x=x_s_ast,  # TODO: Check if x_s array needs to be flipped to be in correct orientation for AlongshoreTransporter
+    transporter = AlongshoreTransporter(shoreline_x=x_s_ast,
                                         wave_distribution=waves,
                                         alongshore_section_length=alongshore_section_length,
                                         time_step=time_step,
-                                        # wave_period=10,
+                                        wave_height=mean_wave_height,
+                                        wave_period=mean_wave_period,
                                         )
     # Advance one time step
     transporter.update()
@@ -1729,9 +1733,6 @@ def shoreline_change_from_AST(x_s,
     xp = np.append(0, np.cumsum(alongshore_section_length[1:]))
     fp = transporter.shoreline_x
     x_s_updated = np.interp(x, xp, fp)  # Interpolate
-
-    # plt.plot(x_s_updated, c='red')
-    # plt.show()
 
     return x_s_updated
 

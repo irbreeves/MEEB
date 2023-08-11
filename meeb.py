@@ -76,6 +76,9 @@ class MEEB:
             shoreface_length_init=500,  # [m] Initial length of shoreface
             wave_asymetry=0.5,  # Fraction of waves approaching from the left (when looking offshore)
             wave_high_angle_fraction=0,  # Fraction of waves approaching at angles higher than 45 degrees from shore normal
+            mean_wave_height=1.0,  # [m] Mean offshore significant wave height
+            mean_wave_period=10,  # [s] Mean wave period
+            alongshore_section_length=25,  # [m] Distance alongshore between shoreline positions used in the shoreline diffusion calculations
 
             # VEGETATION
             sp1_a=-1.3,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
@@ -164,6 +167,9 @@ class MEEB:
         self._LShoreface = shoreface_length_init
         self._wave_asymetry = wave_asymetry
         self._wave_high_angle_fraction = wave_high_angle_fraction
+        self._mean_wave_height = mean_wave_height
+        self._mean_wave_period = mean_wave_period
+        self._alongshore_section_length = alongshore_section_length
         self._sp1_a = sp1_a
         self._sp1_b = sp1_b
         self._sp1_c = sp1_c
@@ -420,8 +426,10 @@ class MEEB:
             # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)
             self._x_s = routine.shoreline_change_from_AST(self._x_s,
                                                           self._wave_asymetry,
-                                                          self._wave_high_angle_fraction,  # Note: High-angle waves seem to create problems if the alongshore domain length is small (< 1km or so)
-                                                          25,  # self._cellsize,
+                                                          self._wave_high_angle_fraction,  # Note: High-angle waves seem to create problems if the alongshore domain length is very small (< 200m or so)
+                                                          self._mean_wave_height,
+                                                          self._mean_wave_period,
+                                                          self._alongshore_section_length,
                                                           self._storm_update_frequency / self._iterations_per_cycle
                                                           )
 
