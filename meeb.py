@@ -101,6 +101,7 @@ class MEEB:
             Spec2_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 2
             flow_reduction_max_spec1=0.05,  # Proportion of overwash flow reduction through a cell populated with species 1 at full density
             flow_reduction_max_spec2=0.20,  # Proportion of overwash flow reduction through a cell populated with species 2 at full density
+            effective_veg_sigma=1.5,  # Standard deviation for Gaussian filter of vegetation cover
 
             # STORM OVERWASH AND DUNE EROSION
             storm_list_filename="VCRStormList.npy",
@@ -190,6 +191,7 @@ class MEEB:
         self._Spec2_elev_min = Spec2_elev_min
         self._flow_reduction_max_spec1 = flow_reduction_max_spec1
         self._flow_reduction_max_spec2 = flow_reduction_max_spec2
+        self._effective_veg_sigma = effective_veg_sigma
         self._threshold_in = threshold_in
         self._Rin_in = Rin_in
         self._Rin_ru = Rin_ru
@@ -250,7 +252,7 @@ class MEEB:
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
         self._veg[self._veg < 0] = 0
-        self._effective_veg = scipy.ndimage.filters.gaussian_filter(self._veg, [1.5, 1.5], mode='constant')  # Effective vegetation cover represents effect of nearby vegetation on local wind
+        self._effective_veg = scipy.ndimage.filters.gaussian_filter(self._veg, [self._effective_veg_sigma, self._effective_veg_sigma], mode='constant')  # Effective vegetation cover represents effect of nearby vegetation on local wind
         self._growth_reduction_timeseries = np.linspace(0, self._VGR / 100, int(np.ceil(self._simulation_time_yr)))
 
         # STORMS
@@ -518,7 +520,7 @@ class MEEB:
             self._veg[self._veg < 0] = 0
 
             # Determine effective vegetation cover by smoothing; represents effect of nearby vegetation on local wind
-            self._effective_veg = scipy.ndimage.filters.gaussian_filter(self._veg, [1.5, 1.5], mode='constant')
+            self._effective_veg = scipy.ndimage.filters.gaussian_filter(self._veg, [self._effective_veg_sigma, self._effective_veg_sigma], mode='constant')
 
             self._vegcount = self._vegcount + 1  # Update counter
 
