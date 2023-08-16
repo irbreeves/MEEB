@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 10 August 2023
+Last update: 16 August 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -1775,10 +1775,10 @@ def brier_skill_score(simulated, observed, baseline, mask):
     return BSS
 
 
-@njit
+@njit()
 def adjust_ocean_shoreline(
         topo,
-        shoreline_change,
+        new_shoreline,
         prev_shoreline,
         MHW,
         shoreface_slope,
@@ -1790,10 +1790,10 @@ def adjust_ocean_shoreline(
     ----------
     topo : ndarray
         [m NAVD88] Current elevation domain.
-    shoreline_change : ndarray
-        [m] Amount of shoreline change for each cell alongshore. Positive (negative) = erosion (progradation).
-    prev_shoreline : ndarray
-        [m] Cross-shore coordinates for shoreline position at previous time step.
+    new_shoreline : ndarray float
+        [m] Cross-shore location of new target ocean shoreline.
+    prev_shoreline : ndarray float
+        [m] Cross-shore location of ocean shoreline from previous time step.
     MHW : float
         [m NAVD88] Mean high water.
     shoreface_slope : ndarray
@@ -1807,23 +1807,31 @@ def adjust_ocean_shoreline(
         [m NAVD88] Topobathy updated for ocean shoreline change.
     """
 
-    for ls in range(topo.shape[0]):
-        sc_ls = int(shoreline_change[ls])  # [m] Amount of shoreline change for this location alongshore
-        new_shoreline = prev_shoreline[ls] + sc_ls
-        if sc_ls > 0:  # Shoreline erosion
+    target_xs = np.floor(new_shoreline).astype(int)
+    prev_xs = np.floor(prev_shoreline).astype(int)
+    shoreline_change = target_xs - prev_xs  # [m] (+) erosion, (-) accretion
+
+    erosion = shoreline_change > 0  # [bool]
+    accretion = shoreline_change < 0  # [bool]
+
+    for ls in range(len(target_xs)):
+        target = target_xs[ls]
+        prev = prev_xs[ls]
+        if erosion[ls]:  # Erode the shoreline
             # Adjust shoreline
-            topo[ls, new_shoreline] = MHW - RSLR  # [m NAVD88]
+            topo[ls, target] = MHW - max(RSLR, 0.01)  # [m NAVD88]  # Old beach cell elevationss set to just below MHW
             # Adjust shoreface
-            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] + MHW  # New shoreface cells
-            topo[ls, :new_shoreline] = shoreface  # Insert into domain
-        elif sc_ls < 0:  # Shoreline progradation
+            shoreface = np.arange(-target, 0) * shoreface_slope[ls] + topo[ls, target]  # New shoreface cells
+            topo[ls, :target] = shoreface  # Insert into domain
+
+        elif accretion[ls]:  # Prograde the shoreline
             # Adjust shoreline
-            topo[ls, new_shoreline: prev_shoreline[ls]] = MHW + RSLR  # [m NAVD88]
+            topo[ls, target: prev] = np.mean(topo[ls, prev: prev + 5]) + RSLR  # [m NAVD88]  # New beach cell elevations set to average of previous 5 most-oceanward beach cells
             # Adjust shoreface
-            shoreface = np.arange(-new_shoreline, 0) * shoreface_slope[ls] + MHW  # New shoreface cells
-            if len(shoreface) > new_shoreline:
-                raise ValueError("Out-Of-Bounds: Ocean shoreline progradaded beyond simulation domain boundary.")
-            topo[ls, :new_shoreline] = shoreface  # Insert into domain
+            shoreface = np.arange(-target, 0) * shoreface_slope[ls] + MHW  # New shoreface cells
+            if len(shoreface) > target:
+                raise ValueError("Out-Of-Bounds: Ocean shoreline prograded beyond simulation domain boundary.")
+            topo[ls, :target] = shoreface  # Insert into domain
 
     return topo
 

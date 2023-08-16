@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 11 August 2023
+Last update: 16 August 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -435,29 +435,17 @@ class MEEB:
                                                           self._storm_update_frequency / self._iterations_per_cycle
                                                           )
 
-            prev_shoreline = self._x_s_TS[-1].astype(int)  # Shoreline positions from previous time step
-            shoreline_change = (self._x_s - prev_shoreline) * self._cellsize  # [cellsize] Shoreline change from last time step
-
-            self._shoreline_change_aggregate += shoreline_change  # Add to aggregate of shoreline change over whole simulation
-
-            shoreline_change[self._shoreline_change_aggregate >= 1] = np.floor(self._shoreline_change_aggregate[self._shoreline_change_aggregate >= 1]).astype(int)  # Remove partial shoreline change for this iteration
-            self._shoreline_change_aggregate[self._shoreline_change_aggregate >= 1] -= shoreline_change[self._shoreline_change_aggregate >= 1]  # Subtract this iteration's shoreline change from aggregate
-
-            shoreline_change[self._shoreline_change_aggregate <= -1] = np.ceil(self._shoreline_change_aggregate[self._shoreline_change_aggregate <= -1]).astype(int)  # Remove partial shoreline change for this iteration
-            self._shoreline_change_aggregate[self._shoreline_change_aggregate <= -1] -= shoreline_change[self._shoreline_change_aggregate <= -1]  # Subtract this iteration's shoreline change from aggregate
-
-            shoreline_change[np.logical_and(-1 < shoreline_change, shoreline_change < 1)] = 0  # Remove partial shoreline change for this iteration
+            prev_shoreline = self._x_s_TS[-1]  # Shoreline positions from previous time step
 
             # Adjust topography domain to according to shoreline change
-            if np.sum(shoreline_change) != 0:
-                self._topo = routine.adjust_ocean_shoreline(
-                    self._topo,
-                    shoreline_change,
-                    prev_shoreline,
-                    self._MHW,
-                    shoreface_slope,
-                    self._RSLR,
-                )
+            self._topo = routine.adjust_ocean_shoreline(
+                self._topo,
+                self._x_s,
+                prev_shoreline,
+                self._MHW,
+                shoreface_slope,
+                self._RSLR,
+            )
 
             # Store shoreline and shoreface toe locations
             self._x_s_TS = np.vstack((self._x_s_TS, self._x_s))  # Store
