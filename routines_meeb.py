@@ -20,6 +20,7 @@ from scipy import signal
 from AST.alongshore_transporter import AlongshoreTransporter
 from AST.waves import ashton
 from numba import njit
+from skimage.measure import block_reduce
 
 
 def shadowzones(topof, shadowangle, direction):
@@ -612,7 +613,7 @@ def shoreline_change_from_CST(
 
     Qow[Qow < 0] = 0
 
-    h_b = np.average(topof, weights=(topof >= MHW), axis=1)  # [m NAV88] Average height of subaerial barrier for each cell length alongshore
+    h_b = np.array(np.ma.array(topof, mask=(topof < MHW)).mean(axis=1))  # [m NAV88] Average height of subaerial barrier for each cell length alongshore
 
     # Shoreface Flux
     s_sf = d_sf / (x_s - x_t)
@@ -690,8 +691,6 @@ def foredune_crest(topo, MHW):
     """
 
     # Parameters
-    shoreline = ocean_shoreline(topo, MHW)  # [m] Ocean shoreline locations
-    max_crossshore = np.max(shoreline) + 400  # [m] Limit cross-shore distance over which algorithm searches for foredune crest
     buff = 25  # [m] Buffer for searching for foredune crests around rough estimate of dune location
     window_XL = 150  # Window size for alongshore moving average of topography
     if window_XL > topo.shape[0]:
@@ -701,7 +700,7 @@ def foredune_crest(topo, MHW):
         window_large = topo.shape[0]
     window_small = 11  # Window size for secondary narrow savgol smoothening
 
-    # Step 1: Find cross-shore location of maximum elevation for each cell alongshore
+    # Step 1: Find cross-shore location of maximum elevation for each cell alongshore of averaged topography
     moving_avg_elevation = scipy.ndimage.uniform_filter1d(topo.copy(), axis=0, size=window_XL)  # Rolling average in alongshore direction
     crestline = np.argmax(moving_avg_elevation, axis=1)  # Cross-shore location of maximum elevation of averaged topography
 
@@ -1705,20 +1704,17 @@ def shoreline_change_from_AST(x_s,
     x_s
         Cross-shore coordinates for shoreline position updated for alongshore sediment transport.
     """
+    # TODO: Currently initializing Alongshore Transporter class every loop, should initialize only once!
 
     # Sample shoreline location at every dy [m] alongshore
-    x_s_ast = x_s[0::dy].copy()  # TODO: Take mean of each section instead of every nth location
-    if (len(x_s) - 1) % dy > 0:
-        x_s_ast = np.append(x_s_ast, x_s[-1])  # Append last shoreline value if remainder
-        alongshore_section_length = np.append(np.ones([len(x_s_ast) - 1]) * dy, (len(x_s) - 1) % dy)  # Array of dy, plus remainder at end
-    else:
-        alongshore_section_length = dy
+    x_s_ast = np.nanmean(np.pad(x_s.copy().astype(float), (0, 0 if x_s.copy().size % dy == 0 else dy - x_s.copy().size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
+    alongshore_section_length = np.ones([len(x_s_ast)]) * dy
 
     # Create Wave Distribution
     waves = ashton(a=wave_asymetry, h=wave_high_angle_fraction, loc=-np.pi/2, scale=np.pi)
 
     # Initialize AlongshoreTransporter
-    transporter = AlongshoreTransporter(shoreline_x=x_s_ast,
+    transporter = AlongshoreTransporter(shoreline_x=x_s_ast.copy(),
                                         wave_distribution=waves,
                                         alongshore_section_length=alongshore_section_length,
                                         time_step=time_step,
@@ -1727,11 +1723,12 @@ def shoreline_change_from_AST(x_s,
                                         )
     # Advance one time step
     transporter.update()
+    new_x_s = transporter.shoreline_x
 
     # Interpolate shoreline change from AST linearly between each dy spacing
     x = np.arange(len(x_s))
-    xp = np.append(0, np.cumsum(alongshore_section_length[1:]))
-    fp = transporter.shoreline_x
+    xp = np.append(int(dy / 2), np.cumsum(alongshore_section_length[1:]) + int(dy / 2))
+    fp = new_x_s
     x_s_updated = np.interp(x, xp, fp)  # Interpolate
 
     return x_s_updated
@@ -1807,8 +1804,8 @@ def adjust_ocean_shoreline(
         [m NAVD88] Topobathy updated for ocean shoreline change.
     """
 
-    target_xs = np.floor(new_shoreline).astype(int)
-    prev_xs = np.floor(prev_shoreline).astype(int)
+    target_xs = np.floor(new_shoreline).astype(np.int64)
+    prev_xs = np.floor(prev_shoreline).astype(np.int64)
     shoreline_change = target_xs - prev_xs  # [m] (+) erosion, (-) accretion
 
     erosion = shoreline_change > 0  # [bool]
@@ -1818,20 +1815,25 @@ def adjust_ocean_shoreline(
         target = target_xs[ls]
         prev = prev_xs[ls]
         if erosion[ls]:  # Erode the shoreline
-            # Adjust shoreline
-            topo[ls, target] = MHW - max(RSLR, 0.01)  # [m NAVD88]  # Old beach cell elevationss set to just below MHW
-            # Adjust shoreface
-            shoreface = np.arange(-target, 0) * shoreface_slope[ls] + topo[ls, target]  # New shoreface cells
-            topo[ls, :target] = shoreface  # Insert into domain
-
+            if target < topo.shape[1]:  # Shoreline is within model domain
+                # Adjust shoreline
+                topo[ls, target] = MHW - max(RSLR, 0.01)  # [m NAVD88]  # Old beach cell elevationss set to just below MHW
+                # Adjust shoreface
+                shoreface = np.arange(-target, 0) * shoreface_slope[ls] + topo[ls, target]  # New shoreface cells
+                topo[ls, :target] = shoreface  # Insert into domain
+            else:  # Shoreline is outside model domain
+                shoreface = np.arange(-target, 0) * shoreface_slope[ls] + MHW  # New shoreface cells
+                shoreface = shoreface[-topo.shape[1]:]  # Trim to size of model domain
+                topo[ls, :] = shoreface
         elif accretion[ls]:  # Prograde the shoreline
-            # Adjust shoreline
-            topo[ls, target: prev] = np.mean(topo[ls, prev: prev + 5]) + RSLR  # [m NAVD88]  # New beach cell elevations set to average of previous 5 most-oceanward beach cells
-            # Adjust shoreface
-            shoreface = np.arange(-target, 0) * shoreface_slope[ls] + MHW  # New shoreface cells
-            if len(shoreface) > target:
+            if 0 < target <= topo.shape[1]:  # Shoreline is within model domain
+                # Adjust shoreline  TODO: Account for case where shoreline previously beyond domain progrades back into domain
+                topo[ls, target: prev] = np.mean(topo[ls, prev: prev + 5]) + RSLR  # [m NAVD88]  # New beach cell elevations set to average of previous 5 most-oceanward beach cells
+                # Adjust shoreface
+                shoreface = np.arange(-target, 0) * shoreface_slope[ls] + MHW  # New shoreface cells
+                topo[ls, :target] = shoreface  # Insert into domain
+            elif target < 0:
                 raise ValueError("Out-Of-Bounds: Ocean shoreline prograded beyond simulation domain boundary.")
-            topo[ls, :target] = shoreface  # Insert into domain
 
     return topo
 
