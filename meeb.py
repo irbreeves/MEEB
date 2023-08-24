@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 16 August 2023
+Last update: 23 August 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -79,6 +79,11 @@ class MEEB:
             mean_wave_height=1.0,  # [m] Mean offshore significant wave height
             mean_wave_period=10,  # [s] Mean wave period
             alongshore_section_length=25,  # [m] Distance alongshore between shoreline positions used in the shoreline diffusion calculations
+            estimate_shoreface_parameters=True,  # [bool] Turn on to estimate shoreface parameters as function of specific wave and sediment characteristics
+            shoreface_grain_size=2e-4,  # [m] Median grain size (D50) of ocean shoreface; used for optional shoreface parameter estimations
+            shoreface_transport_efficiency=0.01,  # Shoreface suspended sediment transport efficiency factor; used for optional shoreface parameter estimations
+            shoreface_friction=0.01,  # Shoreface friction factor; used for optional shoreface parameter estimations
+            specific_gravity_submerged_sed=1.65,  # Submerged specific gravity of sediment; used for optional shoreface parameter estimations
 
             # VEGETATION
             sp1_a=-1.3,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
@@ -227,7 +232,7 @@ class MEEB:
         if hindcast:
             self._hindcast_timeseries_start_date = datetime.strptime(self._hindcast_timseries_start_date, '%Y%m%d').date()  # Convert to datetime
             self._simulation_start_iteration = ((self._simulation_start_date.year - self._hindcast_timeseries_start_date.year) * self._iterations_per_cycle) + \
-                                           math.floor(self._simulation_start_date.timetuple().tm_yday / 365 * self._iterations_per_cycle)  # Iteration, realtive to timeseries start, from which to begin hindcast
+                                               math.floor(self._simulation_start_date.timetuple().tm_yday / 365 * self._iterations_per_cycle)  # Iteration, realtive to timeseries start, from which to begin hindcast
             if self._simulation_start_iteration % 2 != 0:
                 self._simulation_start_iteration -= 1  # Round simulation start iteration to even number
         else:
@@ -243,6 +248,14 @@ class MEEB:
         self._groundwater_elevation = np.zeros(self._topo.shape)  # [m NAVD88] Initialize
 
         # SHOREFACE & SHORELINE
+        if estimate_shoreface_parameters:  # Option to estimate shoreface parameter values from wave and sediment charactersitics; Follows Nienhuis & Lorenzo-Trueba (2019)
+            w_s = (specific_gravity_submerged_sed * 9.81 * shoreface_grain_size ** 2) / ((18 * 1e-6) + np.sqrt(0.75 * specific_gravity_submerged_sed * 9.81 * (shoreface_grain_size ** 3)))  # [m/s] Settling velocity (Church & Ferguson, 2004)
+            z0 = 2 * self._mean_wave_height / 0.78  # [m] Minimum depth of integration (simple approximation of breaking wave depth based on offshore wave height)
+            self._DShoreface = 0.018 * self._mean_wave_height * self._mean_wave_period * math.sqrt(9.81 / (specific_gravity_submerged_sed * shoreface_grain_size))  # [m] Shoreface depth
+            self._s_sf_eq = (3 * w_s / 4 / np.sqrt(self._DShoreface * 9.81) * (5 + 3 * self._mean_wave_period ** 2 * 9.81 / 4 / (np.pi ** 2) / self._DShoreface))  # Equilibrium shoreface slope
+            self._k_sf = ((3600 * 24 * 365) * ((shoreface_transport_efficiency * shoreface_friction * 9.81 ** (11 / 4) * self._mean_wave_height ** 5 * self._mean_wave_period ** (5 / 2)) / (960 * specific_gravity_submerged_sed * math.pi ** (7 / 2) * w_s ** 2)) *
+                          (((1 / (11 / 4 * z0 ** (11 / 4))) - (1 / (11 / 4 * self._DShoreface ** (11 / 4)))) / (self._DShoreface - z0)))  # [m^3/m/yr] Shoreface response rate
+            self._LShoreface = int(self._DShoreface / self._s_sf_eq)  # [m] Initialize length of shoreface such that initial shoreface slope equals equilibrium shoreface slope
         self._x_s = routine.ocean_shoreline(self._topo, self._MHW)  # [m] Start locations of shoreline according to initial topography and MHW
         self._x_t = self._x_s - self._LShoreface  # [m] Start locations of shoreface toe
 
@@ -451,7 +464,6 @@ class MEEB:
             self._x_s_TS = np.vstack((self._x_s_TS, self._x_s))  # Store
             self._x_t_TS = np.vstack((self._x_t_TS, self._x_t))  # Store
 
-
         # --------------------------------------
         # VEGETATION
 
@@ -535,7 +547,6 @@ class MEEB:
 
         self._sedimentation_balance[:] = 0  # [m] Reset the balance map
         self._topographic_change[:] = 0  # [m] Reset the balance map
-
 
     @property
     def name(self):
