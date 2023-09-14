@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 23 August 2023
+Last update: 14 September 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -110,7 +110,7 @@ class MEEB:
 
             # STORM OVERWASH AND DUNE EROSION
             storm_list_filename="VCRStormList.npy",
-            storm_timeseries_filename="",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
+            storm_timeseries_filename="StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
             threshold_in=0.25,  # [%] Threshold percentage of overtopped dune cells exceeded by Rlow needed to be in inundation overwash regime
             Rin_in=5,  # [m^3/hr] Flow infiltration and drag parameter, inundation overwash regime
             Rin_ru=325,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
@@ -259,6 +259,15 @@ class MEEB:
         self._x_s = routine.ocean_shoreline(self._topo, self._MHW)  # [m] Start locations of shoreline according to initial topography and MHW
         self._x_t = self._x_s - self._LShoreface  # [m] Start locations of shoreface toe
 
+        self._coast_diffusivity, self._di, self._dj, self._ny = routine.init_AST_environment(self._wave_asymetry,
+                                                                                             self._wave_high_angle_fraction,
+                                                                                             self._mean_wave_height,
+                                                                                             self._mean_wave_period,
+                                                                                             self._DShoreface,
+                                                                                             1.75,  # mean_barrier_height, or bermEl
+                                                                                             self._alongshore_section_length,
+                                                                                             self._longshore)
+
         # VEGETATION
         self._spec1 = Init[1, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, :]  # [0-1] 2D array of vegetation effectiveness for spec1
         self._spec2 = Init[2, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, :]  # [0-1] 2D array of vegetation effectiveness for spec2
@@ -271,9 +280,9 @@ class MEEB:
         # STORMS
         self._StormList = np.load(inputloc + storm_list_filename)
         self._storm_timeseries = np.load(inputloc + storm_timeseries_filename)
-        self._pstorm = [0.787878787878788, 0.393939393939394, 0.454545454545455, 0.727272727272727, 0.575757575757576, 0.484848484848485, 0.363636363636364, 0.363636363636364, 0.151515151515152, 0.0606060606060606, 0.181818181818182,
-                        0.0606060606060606, 0.0606060606060606, 0, 0.0303030303030303, 0.121212121212121, 0.393939393939394, 0.272727272727273, 0.424242424242424, 0.424242424242424, 0.545454545454545, 0.424242424242424,
-                        0.272727272727273, 0.484848484848485, 0.484848484848485]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1980-2013 VCR storm record
+        self._pstorm = [0.380952380952381, 0.428571428571429, 0.238095238095238, 0.357142857142857, 0.476190476190476, 0.380952380952381, 0.333333333333333, 0.357142857142857, 0.285714285714286, 0, 0.119047619047619,
+                        0.0238095238095238, 0.0476190476190476, 0.0476190476190476, 0.0476190476190476, 0.0714285714285714, 0.380952380952381, 0.333333333333333, 0.261904761904762, 0.190476190476190, 0.190476190476190,
+                        0.285714285714286, 0.214285714285714, 0.357142857142857, 0.285714285714286]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 USGS NCB storm record (1.78 m NAV88 Berm El.)
         if self._hindcast and self._iterations > (self._storm_timeseries[-1, 0] - self._simulation_start_iteration):
             raise ValueError("Simulation length is greater than hindcast timeSeries length.")
 
@@ -336,7 +345,7 @@ class MEEB:
         wind_shadows = routine.shadowzones(self._topo, self._shadowangle, direction=self._wind_direction[it])  # [bool] Map of True for in shadow, False not in shadow
 
         # Erosion/Deposition Probabilities
-        aeolian_erosion_prob = routine.erosprobs(self._effective_veg, wind_shadows, subaerial, self._topo, self._groundwater_elevation, self._p_ero_sand, self._entrainment_veg_limit)  # Returns map of erosion probabilities
+        aeolian_erosion_prob = routine.erosprobs(self._effective_veg, wind_shadows, subaerial, self._topo, self._groundwater_elevation, self._p_ero_sand, self._entrainment_veg_limit, self._slabheight, self._MHW)  # Returns map of erosion probabilities
         aeolian_deposition_prob = routine.depprobs(self._effective_veg, wind_shadows, subaerial, self._p_dep_base, self._p_dep_sand, self._p_dep_sand_VegMax, self._topo, self._groundwater_elevation)  # Returns map of deposition probabilities
 
         # Move sand slabs
@@ -361,12 +370,12 @@ class MEEB:
 
             # Generate Storms Stats
             if self._hindcast:  # Empirical storm time series
-                storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._simulation_start_iteration)  # [m NAVD88]
+                storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._MHW, self._simulation_start_iteration)  # [m NAVD88]
             else:  # Stochastic storm model
-                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, self._beach_equilibrium_slope, self._RNG)  # [m initial MSL]
+                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, self._beach_equilibrium_slope, self._longshore, self._MHW, self._RNG)  # [m initial MSL]
                 # Account for change in mean sea-level on synthetic storm elevations by adding aggregate RSLR since simulation start (i.e., convert from initial MSL to m NAVD88)
-                Rhigh += self._MHW - self._MHW_init  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
-                Rlow += self._MHW - self._MHW_init  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
+                Rhigh += (self._MHW - self._MHW_init)  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
+                Rlow += (self._MHW - self._MHW_init)  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
 
             if storm:
 
@@ -439,14 +448,23 @@ class MEEB:
             )
 
             # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)
-            self._x_s = routine.shoreline_change_from_AST(self._x_s,
-                                                          self._wave_asymetry,
-                                                          self._wave_high_angle_fraction,  # Note: High-angle waves seem to create problems if the alongshore domain length is very small (< 200m or so)
-                                                          self._mean_wave_height,
-                                                          self._mean_wave_period,
-                                                          self._alongshore_section_length,
-                                                          self._storm_update_frequency / self._iterations_per_cycle
-                                                          )
+            # self._x_s = routine.shoreline_change_from_AST(self._x_s,
+            #                                               self._wave_asymetry,
+            #                                               self._wave_high_angle_fraction,  # Note: High-angle waves seem to create problems if the alongshore domain length is very small (< 200m or so)
+            #                                               self._mean_wave_height,
+            #                                               self._mean_wave_period,
+            #                                               self._alongshore_section_length,
+            #                                               self._storm_update_frequency / self._iterations_per_cycle
+            #                                               )
+
+            self._x_s = routine.shoreline_change_from_AST_2(self._x_s,
+                                                            self._coast_diffusivity,
+                                                            self._di,
+                                                            self._dj,
+                                                            self._alongshore_section_length,
+                                                            self._storm_update_frequency / self._iterations_per_cycle,
+                                                            self._ny,
+                                                            )
 
             prev_shoreline = self._x_s_TS[-1]  # Shoreline positions from previous time step
 

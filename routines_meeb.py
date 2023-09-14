@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 16 August 2023
+Last update: 14 September 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -17,10 +17,11 @@ import math
 import copy
 import scipy
 from scipy import signal
-from AST.alongshore_transporter import AlongshoreTransporter
-from AST.waves import ashton
+from AST.alongshore_transporter import AlongshoreTransporter, calc_alongshore_transport_k
+from AST.waves import ashton, WaveAngleGenerator
 from numba import njit
-from skimage.measure import block_reduce
+from scipy.sparse import csr_matrix
+from scipy.sparse.linalg import spsolve
 
 
 def shadowzones(topof, shadowangle, direction):
@@ -70,7 +71,7 @@ def shadowzones(topof, shadowangle, direction):
 
 
 @njit
-def erosprobs(vegf, shade, sand, topof, groundw, p_er, entrainment_veg_limit):
+def erosprobs(vegf, shade, sand, topof, groundw, p_er, entrainment_veg_limit, slabheight, mhw):
     """ Returns a map with erosion probabilities.
 
     Parameters
@@ -89,6 +90,10 @@ def erosprobs(vegf, shade, sand, topof, groundw, p_er, entrainment_veg_limit):
         Probability of erosion of base/sandy cell with zero vegetation.
     entrainment_veg_limit : float
         [%] Percent of vegetation cover (effectiveness) beyond which aeolian sediment entrainment is no longer possible.
+    slabheight : float
+        [m] Slab height.
+    mhw : float
+        [m] Mean high water.
 
     Returns
     -------
@@ -96,7 +101,7 @@ def erosprobs(vegf, shade, sand, topof, groundw, p_er, entrainment_veg_limit):
         Map of effective erosion probabilities across landscape.
     """
 
-    Pe = np.logical_not(shade) * sand * (topof > groundw) * (p_er - (p_er / entrainment_veg_limit * vegf))
+    Pe = np.logical_not(shade) * sand * (topof > groundw) * ((topof - mhw) > slabheight) * (p_er - (p_er / entrainment_veg_limit * vegf))
     Pe *= (Pe >= 0)
 
     return Pe
@@ -661,7 +666,7 @@ def backbarrier_shoreline(topof, MHW):
     topof : ndarray
         [m] Present elevation domain.
     MHW : float
-        [slabs] Mean high water elevation.
+        [m] Mean high water elevation.
 
     Returns
     ----------
@@ -868,7 +873,7 @@ def find_crests(profile, MHW, threshold, crest_pct):
     return idx
 
 
-def stochastic_storm(pstorm, iteration, storm_list, beach_slope, RNG):
+def stochastic_storm(pstorm, iteration, storm_list, beach_slope, longshore, MHW, RNG):
     """Stochastically determines whether a storm occurs for this timestep, and, if so, stochastically determines the relevant characteristics of the storm (i.e., water levels, duration).
 
     Parameters
@@ -881,8 +886,12 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, RNG):
         List of synthetic storms (rows), with wave and tide statistics (columns) desccribing each storm.
     beach_slope : float
         Equilibrium beach slope.
+    longshore :
+        [m] Longshore length of model domain.
+    MHW : float
+        [m NAVD88] Mean high water elevation.
     RNG :
-        Random number generator, either seeded or unseeded
+        Random number generator, either seeded or unseeded.
 
     Returns
     ----------
@@ -920,16 +929,22 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, RNG):
         Rhigh = NTR + R2 + AT
         Rlow = (Rhigh - (Swash / 2))
 
+        # No storm if TWL < MHW
+        if Rhigh <= MHW:
+            storm = False
     else:
         Rhigh = 0
         Rlow = 0
         dur = 0
 
-    return storm, Rhigh, Rlow, dur
+    Rhigh = Rhigh * np.ones(longshore)
+    Rlow = Rlow * np.ones(longshore)
+
+    return storm, Rhigh, Rlow, int(dur)
 
 
 @njit
-def get_storm_timeseries(storm_timeseries, it, longshore, hindcast_start):
+def get_storm_timeseries(storm_timeseries, it, longshore, MHW, hindcast_start):
     """Returns storm characteristics for this model iteration from an empirical storm timeseries.
 
     Parameters
@@ -938,10 +953,12 @@ def get_storm_timeseries(storm_timeseries, it, longshore, hindcast_start):
         Table of observed storm events.
     it : int
         Current model iteration.
-    longshore :
-        [m] Longshore length of model domain
+    longshore : int
+        [m] Longshore length of model domain.
+    MHW : float
+        [m NAVD88] Mean high water elevation.
     hindcast_start :
-        [week] Week (1/50 year) to start hindcast from
+        [week] Week (1/50 year) to start hindcast from.
 
     Returns
     ----------
@@ -958,18 +975,21 @@ def get_storm_timeseries(storm_timeseries, it, longshore, hindcast_start):
     it_effective = it + hindcast_start
 
     if it_effective in storm_timeseries[:, 0]:
-        storm = True
         idx = np.where(storm_timeseries[:, 0] == it_effective)[0][0]
         Rhigh = storm_timeseries[idx, 1] * np.ones(longshore)
         Rlow = storm_timeseries[idx, 2] * np.ones(longshore)
         dur = storm_timeseries[idx, 3]
+        if storm_timeseries[idx, 1] <= MHW:
+            storm = False  # No storm if TWL < MHW
+        else:
+            storm = True
     else:
         storm = False
         Rhigh = np.zeros(longshore)
         Rlow = np.zeros(longshore)
         dur = 0
 
-    return storm, Rhigh, Rlow, dur
+    return storm, Rhigh, Rlow, int(dur)
 
 
 def storm_processes(
@@ -1017,7 +1037,7 @@ def storm_processes(
         [m NAVD88] Highest elevation of the landward margin of runup (i.e. total water level).
     Rlow : ndarray
         [m NAVD88] Lowest elevation of the landward margin of runup.
-    dur: ndarray
+    dur: int
         [hrs] Duration of storm.
     threshold_in : float
         [%] Threshold percentage of overtopped dune cells needed to be in inundation overwash regime.
@@ -1131,11 +1151,11 @@ def storm_processes(
             Elevation[TS, :, :] = Elevation[TS - 1, :, :]
 
         # Find TWL for this timestep
-        if TS < iterations / 2:
-            Rhigh_TS = Rlow + twl_step * TS
-        else:
-            Rhigh_TS = TWL - (twl_step * (TS - iterations / 2))
-        # Rhigh_TS = Rhigh.copy()  # This line prescribes a static TWL over course of storm
+        # if TS < iterations / 2:  # IRBR 13Sep23: Varying TWL causes crazy beach/dune behavior for small storms, unsure why
+        #     Rhigh_TS = Rlow + twl_step * TS
+        # else:
+        #     Rhigh_TS = TWL - (twl_step * (TS - iterations / 2))
+        Rhigh_TS = Rhigh.copy()  # This line prescribes a static TWL over course of storm
 
         # Find dune crest locations and heights for this storm iteration
         dune_crest_loc = foredune_crest(Elevation[TS, :, :], MHW)  # Cross-shore location of pre-storm dune crest
@@ -1298,7 +1318,6 @@ def route_overwash(
         for ls in range(longshore):
             Discharge[TS, ls, dune_crest_loc[ls] - domain_width_start] = Qdune[ls]
 
-        Rin_eff = 1  # TEMP
         flow_start = int(np.min(dune_crest_loc))
 
         for d in range(flow_start, domain_width - 1):
@@ -1706,7 +1725,7 @@ def shoreline_change_from_AST(x_s,
     """
     # TODO: Currently initializing Alongshore Transporter class every loop, should initialize only once!
 
-    # Sample shoreline location at every dy [m] alongshore
+    # Take average shoreline position every dy [m] alongshore
     x_s_ast = np.nanmean(np.pad(x_s.copy().astype(float), (0, 0 if x_s.copy().size % dy == 0 else dy - x_s.copy().size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
     alongshore_section_length = np.ones([len(x_s_ast)]) * dy
 
@@ -1727,6 +1746,95 @@ def shoreline_change_from_AST(x_s,
 
     # Interpolate shoreline change from AST linearly between each dy spacing
     x = np.arange(len(x_s))
+    xp = np.append(int(dy / 2), np.cumsum(alongshore_section_length[1:]) + int(dy / 2))
+    fp = new_x_s
+    x_s_updated = np.interp(x, xp, fp)  # Interpolate
+
+    return x_s_updated
+
+
+def init_AST_environment(wave_asymetry,
+                         wave_high_angle_fraction,
+                         mean_wave_height,
+                         mean_wave_period,
+                         DShoreface,
+                         mean_barrier_height,
+                         dy,
+                         alongshore,
+                         n_bins=181,
+                         ):
+    """Initialize alongshore tranport environment, i.e. the average coastal diffusivity based on wave climate."""
+
+    ny = int(math.ceil(alongshore / dy))  # Alongshore section count
+
+    angle_array, step = np.linspace(-np.pi / 2.0, np.pi / 2.0, n_bins, retstep=True)  # Array of resolution angles for wave climate [radians]
+
+    k = calc_alongshore_transport_k()
+
+    angles = WaveAngleGenerator(asymmetry=wave_asymetry, high_fraction=wave_high_angle_fraction)  # Wave angle generator for each time step for calculating Qs_in
+
+    wave_pdf = angles.pdf(angle_array) * step  # Wave climate PDF
+
+    diff = (-(k
+              / (mean_barrier_height + DShoreface)
+              * mean_wave_height ** 2.4
+              * mean_wave_period ** 0.2
+              )
+            * 365
+            * 24
+            * 3600
+            * (np.cos(angle_array) ** 0.2)
+            * (1.2 * np.sin(angle_array) ** 2 - np.cos(angle_array) ** 2)
+            )
+
+    conv = np.convolve(wave_pdf, diff, mode="full")
+    npad = len(diff) - 1
+    first = npad - npad // 2
+    coast_diff = conv[first: first + len(wave_pdf)]
+
+    di = (np.r_[ny, np.arange(2, ny + 1), np.arange(1, ny + 1), np.arange(1, ny), 1] - 1)  # timestepping implicit diffusion equation (KA: -1 for python indexing)
+
+    dj = (np.r_[1, np.arange(1, ny), np.arange(1, ny + 1), np.arange(2, ny + 1), ny] - 1)
+
+    return coast_diff, di, dj, ny
+
+
+def shoreline_change_from_AST_2(x_s,
+                                coast_diffusivity,
+                                di,
+                                dj,
+                                dy,
+                                dt,  # [] Time step
+                                ny,
+                                nbins=181,
+                                x_s_dt=0,
+                                ):
+    """Determine change in shoreline position via alongshore sediment transport."""
+
+    # Take average shoreline position every dy [m] alongshore
+    x_s_ast = np.nanmean(np.pad(x_s.copy().astype(float), (0, 0 if x_s.copy().size % dy == 0 else dy - x_s.copy().size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
+
+    # Find shoreline angles
+    shoreline_angles = (180 * (np.arctan2((x_s_ast[np.r_[1: len(x_s_ast), 0]] - x_s_ast), dy)) / np.pi)
+
+    r_ipl = np.maximum(0, (coast_diffusivity[np.maximum(1, np.minimum(nbins, np.round(90 - shoreline_angles).astype(int)))] * dt / 2 / dy ** 2))
+
+    # Set non-periodic boundary conditions
+    r_ipl[0] = 0
+    r_ipl[-1] = 0
+
+    dv = np.r_[-r_ipl[-1], -r_ipl[1:], 1 + 2 * r_ipl, -r_ipl[0:-1], -r_ipl[0]]
+
+    A = csr_matrix((dv, (di, dj)))
+
+    RHS = (x_s_ast + r_ipl * (x_s_ast[np.r_[1: ny, 0]] - 2 * x_s_ast + x_s_ast[np.r_[ny - 1, 0: ny - 1]]) + x_s_dt)
+
+    # Solve for new shoreline position
+    new_x_s = spsolve(A, RHS)
+
+    # Interpolate shoreline change from AST linearly between each dy spacing (convert from dy alongshore length scale back to cellsize length scale)
+    x = np.arange(len(x_s))
+    alongshore_section_length = np.ones([ny]) * dy
     xp = np.append(int(dy / 2), np.cumsum(alongshore_section_length[1:]) + int(dy / 2))
     fp = new_x_s
     x_s_updated = np.interp(x, xp, fp)  # Interpolate
@@ -1772,7 +1880,7 @@ def brier_skill_score(simulated, observed, baseline, mask):
     return BSS
 
 
-@njit()
+@njit
 def adjust_ocean_shoreline(
         topo,
         new_shoreline,
