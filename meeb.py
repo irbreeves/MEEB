@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 14 September 2023
+Last update: 21 September 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -106,7 +106,7 @@ class MEEB:
             Spec2_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 2
             flow_reduction_max_spec1=0.05,  # Proportion of overwash flow reduction through a cell populated with species 1 at full density
             flow_reduction_max_spec2=0.20,  # Proportion of overwash flow reduction through a cell populated with species 2 at full density
-            effective_veg_sigma=1.5,  # Standard deviation for Gaussian filter of vegetation cover
+            effective_veg_sigma=3,  # Standard deviation for Gaussian filter of vegetation cover
 
             # STORM OVERWASH AND DUNE EROSION
             storm_list_filename="VCRStormList.npy",
@@ -129,7 +129,25 @@ class MEEB:
             substep_ru=5,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
 
     ):
-        """MEEB: Mesoscale Explicit Ecogeomorphic Barrier model"""
+        """MEEB: Mesoscale Explicit Ecogeomorphic Barrier model.
+
+
+        Examples
+        --------
+        >>> meeb = MEEB(simulation_time_yr=3, RSLR=0.003)
+
+        Create an instance of the BMI class.
+
+        >>> for time_step in range(int(meeb.iterations)):
+        ...     meeb.update(time_step)
+
+        Loop through time.
+
+        >>> ElevFig = plt.figure(figsize=(14, 7.5))
+        ... plt.matshow(meeb.topo, cmap='terrain', vmin=-1, vmax=6)
+
+        Plot elevation from final timestep.
+        """
 
         self._name = name
         self._simnum = simnum
@@ -421,6 +439,7 @@ class MEEB:
                 # Update vegetation from storm effects
                 self._spec1[inundated] = 0  # Remove species where beach is inundated
                 self._spec2[inundated] = 0  # Remove species where beach is inundated
+                self._veg = self._spec1 + self._spec2  # Update
 
             else:
                 self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
@@ -645,118 +664,3 @@ class MEEB:
     @property
     def storm_iterations_per_year(self):
         return self._storm_iterations_per_year
-
-
-# # __________________________________________________________________________________________________________________________________
-# # RUN MODEL
-#
-# start_time = time.time()  # Record time at start of simulation
-#
-# # Create an instance of the BMI class
-# meeb = MEEB(
-#     name="SLR 3 mm/yr, 2009-2012 Hindcast",
-#     simulation_time_yr=3,
-#     alongshore_domain_boundary_min=6000,
-#     alongshore_domain_boundary_max=6500,
-#     RSLR=0.003,
-#     seeded_random_numbers=True,
-#     p_dep_sand=0.05,  # 0.25 = 10 m^3/m/yr, 0.5 = 5 m^m/3/yr, 0.75 = 3.333 m^m/3/yr, 1 = 2.5 m^m/3/yr
-#     p_ero_sand=0.25,  # if p_dep = 0.5, p_ero of 0.5 = 5 m^m/3/yr, 0.25 = 2.5 m^m/3/yr, 0.1 = 1 m^m/3/yr
-#     direction2=2,
-#     direction4=4,
-#     wave_asymetry=0.5,
-#     init_filename="Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy",
-#     hindcast=True,
-#     hindcast_start=1530,
-#     storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
-# )
-#
-# print(meeb.name)
-#
-# # Loop through time
-# for time_step in range(int(meeb.iterations)):
-#     # Print time step to screen
-#     print("\r", "Time Step: ", time_step / meeb.iterations_per_cycle, "years", end="")
-#
-#     # Run time step
-#     meeb.update(time_step)
-#
-# # Print elapsed time of simulation
-# print()
-# SimDuration = time.time() - start_time
-# print()
-# print("Elapsed Time: ", SimDuration, "sec")
-#
-# # Save Results
-# if meeb.save_data:
-#     filename = meeb.outputloc + "Sim_" + str(meeb.simnum)
-#     dill.dump_module(filename)  # To re-load data: dill.load_session(filename)
-#
-#
-# # __________________________________________________________________________________________________________________________________
-# # PLOT RESULTS
-#
-# # Final Elevation & Vegetation
-# Fig = plt.figure(figsize=(14, 9.5))
-# Fig.suptitle(meeb.name, fontsize=13)
-# MHW = meeb.RSLR * meeb.simulation_time_yr
-# topo = meeb.topo * meeb.slabheight
-# topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
-# cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
-# cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-# ax1 = Fig.add_subplot(211)
-# cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=5.0)
-# cbar = Fig.colorbar(cax1)
-# cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
-# ax2 = Fig.add_subplot(212)
-# veg = meeb.veg
-# veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
-# cmap2 = copy.copy(plt.cm.get_cmap("YlGn"))
-# cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-# cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
-# cbar = Fig.colorbar(cax2)
-# cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
-# plt.tight_layout()
-#
-# # Animation: Elevation and Vegetation Over Time
-# for t in range(0, int(meeb.simulation_time_yr / meeb.writeyear) + 1):
-#     Fig = plt.figure(figsize=(14, 8))
-#
-#     MHW = meeb.RSLR * t
-#     topo = meeb.topo_TS[:, :, t] * meeb.slabheight  # [m]
-#     topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
-#     cmap1 = routine.truncate_colormap(copy.copy(plt.cm.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
-#     cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-#     ax1 = Fig.add_subplot(211)
-#     cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=5.0)
-#     cbar = Fig.colorbar(cax1)
-#     cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
-#     timestr = "Year " + str(t * meeb.writeyear)
-#     plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
-#
-#     veg = meeb.veg_TS[:, :, t]
-#     veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
-#     cmap2 = copy.copy(plt.cm.get_cmap("YlGn"))
-#     cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-#     ax2 = Fig.add_subplot(212)
-#     cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
-#     cbar = Fig.colorbar(cax2)
-#     cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
-#     timestr = "Year " + str(t * meeb.writeyear)
-#     plt.text(2, meeb.veg.shape[0] - 2, timestr, c='darkblue')
-#     plt.tight_layout()
-#     if not os.path.exists("Output/SimFrames/"):
-#         os.makedirs("Output/SimFrames/")
-#     name = "Output/SimFrames/meeb_elev_" + str(t)
-#     plt.savefig(name)  # dpi=200
-#     plt.close()
-#
-# frames = []
-# for filenum in range(0, int(meeb.simulation_time_yr / meeb.writeyear) + 1):
-#     filename = "Output/SimFrames/meeb_elev_" + str(filenum) + ".png"
-#     frames.append(imageio.imread(filename))
-# imageio.mimwrite("Output/SimFrames/meeb_elev.gif", frames, fps=3)
-# print()
-# print("[ * GIF successfully generated * ]")
-#
-# plt.show()
