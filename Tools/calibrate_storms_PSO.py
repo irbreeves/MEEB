@@ -3,7 +3,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 
 Calibrates based on fitess score for all beach/dune/overwash morphologic change.
 
-IRBR 10 August 2023
+IRBR 17 September 2023
 """
 
 import numpy as np
@@ -128,7 +128,10 @@ def storm_fitness(solution):
     nse_ow, rmse_ow, nmae_ow, mass_ow, bss_ow = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), overwash_mask_all)  # Skill scores for just overwash
     nse_bd, rmse_bd, nmae_bd, mass_bd, bss_bd = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), beach_duneface_mask)  # Skill scores for just beach/dune
 
-    weighted_bss = np.average([bss_ow, bss_bd], weights=[2, 1])
+    if np.isinf(bss_bd) or np.isinf(bss_ow):
+        weighted_bss = -10e6
+    else:
+        weighted_bss = np.average([bss_ow, bss_bd], weights=[2, 1])
 
     score = weighted_bss  # This is the skill score used in particle swarms optimization
 
@@ -152,23 +155,24 @@ start_time = time.time()  # Record time at start of calibration
 # _____________________________________________
 # Define Variables
 Rhigh = 3.32
-Rlow = 1.93
-dur = 70
+Rlow = 1.90
+dur = 83
 MHW = 0.39  # [m NAVD88]
 
 # Initial Observed Topo
-Init = np.load("Input/Init_NorthernNCB_2017_PreFlorence.npy")
+Init = np.load("Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy")
 # Final Observed
-End = np.load("Input/Init_NorthernNCB_2018_PostFlorence.npy")
+End = np.load("Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy")
 
 # Observed Overwash Mask
-Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  # Load observed overwash mask
+Florence_Overwash_Mask = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")  # Load observed overwash mask
 
 # Define Alongshore Coordinates of Domain
-xmin = 575  # 575, 2000, 2150, 2000, 3800  # 2650
-xmax = 825  # 825, 2125, 2350, 2600, 4450  # 2850
+xmin = 18950  # 19825, 20375, 20525 20975
+xmax = 19250  # 20275, 20525, 20725 21125
+# small flat, large flat, small gap, large gap, tall ridge
 
-name = '575-825, KQ(S+C), weighted_bss'
+name = '18950-19250, weighted_bss, 9 particles, 25 iter'
 
 # _____________________________________________
 # Conversions & Initializations
@@ -183,8 +187,8 @@ topo_final = End[0, xmin:xmax, :]  # [m]
 OW_Mask = Florence_Overwash_Mask[xmin: xmax, :]  # [bool]
 
 # Set Veg Domain
-spec1 = Init[2, xmin: xmax, :]
-spec2 = Init[3, xmin: xmax, :]
+spec1 = Init[1, xmin: xmax, :]
+spec2 = Init[2, xmin: xmax, :]
 veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
 veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or larger than one
 veg[veg < 0] = 0
@@ -207,7 +211,7 @@ topo_prestorm = copy.deepcopy(topo)
 # Prepare Particle Swarm Parameters
 
 iterations = 25
-swarm_size = 9
+swarm_size = 18
 dimensions = 10  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
@@ -221,7 +225,7 @@ bounds = (
     np.array([50,  # Rin
               1,  # Cx
               0.5,  # MaxUpSlope
-              0.05,  # flow_reduction_max_spec1
+              0.02,  # flow_reduction_max_spec1
               8e-06,  # Kr
               0.05,  # flow_reduction_max_spec2
               1,  # OW substep
@@ -232,9 +236,9 @@ bounds = (
     np.array([450,
               100,
               2.5,
-              0.75,  # flow_reduction_max_spec1
+              0.4,  # flow_reduction_max_spec1
               1e-04,
-              0.75,  # flow_reduction_max_spec2
+              0.5,  # flow_reduction_max_spec2
               12,
               0.03,
               3,

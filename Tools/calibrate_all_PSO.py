@@ -128,7 +128,7 @@ def meeb_fitness(solution):
         p_dep_sand_VegMax=solution[0] + solution[1],
         p_ero_sand=solution[2],
         entrainment_veg_limit=solution[3],
-        saltation_veg_limit=20,
+        saltation_veg_limit=0.20,
         shadowangle=8,
         repose_bare=20,
         repose_veg=30,
@@ -142,6 +142,13 @@ def meeb_fitness(solution):
         beach_equilibrium_slope=0.02,
         beach_erosiveness=2.73,
         beach_substeps=22,
+        # --- Shoreline --- #
+        wave_asymetry=0.6,
+        wave_high_angle_fraction=0.39,
+        mean_wave_height=0.98,
+        mean_wave_period=6.6,
+        alongshore_section_length=50,
+        estimate_shoreface_parameters=True,
         # --- Veg --- #
         # sp1_c=1.20,
         # sp2_c=-0.47,
@@ -151,6 +158,7 @@ def meeb_fitness(solution):
         # pioneer_probability=0.11,
         # Spec1_elev_min=0.60,
         # Spec2_elev_min=0.13,
+        effective_veg_sigma=3,
     )
 
     # Loop through time
@@ -214,7 +222,7 @@ def meeb_fitness(solution):
     nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh, pc_dh, hss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, np.full(crest_height_change_obs.shape, True))  # Foredune elevation
 
     # Combine Skill Scores (Multi-Objective Optimization)
-    score = np.average([nmae, nmae_dl, nmae_dh], weights=[3, 1, 2])  # This is the skill score used in particle swarms optimization
+    score = np.average([nmae, nmae_dl, nmae_dh], weights=[5, 1, 3])  # This is the skill score used in particle swarms optimization
 
     return score
 
@@ -260,8 +268,8 @@ start_time = time.time()  # Record time at start of calibration
 # startdate = '20121129'
 
 # 2014 - 2018
-start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy_NCFMP-Planet.npy"
-stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
+start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
 startdate = '20140406'
 hindcast_duration = 4.5
 
@@ -272,7 +280,7 @@ xmax = 19250  # 825, 2125, 2350, 2600, 4450  # 2850
 MHW = 0.39  # [m NAVD88] Initial
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
-name = '18950-19250, 2014-2018, NMAE multi-objective'
+name = '18950-19250, 2014-2018 Plover, NMAE multi-objective'
 
 # ____________________________________
 
@@ -309,7 +317,7 @@ veg_end[veg_end < 0] = 0
 # _____________________________________________
 # Prepare Particle Swarm Parameters
 
-iterations = 25
+iterations = 40
 swarm_size = 18
 dimensions = 13  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}

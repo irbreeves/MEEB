@@ -4,7 +4,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 Calibrates based on fitess score for all beach/dune/overwash morphologic change, and incorporates multiple
 storm events and/or locations into each fitness score.
 
-IRBR 13 July 2023
+IRBR 17 September 2023
 """
 
 import numpy as np
@@ -132,7 +132,10 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
     nse_ow, rmse_ow, nmae_ow, mass_ow, bss_ow = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask_overwash_all)  # Skill scores for just overwash
     nse_bd, rmse_bd, nmae_bd, mass_bd, bss_bd = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), beach_duneface_mask)  # Skill scores for just beach/dune
 
-    weighted_bss = np.average([bss_ow, bss_bd], weights=[2, 1])
+    if np.isinf(bss_bd) or np.isinf(bss_ow):
+        weighted_bss = -10e6
+    else:
+        weighted_bss = np.average([bss_ow, bss_bd], weights=[2, 1])
 
     score = weighted_bss  # This is the skill score used in particle swarms optimization
 
@@ -164,8 +167,8 @@ def multi_fitness(solution):
             OW_Mask = Florence_Overwash_Mask[x_min[x]: x_max[x], :]  # [bool]
 
             # Set Veg Domain
-            spec1 = Init[2, x_min[x]: x_max[x], :]
-            spec2 = Init[3, x_min[x]: x_max[x], :]
+            spec1 = Init[1, x_min[x]: x_max[x], :]
+            spec2 = Init[2, x_min[x]: x_max[x], :]
 
             # Initialize storm stats
             Rhigh = storm_Rhigh[s] * np.ones(topo_final.shape[0])
@@ -173,15 +176,17 @@ def multi_fitness(solution):
             dur = storm_dur[s]
 
             score = storm_fitness(solution, topo_start, topo_final, Rhigh, Rlow, dur, OW_Mask, spec1, spec2)
-
+            # print("  > score:", score)
             score_list.append(score)
 
+    # Take mean of scores from all locations
     multi_score = np.nanmean(score_list)
 
     if multi_score > BestScore:
         BestScore = multi_score
         BestScores = score_list
         # print(score_list)
+    print("  >> multi_score:", multi_score)
 
     return multi_score
 
@@ -189,7 +194,9 @@ def multi_fitness(solution):
 def opt_func(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
-    solutions = Parallel(n_jobs=10)(delayed(multi_fitness)(X[i, :]) for i in range(swarm_size))
+    solutions = Parallel(n_jobs=9)(delayed(multi_fitness)(X[i, :]) for i in range(swarm_size))
+
+    print("  >>> solutions:", solutions)
 
     return np.array(solutions) * -1
 
@@ -205,7 +212,7 @@ start_time = time.time()  # Record time at start of calibration
 MHW = 0.39  # [m NAVD88]
 
 # Observed Overwash Mask
-Florence_Overwash_Mask = np.load("Input/NorthernNCB_FlorenceOverwashMask.npy")  # Load observed overwash mask
+Florence_Overwash_Mask = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")  # Load observed overwash mask
 name = 'Multi-Location Storm (Florence), Particle Swarms Optimization'
 
 BestScore = -1e10
@@ -218,23 +225,26 @@ BestScores = []
 # storm_start = ["Init_NCB-NewDrum-Ocracoke_2011_PostIrene.npy", "Input/Init_NorthernNCB_2017_PreFlorence.npy"]
 # storm_stop = ["Init_NCB-NewDrum-Ocracoke_2012_PostSandyUSGS_MinimalThin.npy", "Input/Init_NorthernNCB_2018_PostFlorence.npy"]
 # storm_Rhigh = [2.06, 3.32]
-# storm_Rlow = [1.12, 1.93]
-# storm_dur = [49, 70]
+# storm_Rlow = [1.12, 1.90]
+# storm_dur = [49, 83]
 
 storm_name = ['Florence']
-storm_start = ["Input/Init_NorthernNCB_2017_PreFlorence.npy"]
-storm_stop = ["Input/Init_NorthernNCB_2018_PostFlorence.npy"]
+storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
+storm_stop = ["Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"]
 storm_Rhigh = [3.32]
-storm_Rlow = [1.93]
-storm_dur = [70]  # 70
+storm_Rlow = [1.90]
+storm_dur = [83]
 
 
 # _____________________________________________
 # Define Multiple Locations
-x_min = [575, 1450, 2000, 2150, 2600]
-x_max = [825, 1900, 2150, 2350, 2700]
-# small flat, large flat, small gap, large gap, tall ridge
+# x_min = [575, 1450, 2000, 2150, 2600]
+# x_max = [825, 1900, 2150, 2350, 2700]
+# # small flat, large flat, small gap, large gap, tall ridge
 
+x_min = [18950, 19825, 20375, 20525]  # 20975
+x_max = [19250, 20275, 20525, 20725]  # 21125
+# small flat, large flat, small gap, large gap # tall ridge
 
 
 # ___________________________________________________________________________________________________________________________________
@@ -244,8 +254,8 @@ x_max = [825, 1900, 2150, 2350, 2700]
 # _____________________________________________
 # Prepare Particle Swarms Parameters
 
-iterations = 50
-swarm_size = 20
+iterations = 40
+swarm_size = 18
 dimensions = 10  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
@@ -259,9 +269,9 @@ bounds = (
     np.array([50,  # Rin
               1,  # Cx
               0.5,  # MaxUpSlope
-              1,  # fluxLimit
+              0.02,  # flow_reduction_max_spec1
               8e-06,  # Kr
-              2,  # mm
+              0.05,  # flow_reduction_max_spec2
               1,  # OW substep
               0.002,  # Beq
               0.25,  # Et
@@ -270,9 +280,9 @@ bounds = (
     np.array([450,
               100,
               2.5,
-              1.00001,
+              0.4,
               1e-04,
-              2.00001,
+              0.5,
               12,
               0.03,
               3,
@@ -306,9 +316,9 @@ print(tabulate({
     "Rin": [best_solution[0]],
     "Cx": [best_solution[1]],
     "MUS": [best_solution[2]],
-    "FLim": [best_solution[3]],
+    "Qreduc_s1": [best_solution[3]],
     "Kr": [best_solution[4]],
-    "mm": [best_solution[5]],
+    "Qreduc_s2": [best_solution[5]],
     "SSo": [best_solution[6]],
     "Beq": [best_solution[7]],
     "Et": [best_solution[8]],
