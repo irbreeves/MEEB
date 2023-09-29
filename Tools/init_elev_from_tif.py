@@ -2,7 +2,7 @@
     use in MEEB (Mesoscale Explicit Ecogeomorphic Barrier model).
 
     IRB Reeves
-    Last update: 8 June 2023
+    Last update: 29 September 2023
 """
 
 import matplotlib.pyplot as plt
@@ -98,11 +98,12 @@ def populateVeg(topo,
     s2[np.logical_and(s2_bool, veggie == 3)] = 0.3 * randDensity[np.logical_and(s2_bool, veggie == 3)] + 0.6  # Assign random initial density between 0.6 and 0.9 for high density cells
 
     # Artificially & Stochastically Thin Out Coverage of Low & Medium Densities
-    randThin = np.random.rand(longshore, crossshore)
-    s1[np.logical_and(randThin < 0.5, veggie == 1)] = 0
-    s2[np.logical_and(randThin < 0.5, veggie == 1)] = 0
-    s1[np.logical_and(randThin < 0.25, veggie == 2)] = 0
-    s2[np.logical_and(randThin < 0.25, veggie == 2)] = 0
+    if Thin:
+        randThin = np.random.rand(longshore, crossshore)
+        s1[np.logical_and(randThin < 0.25, veggie == 1)] = 0
+        s2[np.logical_and(randThin < 0.25, veggie == 1)] = 0
+        s1[np.logical_and(randThin < 0.1, veggie == 2)] = 0
+        s2[np.logical_and(randThin < 0.1, veggie == 2)] = 0
 
     return s1, s2
 
@@ -117,6 +118,7 @@ def bell_curve(x, mean, tau, maximum):
     """
     return np.exp(-(tau * (x - mean)) ** 2) * maximum
 
+
 def logistic_curve(x, r, u, maximum):
     """
     :param x: multiplier
@@ -128,16 +130,43 @@ def logistic_curve(x, r, u, maximum):
     return 1 / (1 + np.exp(r * (u - x))) * maximum
 
 
+def densityVeg(veggie, den):
+
+    s1 = np.zeros(veggie.shape)  # Species 1 (grass)
+    s2 = np.zeros(veggie.shape)  # Species 2 (shrub)
+
+    s1[veggie == 1] = 1
+    s2[veggie == 2] = 1
+
+    # Apply density
+    s1[den <= 0] *= 0.2
+    s1[den == 1] *= 0.4
+    s1[den == 2] *= 0.6
+    s1[den == 3] *= 0.8
+
+    s2[den <= 0] *= 0.2
+    s2[den == 1] *= 0.4
+    s2[den == 2] *= 0.6
+    s2[den == 3] *= 0.8
+
+    if Thin:
+        randThin = np.random.rand(s1.shape[0], s1.shape[1])
+        s1[np.logical_and(den <= 0, randThin < 0.25)] = 0
+        s2[np.logical_and(den <= 0, randThin < 0.25)] = 0
+
+    return s1, s2
+
+
 # ================================================================================================================
 # SPECIFICATIONS
 
 # Elevation (NAVD88)
-tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/PostSandy_20121129_USGS.tif"
-MHW = 0.4  # [m initial datum] Mean high water, for finding ocean shoreline (0.36, Duke Marine Lab, Beaufort)
+tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/PostFlorence_20181007_USGS_FullNCB.tif"
+MHW = 0.39  # [m initial datum] Mean high water, for finding ocean shoreline
 BB_thresh = 0.08  # [m initial datum] Threshold elevation for finding back-barrier marsh shoreline
 BB_depth = 1.5  # [m] Back-barrier bay depth
 BB_slope_length = 30  # [m] Length of slope from back-barrier shoreline into bay
-SF_slope = 0.02  # Equilibrium shoreface slope
+SF_slope = 0.0082  # Equilibrium shoreface slope
 buffer = 3000  #
 
 # Domain
@@ -151,12 +180,15 @@ bay = 0  # [m] Additional width of bay to add to domain
 
 # Vegetation
 Veggie = True  # [bool] Whether or not to load & convert a contemporaneous init veg raster
-veg_tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/Veg_20130720_NDVI_Planet_PostSandy.tif"
+VeggiePop = False  # [bool] Whether or not to use stoachstic population of vegetation for init veg raster
+Thin = True  # [bool] Whether to artificiallly and randomly thin out vegetation cover
+veg_tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/VegCover_Plover_NAIP_2018.tif"
+vegden_tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/VegDensity_Plover_NAIP_2018.tif"
 veg_min = 0.5  # [m] Minimum elevation for vegetation
 
 # Save
-save = True  # [bool] Whether or not to save finished arrays
-savename = "NCB-NewDrum-Ocracoke_2012_PostSandyUSGS"
+save = False  # [bool] Whether or not to save finished arrays
+savename = "NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover"
 
 
 # ================================================================================================================
@@ -173,20 +205,28 @@ if Veggie:
     with rasterio.open(veg_tif_file,  'r') as ds:
         full_veg = ds.read()
     full_veg = full_veg[0, :, :]
+    with rasterio.open(vegden_tif_file,  'r') as ds:
+        full_vegden = ds.read()
+    full_vegden = full_vegden[0, :, :]
 else:
     full_veg = full_dem.copy() * 0
+    full_vegden = full_dem.copy() * 0
 
 # Trim
 dem = full_dem[max(0, ymin): ymax, xmin: xmax]
 veg = full_veg[max(0, ymin): ymax, xmin: xmax]
+vegden = full_vegden[max(0, ymin): ymax, xmin: xmax]
 dem[dem > zmax] = 0  # Remove any very large values (essentially NaNs)
 dem[dem < zmin] = 0  # Remove any very large values (essentially NaNs)
 veg[veg > zmax] = 0  # Remove any very large values (essentially NaNs)
-veg[veg < zmin] = 0  # Remove any very large values (essentially NaNs)
+veg[veg < 0] = 0  # Remove any very large values (essentially NaNs)
+vegden[vegden > zmax] = 0  # Remove any very large values (essentially NaNs)
+vegden[vegden < 0] = 0  # Remove any very large values (essentially NaNs)
 cs, ls = dem.shape
 if ymin < 0:
     dem = np.vstack((np.ones([abs(ymin), ls]) * BB_depth * -1, dem))  # Add more bay
     veg = np.vstack((np.zeros([abs(ymin), ls]), veg))  # Add more bay (without veg)
+    vegden = np.vstack((np.zeros([abs(ymin), ls]), vegden))  # Add more bay (without veg)
 cs, ls = dem.shape
 
 # Set back-barrier TODO: Account for barrier profiles that are entirely under MHW (i.e., inlets)
@@ -201,7 +241,7 @@ for l in range(ls):
 # Set shoreface
 dem = np.rot90(dem, 2)  # Flip upside down
 ocean_shoreline = []
-SF_profile = np.arange(1, buffer + 1) * SF_slope * -1
+SF_profile = np.arange(1, buffer + 1) * SF_slope * -1 + MHW
 for l in range(ls):
     shoreline_loc = np.argmax(dem[:, l] > MHW)
     ocean_shoreline.append(shoreline_loc)
@@ -211,32 +251,40 @@ add_bay_dem = np.ones([bay, ls]) * -BB_depth
 add_bay_veg = np.zeros([bay, ls])
 dem = np.vstack([dem, add_bay_dem])
 veg = np.vstack([veg, add_bay_veg])
+vegden = np.vstack([vegden, add_bay_veg])
 cs, ls = dem.shape
 
 # Rotate
 dem = np.rot90(dem, 1)
 veg = np.rot90(veg, 3)
+vegden = np.rot90(vegden, 3)
 
 # Veg
 veg[dem < veg_min] = 0  # Remove veg below minimum elevation threshold
+vegden[dem < veg_min] = 0  # Remove veg below minimum elevation threshold
 
 dune_crest = routine.foredune_crest(dem, MHW)
-spec1, spec2 = populateVeg(dem,
-                           veg,
-                           MHW,
-                           dune_crest,
-                           density_slope=40,
-                           density_intercept=-30,
-                           elevation_mean=1.29,
-                           elevation_tau=3,
-                           elevation_maximum=0.75,
-                           distance_r=0.1,
-                           distance_u=50,
-                           distance_maximum=0.9,
-                           density_weight=0.5,
-                           elevation_weight=0.25,
-                           distance_weight=0.25,
-                           )
+
+if VeggiePop:
+    spec1, spec2 = populateVeg(dem,
+                               veg,
+                               MHW,
+                               dune_crest,
+                               density_slope=40,
+                               density_intercept=-30,
+                               elevation_mean=1.29,
+                               elevation_tau=3,
+                               elevation_maximum=0.75,
+                               distance_r=0.1,
+                               distance_u=50,
+                               distance_maximum=0.9,
+                               density_weight=0.5,
+                               elevation_weight=0.25,
+                               distance_weight=0.25,
+                               )
+else:
+    spec1, spec2 = densityVeg(veg, vegden)
+
 veg = spec1 + spec2
 
 
@@ -261,6 +309,11 @@ plt.tight_layout
 fig = plt.figure()
 ax_1 = fig.add_subplot(111)
 ax_1.matshow(spec2, cmap='YlGn')
+plt.tight_layout
+
+fig = plt.figure()
+ax_1 = fig.add_subplot(111)
+ax_1.matshow(veg, cmap='YlGn')
 plt.tight_layout
 
 plt.show()
