@@ -1851,6 +1851,17 @@ def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=-1):
     return new_cmap
 
 
+def get_MEEB_colormap():
+    """Return colormap for plotting elevation in MEEB. Designed for (vmin = -1, vmax = 7)."""
+
+    # [deep sea blue, ocean blue, azure, floral white, light tan, sandy, chocolate, linen]
+    colors = ["#015482", "#03719c", "azure", "floralwhite", "#fbeeac", "#f1da7a", "#3d1c02", "linen"]
+    nodes = [0.0, 0.08, 0.125, 0.13, 0.18, 0.3, 0.75, 1.0]
+    MEEB_cmap = mcolors.LinearSegmentedColormap.from_list("MEEB_cmap", list(zip(nodes, colors)))
+
+    return MEEB_cmap
+
+
 def brier_skill_score(simulated, observed, baseline, mask):
     """Computes a Brier Skill Score for simulated and observed variables.
 
