@@ -7,6 +7,8 @@ IRBR 14 September 2023
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+
+import routines_meeb
 import routines_meeb as routine
 import copy
 import time
@@ -37,33 +39,33 @@ from meeb import MEEB
 # start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
 # startdate = '20140406'
 
-# 2016
-start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
-startdate = '20161012'
+# # 2016
+# start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
+# startdate = '20161012'
 
 # # 2017
 # start = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
 # startdate = '20170916'
 
-# # 2018
-# start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
-# startdate = '20181007'
+# 2018
+start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
+startdate = '20181007'
 
 
-sim_duration = 2.5
+sim_duration = 3
 
 
 # _____________________
 # Initial Conditions
 
 # Define Alongshore Coordinates of Domain
-ymin = 6300  # Alongshore
-ymax = 6450  # Alongshore
-xmin = 700  # Cross-shore   900
-xmax = 1300  # Cross-shore  1500
+ymin = 18950  # Alongshore
+ymax = 19250  # Alongshore
+xmin = 900  # Cross-shore   900
+xmax = 1600  # Cross-shore  1500
 MHW = 0.39  # [m NAVD88]
 
-name = 'RSLR=0, A=0.6, U=0.39, Hs=0.58, T=6.6, L=50, hindcast, stable twl'
+name = 'RSLR=0, A=0.6, U=0.39, Hs=0.58, T=6.6, L=50'
 
 # Load Initial Domains
 Init = np.load("Input/" + start)
@@ -108,14 +110,16 @@ meeb = MEEB(
     repose_veg=30,
     wind_rose=(0.55, 0.05, 0.22, 0.18),  # (right, down, left, up)
     # --- Storms --- #
-    Rin_ru=183,
-    Cx=56,
-    MaxUpSlope=2.05,
-    K_ru=0.0000575,
-    substep_ru=6,
-    beach_equilibrium_slope=0.02,
-    beach_erosiveness=2.73,
-    beach_substeps=22,
+    Rin_ru=246,
+    Cx=27,
+    MaxUpSlope=0.63,
+    K_ru=0.0000622,
+    substep_ru=7,
+    beach_equilibrium_slope=0.012,
+    beach_erosiveness=1.84,
+    beach_substeps=51,
+    flow_reduction_max_spec1=0.17,
+    flow_reduction_max_spec2=0.44,
     # --- Shoreline --- #
     wave_asymetry=0.6,
     wave_high_angle_fraction=0.39,
@@ -184,6 +188,8 @@ vcs = veg_change_sim[:, xmin: xmax] * subaerial_mask[:, xmin: xmax]
 vs = veg_end_sim[:, xmin: xmax] * subaerial_mask[:, xmin: xmax]
 
 maxxxx = max(abs(np.min(tcs)), abs(np.max(tcs)))
+
+MEEB_elevation = routines_meeb.get_MEEB_colormap()
 
 # -----------------
 # Final Elevation & Vegetation
@@ -308,12 +314,12 @@ cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
 cbar = Fig.colorbar(cax2)
 cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
 timestr = "Year " + str(0 * meeb.save_frequency)
-text2 = plt.text(2, meeb.veg.shape[0] - 2, timestr, c='darkblue')
+text2 = plt.text(2, meeb.veg.shape[0] - 2, timestr, c='white')
 plt.tight_layout()
 
 # Create and save animation
 ani = animation.FuncAnimation(Fig, ani_frame, frames=int(meeb.simulation_time_yr / meeb.save_frequency) + 1, interval=300, blit=True)
-ani.save("Output/SimFrames/meeb_elev.gif", dpi=150, writer="imagemagick")
+ani.save("Output/Animation/meeb_elev.gif", dpi=150, writer="imagemagick")
 
 
 plt.show()

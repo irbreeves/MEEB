@@ -61,12 +61,10 @@ start_time = time.time()  # Record time at start of run
 # _____________________________________________
 # Define Variables
 Rhigh = 3.32  # [m NAVD88]
-Rlow = 1.93  # [m NAVD88]
-dur = 70  # [hr]
+Rlow = 1.90  # [m NAVD88]
+dur = 83  # [hr]
 cellsize = 1  # [m]
 MHW = 0.39  # [m NAVD88]
-flow_reduction_max_spec1 = 0.05
-flow_reduction_max_spec2 = 0.2
 
 # Initial Observed Topo
 Init = np.load("Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy")
@@ -74,10 +72,10 @@ Init = np.load("Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy")
 End = np.load("Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy")
 
 # Define Alongshore Coordinates of Domain
-xmin = 1800
-xmax = 2100
+xmin = 5800  # 20525  # 19825  # 18950
+xmax = 6900  # 20725  # 20275  # 19250
 
-name = "6300-6450, Florence"
+name = "5800-6900, Florence, New Calib"
 print(name)
 
 # _____________________________________________
@@ -118,14 +116,14 @@ sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = rou
     dur,
     threshold_in=0.25,
     Rin_i=5,
-    Rin_r=183,
-    Cx=56,
+    Rin_r=246,
+    Cx=27,
     AvgSlope=2/200,
     nn=0.5,
-    MaxUpSlope=2.05,
+    MaxUpSlope=0.63,
     fluxLimit=1,
     Qs_min=1,
-    Kr=0.0000575,
+    Kr=0.0000622,
     Ki=5e-06,
     mm=1,
     MHW=MHW,
@@ -133,16 +131,16 @@ sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = rou
     Cbb_r=0.7,
     Qs_bb_min=1,
     substep_i=6,
-    substep_r=6,
-    beach_equilibrium_slope=0.023,
-    beach_erosiveness=2.73,
-    beach_substeps=22,
+    substep_r=7,
+    beach_equilibrium_slope=0.012,
+    beach_erosiveness=1.84,
+    beach_substeps=51,
     x_s=x_s,
     cellsize=1,
     spec1=spec1,
     spec2=spec2,
-    flow_reduction_max_spec1=flow_reduction_max_spec1,
-    flow_reduction_max_spec2=flow_reduction_max_spec2,
+    flow_reduction_max_spec1=0.17,
+    flow_reduction_max_spec2=0.44,
 )
 
 SimDuration = time.time() - start_time
@@ -266,8 +264,8 @@ print(tabulate({
 # _____________________________________________
 # Plot
 
-ymin = 500  # 700
-ymax = ymin + 800
+ymin = 700  # 900
+ymax = ymin + 500
 
 # Categorical
 catfig = plt.figure(figsize=(14, 7.5))
@@ -336,7 +334,7 @@ plt.matshow(inundated)
 plt.title("Inundated")
 
 # Profile Change
-xx = 50
+xx = 100
 proffig = plt.figure(figsize=(11, 7.5))
 plt.plot(topo_prestorm[xx, ymin: ymax], c='black')
 plt.plot(obs_topo_final[xx, ymin: ymax], c='green')

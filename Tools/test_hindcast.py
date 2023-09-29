@@ -219,22 +219,22 @@ hindcast_duration = 4.5
 # INPUT
 
 # Define Alongshore Coordinates of Domain
-xmin = 18950  # 6500 # 5880 # 18950
-xmax = 19250  # 6600 # 5980 # 19250
+xmin = 6450  # 6500 # 5880 # 18950
+xmax = 6600  # 6600 # 5980 # 19250
 
 # Define Cross-Shore Limits for Plotting
-ymin = 950  # 900  # 700
-ymax = ymin + 400
+ymin = 700  # 900  # 700
+ymax = ymin + 500
 
 # Define Cross-Shore Limits for Skill Score Mask
-mask_ymin = 1100  # 835 # 1050
-mask_ymax = 1350  # 950 # 1300
+mask_ymin = 1050  # 835 # 1050
+mask_ymax = 1250  # 950 # 1300
 
 MHW = 0.39  # [m NAVD88]
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
 
-name = '18950-19250, 2014-2018, 10-22-56-11-55-5-22-18/183-56-2.05-575-6'
+name = '6450-6600, 2014-2018, 10-22-56-11-55-5-22-18/246-27-0.63-622-7-0.012-1.84-51-17-44'
 
 # _____________________
 # LOAD INITIAL DOMAINS
@@ -305,6 +305,8 @@ meeb = MEEB(
     beach_equilibrium_slope=0.02,
     beach_erosiveness=2.73,
     beach_substeps=22,
+    flow_reduction_max_spec1=0.05,
+    flow_reduction_max_spec2=0.2,
     # --- Shoreline --- #
     wave_asymetry=0.6,
     wave_high_angle_fraction=0.39,
@@ -383,7 +385,7 @@ crest_height_change_sim = crest_height_sim - crest_height_obs_start
 elev_mask = topo_end_sim > 2.0  # [bool] Mask for every cell above water
 
 # Choose masks
-mask = subaerial_mask.copy()
+mask = subaerial_mask.copy()  # TODO: incorporate Florence OW mask?
 veg_mask = mask.copy()
 
 # Temp limit interior in analysis to dunes
@@ -625,8 +627,8 @@ plt.tight_layout()
 # Create and save animation
 ani = animation.FuncAnimation(Fig, ani_frame, frames=int(meeb.simulation_time_yr / meeb.save_frequency) + 1, interval=300, blit=True)
 c = 1
-while os.path.exists("Output/SimFrames/meeb_elev_" + str(c) + ".gif"):
+while os.path.exists("Output/Animation/meeb_elev_" + str(c) + ".gif"):
     c += 1
-ani.save("Output/SimFrames/meeb_elev_" + str(c) + ".gif", dpi=150, writer="imagemagick")
+ani.save("Output/Animation/meeb_elev_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 plt.show()
