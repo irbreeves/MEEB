@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 21 September 2023
+IRBR 22 September 2023
 """
 
 import numpy as np
@@ -19,10 +19,8 @@ from meeb import MEEB
 # FUNCTIONS
 
 
-def run_individual_sim():
+def run_individual_sim(rslr):
     """Runs uniqe individual MEEB simulation."""
-
-    global sim_count
 
     # Create an instance of the MEEB class
     meeb = MEEB(
@@ -30,14 +28,14 @@ def run_individual_sim():
         simulation_time_yr=sim_duration,
         alongshore_domain_boundary_min=ymin,
         alongshore_domain_boundary_max=ymax,
-        RSLR=0.001,
+        RSLR=rslr,
         MHW=MHW,
         init_filename=start,
         hindcast=False,
         seeded_random_numbers=False,
         simulation_start_date=startdate,
-        storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
-        storm_list_filename='NCB_SimStorms.npy',
+        storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
+        storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',
         save_frequency=save_frequency,
         # --- Aeolian --- #
         jumplength=5,
@@ -57,9 +55,9 @@ def run_individual_sim():
         MaxUpSlope=0.63,
         K_ru=0.0000622,
         substep_ru=7,
-        beach_equilibrium_slope=0.012,
-        beach_erosiveness=1.84,
-        beach_substeps=51,
+        beach_equilibrium_slope=0.02,
+        beach_erosiveness=2.73,
+        beach_substeps=22,
         flow_reduction_max_spec1=0.17,
         flow_reduction_max_spec2=0.44,
         # --- Shoreline --- #
@@ -71,9 +69,6 @@ def run_individual_sim():
         estimate_shoreface_parameters=True,
         # --- Veg --- #
     )
-
-    sim_count = sim_count + 1
-    print("\r", "Running simulation: ", sim_count, " / ", num_sim, end="")  # TODO: Not working
 
     # Loop through time
     for time_step in range(int(meeb.iterations)):
@@ -119,12 +114,14 @@ def run_individual_sim():
     return topo_change_bin
 
 
-def interal_probabilistic_change():
+def internal_probabilistic_change(rslr):
+    """Runs duplicate simulations to find the probability of change from stochastic processes internal to the system, particularly storm
+    occurence & intensity, aeolian dynamics, and vegetation dynamics."""
 
     # Create storage array
     topo_change_bins = np.zeros([num_bins, num_saves, longshore, crossshore])
 
-    topo_change_bins_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)() for i in range(duplicates))
+    topo_change_bins_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(rslr) for i in range(duplicates))
 
     # TODO: try Pool multiprocessing as alternative?
 
@@ -136,6 +133,30 @@ def interal_probabilistic_change():
     prob_change = topo_change_bins / duplicates
 
     return prob_change
+
+
+def joint_probabilistic_change():
+    """Runs a range of probabilistic scenarios to find the probability of change from stochastic processes external to the system, particularly storm
+    occurence & intensity, aeolian dynamics, and vegetation dynamics."""
+
+    count = 0
+    num_scenario = len(RSLR_bin)
+
+    # Create storage array
+    joint_prob_change = np.zeros([num_bins, num_saves, longshore, crossshore])
+
+    # Temp
+    joint_prob_temp = np.zeros([4, num_bins, num_saves, longshore, crossshore])
+
+    for r in range(len(RSLR_prob)):
+        count += 1
+        print("\r", "Running scenario: ", count, " / ", num_scenario, end="")
+        internal_prob_change = internal_probabilistic_change(RSLR_bin[r])
+        external_prob_change = internal_prob_change * RSLR_prob[r]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
+        joint_prob_change += external_prob_change
+        joint_prob_temp[r, :, :, :, :] = external_prob_change
+
+    return joint_prob_change, joint_prob_temp
 
 
 def plot_cell_prob_bar(it, l, c):
@@ -151,7 +172,7 @@ def plot_cell_prob_bar(it, l, c):
         Cross-shore (x) coordinate of cell.
     """
 
-    probs = prob_change_internal[:, it, l, c]
+    probs = prob_change[:, it, l, c]
 
     plt.figure(figsize=(8, 8))
     plt.bar(np.arange(len(probs)), probs)
@@ -174,8 +195,8 @@ def plot_most_probable_outcome(it):
         Iteration to draw probabilities from.
     """
 
-    mmax_idx = np.argmax(prob_change_internal[:, it, :, xmin: xmax], axis=0)  # Bin of most probably outcome
-    conf = 1 - np.max(prob_change_internal[:, it, :, xmin: xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
+    mmax_idx = np.argmax(prob_change[:, it, :, xmin: xmax], axis=0)  # Bin of most probably outcome
+    conf = 1 - np.max(prob_change[:, it, :, xmin: xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
 
     cmap1 = colors.ListedColormap(['yellow', 'red', 'black', 'blue', 'green'])
     cmap2 = colors.ListedColormap(['white'])
@@ -203,23 +224,23 @@ def plot_bin_maps(it):
     bFig = plt.figure(figsize=(14, 7.5))
     bFig.suptitle(name, fontsize=13)
     bax1 = bFig.add_subplot(231)
-    bcax1 = bax1.matshow(prob_change_internal[0, it, :, xmin: xmax], vmin=0, vmax=1)
+    bcax1 = bax1.matshow(prob_change[0, it, :, xmin: xmax], vmin=0, vmax=1)
     plt.title(bin_labels[0])
 
     bax2 = bFig.add_subplot(232)
-    bcax2 = bax2.matshow(prob_change_internal[1, it, :, xmin: xmax], vmin=0, vmax=1)
+    bcax2 = bax2.matshow(prob_change[1, it, :, xmin: xmax], vmin=0, vmax=1)
     plt.title(bin_labels[1])
 
     bax3 = bFig.add_subplot(233)
-    bcax3 = bax3.matshow(prob_change_internal[2, it, :, xmin: xmax], vmin=0, vmax=1)
+    bcax3 = bax3.matshow(prob_change[2, it, :, xmin: xmax], vmin=0, vmax=1)
     plt.title(bin_labels[2])
 
     bax4 = bFig.add_subplot(234)
-    bcax4 = bax4.matshow(prob_change_internal[3, it, :, xmin: xmax], vmin=0, vmax=1)
+    bcax4 = bax4.matshow(prob_change[3, it, :, xmin: xmax], vmin=0, vmax=1)
     plt.title(bin_labels[3])
 
     bax5 = bFig.add_subplot(235)
-    bcax5 = bax5.matshow(prob_change_internal[4, it, :, xmin: xmax], vmin=0, vmax=1)
+    bcax5 = bax5.matshow(prob_change[4, it, :, xmin: xmax], vmin=0, vmax=1)
     plt.title(bin_labels[4])
     # cbar = Fig.colorbar(bcax5)
     plt.tight_layout()
@@ -227,24 +248,24 @@ def plot_bin_maps(it):
 
 def ani_frame_bins(timestep):
 
-    prob1 = prob_change_internal[0, timestep, :, xmin: xmax]
+    prob1 = prob_change[0, timestep, :, xmin: xmax]
     cax1.set_data(prob1)
     yrstr = "Year " + str(timestep * save_frequency)
     text1.set_text(yrstr)
 
-    prob2 = prob_change_internal[1, timestep, :, xmin: xmax]
+    prob2 = prob_change[1, timestep, :, xmin: xmax]
     cax2.set_data(prob2)
     text2.set_text(yrstr)
 
-    prob3 = prob_change_internal[2, timestep, :, xmin: xmax]
+    prob3 = prob_change[2, timestep, :, xmin: xmax]
     cax3.set_data(prob3)
     text3.set_text(yrstr)
 
-    prob4 = prob_change_internal[3, timestep, :, xmin: xmax]
+    prob4 = prob_change[3, timestep, :, xmin: xmax]
     cax4.set_data(prob4)
     text4.set_text(yrstr)
 
-    prob5 = prob_change_internal[4, timestep, :, xmin: xmax]
+    prob5 = prob_change[4, timestep, :, xmin: xmax]
     cax5.set_data(prob5)
     text5.set_text(yrstr)
 
@@ -253,8 +274,8 @@ def ani_frame_bins(timestep):
 
 def ani_frame_most_probable_outcome(timestep):
 
-    Max_idx = np.argmax(prob_change_internal[:, timestep, :, xmin: xmax], axis=0)
-    Conf = 1 - np.max(prob_change_internal[:, timestep, :, xmin: xmax], axis=0)
+    Max_idx = np.argmax(prob_change[:, timestep, :, xmin: xmax], axis=0)
+    Conf = 1 - np.max(prob_change[:, timestep, :, xmin: xmax], axis=0)
     cax1.set_data(Max_idx)
     cax2.set_data(Conf)
     yrstr = "Year " + str(timestep * save_frequency)
@@ -301,8 +322,11 @@ startdate = '20181007'
 
 # _____________________
 # PROBABILISTIC PROJECTIONS
-RSLR_bin = [1, 3, 5, 7]  # Bins of future RSLR rates
-RSLR_prob = [0.1, 0.5, 0.3, 0.1]  # Probability of future RSLR bins (sum to 1.0)
+# RSLR_bin = [1, 3, 5, 7]  # Bins of future RSLR rates
+# RSLR_prob = [0.1, 0.5, 0.3, 0.1]  # Probability of future RSLR bins (sum to 1.0)
+
+RSLR_bin = [1, 9]
+RSLR_prob = [0.7, 0.3]
 
 bin_edges = [-np.inf, -0.5, -0.1, 0.1, 0.5, np.inf]  # [m] Elevation change
 bin_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
@@ -311,11 +335,11 @@ bin_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
 # _____________________
 # INITIAL PARAMETERS
 
-sim_duration = 0.1  # [yr]
+sim_duration = 2.5  # [yr]
 save_frequency = 0.5  # [yr]
 
-duplicates = 4  # To account for internal stochasticity (e.g., storms, aeolian)
-core_num = 2  # Number of cores to use in the parallelization
+duplicates = 3  # To account for internal stochasticity (e.g., storms, aeolian)
+core_num = 3  # Number of cores to use in the parallelization
 
 # Define Horizontal and Vertical References of Domain
 ymin = 18950  # [m] Alongshore coordinate
@@ -324,7 +348,7 @@ xmin = 1000  # [m] Cross-shore coordinate (for plotting)
 xmax = 1600  # [m] Cross-shore coordinate (for plotting)
 MHW = 0.39  # [m NAVD88] Initial mean high water
 
-name = '2018-2018, 4 duplicates'  # Name of simulation suite
+name = '2018-2021, 3 duplicates'  # Name of simulation suite
 
 
 # _____________________
@@ -346,12 +370,10 @@ num_saves = int(np.floor(sim_duration/save_frequency)) + 1
 print()
 print(name)
 
-sim_count = 0  # Initialize sim counter
-num_sim = duplicates  #* len(RSLR_bin)  # Total number of simulations
 start_time = time.time()  # Record time at start of simulation
 
 # Determine probabilistic change from internal stochasticity
-prob_change_internal = interal_probabilistic_change()
+prob_change, joint_temp = joint_probabilistic_change()
 
 # Print elapsed time of simulation
 print()
@@ -375,28 +397,28 @@ plot_cell_prob_bar(it=-1, l=182, c=1311)
 Fig = plt.figure(figsize=(14, 7.5))
 Fig.suptitle(name, fontsize=13)
 ax1 = Fig.add_subplot(231)
-cax1 = ax1.matshow(prob_change_internal[0, 0, :, xmin: xmax], vmin=0, vmax=1)
+cax1 = ax1.matshow(prob_change[0, 0, :, xmin: xmax], vmin=0, vmax=1)
 plt.title(bin_labels[0])
 timestr = "Year " + str(0)
 text1 = plt.text(2, longshore - 2, timestr, c='white')
 
 ax2 = Fig.add_subplot(232)
-cax2 = ax2.matshow(prob_change_internal[1, 0, :, xmin: xmax], vmin=0, vmax=1)
+cax2 = ax2.matshow(prob_change[1, 0, :, xmin: xmax], vmin=0, vmax=1)
 plt.title(bin_labels[1])
 text2 = plt.text(2, longshore - 2, timestr, c='white')
 
 ax3 = Fig.add_subplot(233)
-cax3 = ax3.matshow(prob_change_internal[2, 0, :, xmin: xmax], vmin=0, vmax=1)
+cax3 = ax3.matshow(prob_change[2, 0, :, xmin: xmax], vmin=0, vmax=1)
 plt.title(bin_labels[2])
 text3 = plt.text(2, longshore - 2, timestr, c='white')
 
 ax4 = Fig.add_subplot(234)
-cax4 = ax4.matshow(prob_change_internal[3, 0, :, xmin: xmax], vmin=0, vmax=1)
+cax4 = ax4.matshow(prob_change[3, 0, :, xmin: xmax], vmin=0, vmax=1)
 plt.title(bin_labels[3])
 text4 = plt.text(2, longshore - 2, timestr, c='white')
 
 ax5 = Fig.add_subplot(235)
-cax5 = ax5.matshow(prob_change_internal[4, 0, :, xmin: xmax], vmin=0, vmax=1)
+cax5 = ax5.matshow(prob_change[4, 0, :, xmin: xmax], vmin=0, vmax=1)
 plt.title(bin_labels[4])
 text5 = plt.text(2, longshore - 2, timestr, c='white')
 # cbar = Fig.colorbar(cax5)
@@ -418,8 +440,8 @@ Fig = plt.figure(figsize=(14, 7.5))
 ax1 = Fig.add_subplot(111)
 cmap1 = colors.ListedColormap(['yellow', 'red', 'black', 'blue', 'green'])
 cmap2 = colors.ListedColormap(['white'])
-max_idx = np.argmax(prob_change_internal[:, 0, :, xmin: xmax], axis=0)
-conf = 1 - np.max(prob_change_internal[:, 0, :, xmin: xmax], axis=0)
+max_idx = np.argmax(prob_change[:, 0, :, xmin: xmax], axis=0)
+conf = 1 - np.max(prob_change[:, 0, :, xmin: xmax], axis=0)
 cax1 = ax1.matshow(max_idx, cmap=cmap1, vmin=0, vmax=num_bins-1)
 cax2 = ax1.matshow(np.ones(conf.shape), cmap=cmap2, vmin=0, vmax=1, alpha=conf)
 ticks = np.linspace(start=((num_bins - 1) / num_bins) / 2, stop=num_bins - 1 - ((num_bins - 1) / num_bins) / 2, num=num_bins)
