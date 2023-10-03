@@ -95,7 +95,7 @@ meeb = MEEB(
     hindcast=True,
     seeded_random_numbers=True,
     simulation_start_date=startdate,
-    storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
+    storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
     storm_list_filename='NCB_SimStorms.npy',
     # --- Aeolian --- #
     jumplength=5,

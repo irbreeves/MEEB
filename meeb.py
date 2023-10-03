@@ -109,8 +109,8 @@ class MEEB:
             effective_veg_sigma=3,  # Standard deviation for Gaussian filter of vegetation cover
 
             # STORM OVERWASH AND DUNE EROSION
-            storm_list_filename="VCRStormList.npy",
-            storm_timeseries_filename="StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
+            storm_list_filename="SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy",
+            storm_timeseries_filename="StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
             threshold_in=0.25,  # [%] Threshold percentage of overtopped dune cells exceeded by Rlow needed to be in inundation overwash regime
             Rin_in=5,  # [m^3/hr] Flow infiltration and drag parameter, inundation overwash regime
             Rin_ru=325,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime

@@ -122,7 +122,7 @@ def meeb_fitness(solution):
         init_filename=start,
         hindcast=True,
         simulation_start_date=startdate,
-        storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
+        storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
         # --- Aeolian --- #
         p_dep_sand=solution[0],
         p_dep_sand_VegMax=solution[0] + solution[1],

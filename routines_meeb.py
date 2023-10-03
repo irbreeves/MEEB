@@ -908,7 +908,7 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, longshore, MHW,
     # Determine if storm will occur this iteration
     storm = RNG.random() < pstorm[iteration]
 
-    if storm:
+    if storm:  # TODO: Redo with new synthetic storms
         # Randomly select storm from list of synthetic storms
         n = RNG.integers(0, len(storm_list))  # Randomly selected storm
         Hs = storm_list[n, 0]  # Significant wave height
@@ -918,6 +918,7 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, longshore, MHW,
         AT = storm_list[n, 5]  # Tidal amplitude
 
         # Calculate simulated R2% and add to SL to get the simulated TWL
+        # Recalculated here instead of using TWL value from synthetic storm list because beach slope varies alongshore in MEEB
         L0 = (9.8 * Tp ** 2) / (2 * np.pi)  # Wavelength
         Setup = 0.35 * beach_slope * np.sqrt(Hs * L0)
         Sin = 0.75 * beach_slope * np.sqrt(Hs * L0)  # Incident band swash
