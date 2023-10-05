@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 22 September 2023
+IRBR 5 October 2023
 """
 
 import numpy as np
@@ -29,7 +29,7 @@ def run_individual_sim(rslr):
         alongshore_domain_boundary_min=ymin,
         alongshore_domain_boundary_max=ymax,
         RSLR=rslr,
-        MHW=MHW,
+        MHW=MHW_init,
         init_filename=start,
         hindcast=False,
         seeded_random_numbers=False,
@@ -72,7 +72,7 @@ def run_individual_sim(rslr):
 
     # Loop through time
     for time_step in range(int(meeb.iterations)):
-        # print("\r", "Time Step: ", (time_step + 1) / meeb.iterations_per_cycle, "years", end="")
+        print("\r", "Time Step: ", (time_step + 1) / meeb.iterations_per_cycle, "years", end="")
 
         # Run time step
         meeb.update(time_step)
@@ -81,24 +81,18 @@ def run_individual_sim(rslr):
     topo_start_sim = meeb.topo_TS[:, :, 0]  # [m NAVDD88]
     topo_end_sim = meeb.topo_TS[:, :, -1]  # [m NAVDD88]
     mhw_end_sim = meeb.MHW  # [m NAVD88]
-    topo_change_sim = topo_end_sim - topo_start_sim  # [m]
 
     # Veg change
     veg_start_sim = meeb.veg_TS[:, :, 0]
     veg_end_sim = meeb.veg_TS[:, :, -1]
-    veg_change_sim = veg_end_sim - veg_start_sim  # [m]
-    veg_present_sim = veg_end_sim > 0.05  # [bool]
 
     # Subaerial mask
-    subaerial_mask = topo_end_sim > mhw_end_sim  # [bool] Mask for every cell above water
+    subaerial_mask = topo_end_sim > MHW_init  # [bool] Mask for every cell above initial MHW; Note: this should be changed if modeling sea-level fall
 
     topo_change_sim_TS = np.zeros(meeb.topo_TS.shape)
     for ts in range(meeb.topo_TS.shape[2]):
         topo_change_ts = (meeb.topo_TS[:, :, ts] - topo_start_sim) * subaerial_mask  # Disregard change that is not subaerial
         topo_change_sim_TS[:, :, ts] = topo_change_ts
-
-    # Disregard change that is not subaerial
-    topo_change_sim *= subaerial_mask
 
     # Bin by elevation change
     topo_change_bin = np.zeros([num_bins, num_saves, longshore, crossshore])
@@ -130,9 +124,9 @@ def internal_probabilistic_change(rslr):
             for n in range(duplicates):
                 topo_change_bins[b, ts, :, :] += topo_change_bins_duplicates[n][b, ts, :, :]
 
-    prob_change = topo_change_bins / duplicates
+    internal_prob_change = topo_change_bins / duplicates
 
-    return prob_change
+    return internal_prob_change
 
 
 def joint_probabilistic_change():
@@ -196,16 +190,16 @@ def plot_most_probable_outcome(it):
     """
 
     mmax_idx = np.argmax(prob_change[:, it, :, xmin: xmax], axis=0)  # Bin of most probably outcome
-    conf = 1 - np.max(prob_change[:, it, :, xmin: xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
+    confidence = 1 - np.max(prob_change[:, it, :, xmin: xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
 
-    cmap1 = colors.ListedColormap(['yellow', 'red', 'black', 'blue', 'green'])
-    cmap2 = colors.ListedColormap(['white'])
+    cmap1f = colors.ListedColormap(['yellow', 'red', 'black', 'blue', 'green'])
+    cmap2f = colors.ListedColormap(['white'])
 
     fig, ax = plt.subplots()
-    cax = ax.matshow(mmax_idx, cmap=cmap1, vmin=0, vmax=num_bins-1)
-    cax2 = ax.matshow(np.ones(mmax_idx.shape), cmap=cmap2, vmin=0, vmax=1, alpha=conf)
-    ticks = np.linspace(start=((num_bins - 1) / num_bins) / 2, stop=num_bins - 1 - ((num_bins - 1) / num_bins) / 2, num=num_bins)
-    mcbar = fig.colorbar(cax, ticks=ticks)
+    cax = ax.matshow(mmax_idx, cmap=cmap1f, vmin=0, vmax=num_bins-1)
+    cax2 = ax.matshow(np.ones(mmax_idx.shape), cmap=cmap2f, vmin=0, vmax=1, alpha=confidence)
+    tic = np.linspace(start=((num_bins - 1) / num_bins) / 2, stop=num_bins - 1 - ((num_bins - 1) / num_bins) / 2, num=num_bins)
+    mcbar = fig.colorbar(cax, ticks=tic)
     mcbar.ax.set_yticklabels(bin_labels)
     plt.xlabel('Alongshore Distance [m]')
     plt.ylabel('Cross-Shore Distance [m]')
@@ -277,11 +271,11 @@ def ani_frame_most_probable_outcome(timestep):
     Max_idx = np.argmax(prob_change[:, timestep, :, xmin: xmax], axis=0)
     Conf = 1 - np.max(prob_change[:, timestep, :, xmin: xmax], axis=0)
     cax1.set_data(Max_idx)
-    cax2.set_data(Conf)
+    cax2.set_alpha(Conf)
     yrstr = "Year " + str(timestep * save_frequency)
     text1.set_text(yrstr)
 
-    return cax1, cax2, text1  # TODO: Not updating the confidence layer
+    return cax1, cax2, text1
 
 
 # __________________________________________________________________________________________________________________________________
@@ -322,11 +316,8 @@ startdate = '20181007'
 
 # _____________________
 # PROBABILISTIC PROJECTIONS
-# RSLR_bin = [1, 3, 5, 7]  # Bins of future RSLR rates
-# RSLR_prob = [0.1, 0.5, 0.3, 0.1]  # Probability of future RSLR bins (sum to 1.0)
-
-RSLR_bin = [1, 9]
-RSLR_prob = [0.7, 0.3]
+RSLR_bin = [0.002, 0.008]  # [m/yr] Bins of future RSLR rates
+RSLR_prob = [0.2, 0.8]  # Probability of future RSLR bins (must sum to 1.0)
 
 bin_edges = [-np.inf, -0.5, -0.1, 0.1, 0.5, np.inf]  # [m] Elevation change
 bin_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
@@ -335,20 +326,20 @@ bin_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
 # _____________________
 # INITIAL PARAMETERS
 
-sim_duration = 2.5  # [yr]
+sim_duration = 1.5  # [yr]
 save_frequency = 0.5  # [yr]
 
-duplicates = 3  # To account for internal stochasticity (e.g., storms, aeolian)
-core_num = 3  # Number of cores to use in the parallelization
+duplicates = 7  # To account for internal stochasticity (e.g., storms, aeolian)
+core_num = min(duplicates, 20)  # Number of cores to use in the parallelization (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
 ymin = 18950  # [m] Alongshore coordinate
 ymax = 19250  # [m] Alongshore coordinate
 xmin = 1000  # [m] Cross-shore coordinate (for plotting)
 xmax = 1600  # [m] Cross-shore coordinate (for plotting)
-MHW = 0.39  # [m NAVD88] Initial mean high water
+MHW_init = 0.39  # [m NAVD88] Initial mean high water
 
-name = '2018-2021, 3 duplicates'  # Name of simulation suite
+name = '7 duplicates, RSLR (2, 8) (0.2, 0.8)'  # Name of simulation suite
 
 
 # _____________________
@@ -387,7 +378,6 @@ print("Elapsed Time: ", SimDuration, "sec")
 
 plot_bin_maps(it=-1)
 plot_most_probable_outcome(it=-1)
-plot_cell_prob_bar(it=-1, l=182, c=1311)
 
 
 # -----------------
