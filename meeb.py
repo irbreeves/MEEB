@@ -6,16 +6,13 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 21 September 2023
+Last update: 19 October 2023
 
 __________________________________________________________________________________________________________________________________"""
 
 import numpy as np
 import math
-import dill
 import matplotlib.pyplot as plt
-import time
-import imageio
 import scipy
 import copy
 from datetime import datetime, timedelta
@@ -249,8 +246,8 @@ class MEEB:
         self._simulation_start_date = datetime.strptime(self._simulation_start_date, '%Y%m%d').date()  # Convert to datetime
         if hindcast:
             self._hindcast_timeseries_start_date = datetime.strptime(self._hindcast_timseries_start_date, '%Y%m%d').date()  # Convert to datetime
-            self._simulation_start_iteration = ((self._simulation_start_date.year - self._hindcast_timeseries_start_date.year) * self._iterations_per_cycle) + \
-                                               math.floor(self._simulation_start_date.timetuple().tm_yday / 365 * self._iterations_per_cycle)  # Iteration, realtive to timeseries start, from which to begin hindcast
+            self._simulation_start_iteration = (((self._simulation_start_date.year - self._hindcast_timeseries_start_date.year) * self._iterations_per_cycle) +
+                                                math.floor(self._simulation_start_date.timetuple().tm_yday / 365 * self._iterations_per_cycle))  # Iteration, realtive to timeseries start, from which to begin hindcast
             if self._simulation_start_iteration % 2 != 0:
                 self._simulation_start_iteration -= 1  # Round simulation start iteration to even number
         else:
@@ -274,7 +271,7 @@ class MEEB:
             self._k_sf = ((3600 * 24 * 365) * ((shoreface_transport_efficiency * shoreface_friction * 9.81 ** (11 / 4) * self._mean_wave_height ** 5 * self._mean_wave_period ** (5 / 2)) / (960 * specific_gravity_submerged_sed * math.pi ** (7 / 2) * w_s ** 2)) *
                           (((1 / (11 / 4 * z0 ** (11 / 4))) - (1 / (11 / 4 * self._DShoreface ** (11 / 4)))) / (self._DShoreface - z0)))  # [m^3/m/yr] Shoreface response rate
             self._LShoreface = int(self._DShoreface / self._s_sf_eq)  # [m] Initialize length of shoreface such that initial shoreface slope equals equilibrium shoreface slope
-        self._x_s = routine.ocean_shoreline(self._topo, self._MHW)  # [m] Start locations of shoreline according to initial topography and MHW
+        self._x_s = routine.init_ocean_shoreline(self._topo, self._MHW, self._alongshore_section_length)  # [m] Start locations of shoreline according to initial topography and MHW
         self._x_t = self._x_s - self._LShoreface  # [m] Start locations of shoreface toe
 
         self._coast_diffusivity, self._di, self._dj, self._ny = routine.init_AST_environment(self._wave_asymetry,
@@ -464,6 +461,7 @@ class MEEB:
                 self._x_s,
                 self._x_t,
                 self._MHW,
+                self._alongshore_section_length,
             )
 
             # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)

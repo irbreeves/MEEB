@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 14 September 2023
+Last update: 19 October 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -580,6 +580,7 @@ def shoreline_change_from_CST(
         x_s,
         x_t,
         MHW,
+        dy,
 ):
     """Shoreline change from cross-shore sediment transport following Lorenzo-Trueba and Ashton (2014).
 
@@ -605,6 +606,8 @@ def shoreline_change_from_CST(
         [m] Cross-shore shoreface toe position relative to start of simulation
     MHW : float
         [m NAVD88] Present mean high water
+    dy : int
+        [m] Alongshore length between shoreline nodes, i.e. alongshore section length
 
     Returns
     ----------
@@ -625,8 +628,15 @@ def shoreline_change_from_CST(
     Qsf = k_sf * (s_sf_eq - s_sf)  # [m^3/m/ts]
 
     # Toe, Shoreline, and island base elevation changes
-    x_t_dt = (4 * Qsf * (h_b + d_sf) / (d_sf * (2 * h_b + d_sf))) + (2 * RSLR / s_sf)
-    x_s_dt = 2 * (Qow + Qbe) / ((2 * h_b) + d_sf) - (4 * Qsf * (h_b + d_sf) / (((2 * h_b) + d_sf) ** 2))  # Dune growth and alongshore transport added to LTA14 formulation
+    x_t_dt_temp = (4 * Qsf * (h_b + d_sf) / (d_sf * (2 * h_b + d_sf))) + (2 * RSLR / s_sf)
+    x_s_dt_temp = 2 * (Qow + Qbe) / ((2 * h_b) + d_sf) - (4 * Qsf * (h_b + d_sf) / (((2 * h_b) + d_sf) ** 2))  # Dune growth and alongshore transport added to LTA14 formulation
+
+    # Find mean change in x_s and x_t for every dy meters alongshore
+    x_t_dt_dy_mean = np.nanmean(np.pad(x_t_dt_temp.copy().astype(float), (0, 0 if x_t_dt_temp.copy().size % dy == 0 else dy - x_t_dt_temp.copy().size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
+    x_s_dt_dy_mean = np.nanmean(np.pad(x_s_dt_temp.copy().astype(float), (0, 0 if x_s_dt_temp.copy().size % dy == 0 else dy - x_s_dt_temp.copy().size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
+
+    x_t_dt = np.repeat(x_t_dt_dy_mean, dy)
+    x_s_dt = np.repeat(x_s_dt_dy_mean, dy)
 
     # Record changes
     x_t = x_t + x_t_dt
@@ -883,7 +893,7 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, longshore, MHW,
     iteration : int
         Present iteration for the year.
     storm_list : ndarray
-        List of synthetic storms (rows), with wave and tide statistics (columns) desccribing each storm.
+        List of synthetic storms (rows), with wave and tide statistics (columns) desccribing each storm. Order of statistics: Hs, dur, TWL, SL, Tp, R2, Rlow
     beach_slope : float
         Equilibrium beach slope.
     longshore :
@@ -908,14 +918,13 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, longshore, MHW,
     # Determine if storm will occur this iteration
     storm = RNG.random() < pstorm[iteration]
 
-    if storm:  # TODO: Redo with new synthetic storms
+    if storm:
         # Randomly select storm from list of synthetic storms
         n = RNG.integers(0, len(storm_list))  # Randomly selected storm
         Hs = storm_list[n, 0]  # Significant wave height
         dur = storm_list[n, 1]  # Duration
-        NTR = storm_list[n, 3]  # Non-tidal residual
+        SL = storm_list[n, 3]  # Sea-level [m NAVD88]
         Tp = storm_list[n, 4]  # Wave period
-        AT = storm_list[n, 5]  # Tidal amplitude
 
         # Calculate simulated R2% and add to SL to get the simulated TWL
         # Recalculated here instead of using TWL value from synthetic storm list because beach slope varies alongshore in MEEB
@@ -927,7 +936,7 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, longshore, MHW,
         R2 = 1.1 * (Setup + (Swash / 2))  # R2%
 
         # Calculate storm water levels
-        Rhigh = NTR + R2 + AT
+        Rhigh = SL + R2
         Rlow = (Rhigh - (Swash / 2))
 
         # No storm if TWL < MHW
@@ -1201,7 +1210,7 @@ def storm_processes(
         ElevationChange[np.arange(longshore), dune_crest_loc - domain_width_start] = 0  # Do not update elevation change at dune crest cell where discharge was introduced
         Elevation[TS, :, :] = Elevation[TS, :, :] + ElevationChange
 
-        # Calculate and save volume of sediment deposited on/behind the island for every hour
+        # Calculate and save volume of sediment deposited on/behind the barrier interior for every hour
         OWloss = OWloss + np.sum(ElevationChange, axis=1)  # [m^3] For each cell alongshore
 
         # # Shrub Burial/Erosion
@@ -1212,6 +1221,7 @@ def storm_processes(
         if TS % substep == 0:
             beach_ss = beach_substeps  # Reset to default minimum value
             valid = False
+            invalid_count = 0
 
             while not valid:
                 Elev_Out, dV, wetMap = calc_dune_erosion_TS(
@@ -1227,6 +1237,9 @@ def storm_processes(
                 )
                 if np.isnan(np.sum(Elev_Out)) or np.isinf(np.sum(Elev_Out)):
                     beach_ss = int(beach_ss * 1.5)  # Increase beach substeps if instabilities arise and try again
+                    invalid_count += 1
+                elif invalid_count >= 10:
+                    valid = True  # To prevent unlikely case of perpetual while loop, give up if more than 20 invalid attempts and return no change
                 else:  # Exit loop if no instabilities arise
                     valid = True
                     Elevation[TS, :, :] = Elev_Out
@@ -1313,7 +1326,6 @@ def route_overwash(
         inundation = False
         Rin = Rin_r
         C = Cx * AvgSlope  # Momentum constant
-
 
         # Set Discharge at Dune Crest
         for ls in range(longshore):
@@ -1726,12 +1738,12 @@ def shoreline_change_from_AST(x_s,
     """
     # TODO: Currently initializing Alongshore Transporter class every loop, should initialize only once!
 
-    # Take average shoreline position every dy [m] alongshore
-    x_s_ast = np.nanmean(np.pad(x_s.copy().astype(float), (0, 0 if x_s.copy().size % dy == 0 else dy - x_s.copy().size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
+    # Take shoreline position every dy [m] alongshore
+    x_s_ast = x_s.copy()[0::dy]
     alongshore_section_length = np.ones([len(x_s_ast)]) * dy
 
     # Create Wave Distribution
-    waves = ashton(a=wave_asymetry, h=wave_high_angle_fraction, loc=-np.pi/2, scale=np.pi)
+    waves = ashton(a=wave_asymetry, h=wave_high_angle_fraction, loc=-np.pi / 2, scale=np.pi)
 
     # Initialize AlongshoreTransporter
     transporter = AlongshoreTransporter(shoreline_x=x_s_ast.copy(),
@@ -1745,11 +1757,7 @@ def shoreline_change_from_AST(x_s,
     transporter.update()
     new_x_s = transporter.shoreline_x
 
-    # Interpolate shoreline change from AST linearly between each dy spacing
-    x = np.arange(len(x_s))
-    xp = np.append(int(dy / 2), np.cumsum(alongshore_section_length[1:]) + int(dy / 2))
-    fp = new_x_s
-    x_s_updated = np.interp(x, xp, fp)  # Interpolate
+    x_s_updated = np.repeat(new_x_s, dy)
 
     return x_s_updated
 
@@ -1812,8 +1820,8 @@ def shoreline_change_from_AST_2(x_s,
                                 ):
     """Determine change in shoreline position via alongshore sediment transport."""
 
-    # Take average shoreline position every dy [m] alongshore
-    x_s_ast = np.nanmean(np.pad(x_s.copy().astype(float), (0, 0 if x_s.copy().size % dy == 0 else dy - x_s.copy().size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
+    # Take shoreline position every dy [m] alongshore
+    x_s_ast = x_s.copy()[0::dy]
 
     # Find shoreline angles
     shoreline_angles = (180 * (np.arctan2((x_s_ast[np.r_[1: len(x_s_ast), 0]] - x_s_ast), dy)) / np.pi)
@@ -1833,14 +1841,23 @@ def shoreline_change_from_AST_2(x_s,
     # Solve for new shoreline position
     new_x_s = spsolve(A, RHS)
 
-    # Interpolate shoreline change from AST linearly between each dy spacing (convert from dy alongshore length scale back to cellsize length scale)
-    x = np.arange(len(x_s))
-    alongshore_section_length = np.ones([ny]) * dy
-    xp = np.append(int(dy / 2), np.cumsum(alongshore_section_length[1:]) + int(dy / 2))
-    fp = new_x_s
-    x_s_updated = np.interp(x, xp, fp)  # Interpolate
+    x_s_updated = np.repeat(new_x_s, dy)
 
     return x_s_updated
+
+
+def init_ocean_shoreline(topo, MHW, dy):
+    """Takes raw shoreline position and converts to average of every dy meters."""
+
+    x_s_raw = ocean_shoreline(topo, MHW)
+
+    # Find average shoreline position of every dy [m] alongshore
+    x_s_dy_mean = np.nanmean(np.pad(x_s_raw.copy().astype(float), (0, 0 if x_s_raw.copy().size % dy == 0 else dy - x_s_raw.copy().size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
+
+    # Expand to full shoreline length
+    x_s_init = np.repeat(x_s_dy_mean, dy)
+
+    return x_s_init
 
 
 def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=-1):
@@ -1975,6 +1992,6 @@ def reduce_raster_resolution(raster, reduction_factor):
     """
 
     shape = tuple(int(ti / reduction_factor) for ti in raster.shape)
-    sh = shape[0], raster.shape[0]//shape[0], shape[1], raster.shape[1]//shape[1]
+    sh = shape[0], raster.shape[0] // shape[0], shape[1], raster.shape[1] // shape[1]
 
     return raster.reshape(sh).mean(-1).mean(1)
