@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 19 October 2023
+Last update: 23 October 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -1736,7 +1736,6 @@ def shoreline_change_from_AST(x_s,
     x_s
         Cross-shore coordinates for shoreline position updated for alongshore sediment transport.
     """
-    # TODO: Currently initializing Alongshore Transporter class every loop, should initialize only once!
 
     # Take shoreline position every dy [m] alongshore
     x_s_ast = x_s.copy()[0::dy]
@@ -1772,7 +1771,41 @@ def init_AST_environment(wave_asymetry,
                          alongshore,
                          n_bins=181,
                          ):
-    """Initialize alongshore tranport environment, i.e. the average coastal diffusivity based on wave climate."""
+    """Initialize alongshore tranport environment, i.e. the average coastal diffusivity based on wave climate.
+    From CASCADE (Anarde et al., 2023), stemming from BRIE (Nienhuis & Lorenzo-Trueba, 2019) and CEM (Ashton & Murray, 2006).
+
+    Parameters
+    ----------
+    wave_asymetry: float
+        Fraction of waves approaching from the left (when looking offshore).
+    wave_high_angle_fraction: float
+        Fraction of waves approaching at angles higher than 45 degrees from shore normal.
+    mean_wave_height: float
+        [m] Mean offshore significant wave height.
+    mean_wave_period: float
+        [s] Mean offshore wave period.
+    DShoreface: float
+        [m] Shoreface depth.
+    mean_barrier_height: float
+        [m] Average height of the barrier above MHW (typically taken as the average height of the dune toe above MHW).
+    dy: int
+        [m] Alongshore width of shoreline sections.
+    alongshore: int
+        [m] Alongshore dimension of model domain.
+    n_bins: int, optional
+        The number of bins used for the wave resolution: if 181 and [-90,90] in angle array, the wave angles are in the middle of the bins, symmetrical about zero, spaced by 1 degree
+
+    Returns
+    ----------
+    coast_diff:
+        Wave-climate-averaged coastal diffusivity for each section alongshore.
+    di
+        Timestepping for implicit diffusion equation.
+    dj
+        Spacestepping for implicit diffusion equation.
+    ny
+        Number of alongshore sections in domain.
+    """
 
     ny = int(math.ceil(alongshore / dy))  # Alongshore section count
 
@@ -1816,9 +1849,33 @@ def shoreline_change_from_AST_2(x_s,
                                 dt,  # [] Time step
                                 ny,
                                 nbins=181,
-                                x_s_dt=0,
                                 ):
-    """Determine change in shoreline position via alongshore sediment transport."""
+    """Determine change in shoreline position via alongshore sediment transport. From CASCADE (Anarde et al., 2023), stemming from BRIE (Nienhuis & Lorenzo-Trueba, 2019) and CEM (Ashton & Murray, 2006).
+
+    Parameters
+    ----------
+    x_s : array of float
+        Cross-shore coordinates for shoreline position.
+    coast_diffusivity : array of float
+        Wave-climate-averaged coastal diffusivity for each section alongshore.
+    di : ndarray
+        Timestepping for implicit diffusion equation.
+    dj: ndarray
+        Spacestepping for implicit diffusion equation.
+    dy : int
+        [m] Alongshore width of shoreline sections used in the shoreline diffusion calculations.
+    dt: float
+        [yr] Time step length for shoreline change.
+    ny: int
+        Number of alongshore sections in domain.
+    nbins: int, optional
+        The number of bins used for the wave resolution: if 181 and [-90,90] in angle array, the wave angles are in the middle of the bins, symmetrical about zero, spaced by 1 degree
+
+    Returns
+    ----------
+    x_s_updated
+        Cross-shore coordinates for shoreline position updated for alongshore sediment transport.
+    """
 
     # Take shoreline position every dy [m] alongshore
     x_s_ast = x_s.copy()[0::dy]
@@ -1836,7 +1893,7 @@ def shoreline_change_from_AST_2(x_s,
 
     A = csr_matrix((dv, (di, dj)))
 
-    RHS = (x_s_ast + r_ipl * (x_s_ast[np.r_[1: ny, 0]] - 2 * x_s_ast + x_s_ast[np.r_[ny - 1, 0: ny - 1]]) + x_s_dt)
+    RHS = (x_s_ast + r_ipl * (x_s_ast[np.r_[1: ny, 0]] - 2 * x_s_ast + x_s_ast[np.r_[ny - 1, 0: ny - 1]]))
 
     # Solve for new shoreline position
     new_x_s = spsolve(A, RHS)
