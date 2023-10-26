@@ -1,18 +1,18 @@
 """
 Script for running MEEB simulations.
 
-IRBR 14 September 2023
+IRBR 26 October 2023
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-
-import routines_meeb
-import routines_meeb as routine
+import os
 import copy
 import time
 
+import routines_meeb
+import routines_meeb as routine
 from meeb import MEEB
 
 
@@ -52,20 +52,20 @@ start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
 startdate = '20181007'
 
 
-sim_duration = 3
+sim_duration = 8
 
 
 # _____________________
 # Initial Conditions
 
 # Define Alongshore Coordinates of Domain
-ymin = 18950  # Alongshore
-ymax = 19250  # Alongshore
-xmin = 900  # Cross-shore   900
-xmax = 1600  # Cross-shore  1500
+ymin = 6500  # Alongshore
+ymax = 6700  # Alongshore
+xmin = 700  # Cross-shore   900
+xmax = 1400  # Cross-shore  1500
 MHW = 0.39  # [m NAVD88]
 
-name = 'RSLR=0, A=0.6, U=0.39, Hs=0.58, T=6.6, L=50'
+name = '6500-6700, 8 yr, RSLR8'
 
 # Load Initial Domains
 Init = np.load("Input/" + start)
@@ -89,14 +89,14 @@ meeb = MEEB(
     simulation_time_yr=sim_duration,
     alongshore_domain_boundary_min=ymin,
     alongshore_domain_boundary_max=ymax,
-    RSLR=0.001,
+    RSLR=0.008,
     MHW=MHW,
     init_filename=start,
-    hindcast=True,
+    hindcast=False,
     seeded_random_numbers=True,
     simulation_start_date=startdate,
     storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
-    storm_list_filename='NCB_SimStorms.npy',
+    storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',
     # --- Aeolian --- #
     jumplength=5,
     slabheight=0.02,
@@ -115,9 +115,9 @@ meeb = MEEB(
     MaxUpSlope=0.63,
     K_ru=0.0000622,
     substep_ru=7,
-    beach_equilibrium_slope=0.012,
-    beach_erosiveness=1.84,
-    beach_substeps=51,
+    beach_equilibrium_slope=0.039,
+    swash_transport_coefficient=1e-3,
+    beach_substeps=10,
     flow_reduction_max_spec1=0.17,
     flow_reduction_max_spec2=0.44,
     # --- Shoreline --- #
@@ -125,7 +125,7 @@ meeb = MEEB(
     wave_high_angle_fraction=0.39,
     mean_wave_height=0.98,
     mean_wave_period=6.6,
-    alongshore_section_length=50,
+    alongshore_section_length=25,
     estimate_shoreface_parameters=True,
     # --- Veg --- #
     # sp1_c=1.20,
@@ -215,7 +215,7 @@ cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
 plt.tight_layout()
 
 # # -----------------
-# # Topo Change, Observed vs Simulated
+# # Topo Change
 # Fig = plt.figure(figsize=(14, 7.5))
 # Fig.suptitle(meeb.name, fontsize=13)
 #
@@ -239,7 +239,7 @@ plt.tight_layout()
 # ax2.matshow(vcs, cmap='BrBG', vmin=-1, vmax=1)
 
 # # -----------------
-# # Profiles: Observed vs Simulated
+# # Profiles
 # Fig = plt.figure(figsize=(14, 7.5))
 # ax1 = Fig.add_subplot(211)
 # profile_x = 10
@@ -319,7 +319,10 @@ plt.tight_layout()
 
 # Create and save animation
 ani = animation.FuncAnimation(Fig, ani_frame, frames=int(meeb.simulation_time_yr / meeb.save_frequency) + 1, interval=300, blit=True)
-ani.save("Output/Animation/meeb_elev.gif", dpi=150, writer="imagemagick")
+c = 1
+while os.path.exists("Output/Animation/meeb_elev_" + str(c) + ".gif"):
+    c += 1
+ani.save("Output/Animation/meeb_elev_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
 plt.show()

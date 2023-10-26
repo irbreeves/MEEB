@@ -1,6 +1,6 @@
 """
 Script for testing MEEB overwash function.
-IRBR 14 September 2023
+IRBR 26 October 2023
 """
 
 import numpy as np
@@ -72,10 +72,13 @@ Init = np.load("Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy")
 End = np.load("Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy")
 
 # Define Alongshore Coordinates of Domain
-xmin = 5800  # 20525  # 19825  # 18950
-xmax = 6900  # 20725  # 20275  # 19250
+xmin = 18950  # 20525  # 19825  # 18950
+xmax = 19250  # 20725  # 20275  # 19250
 
-name = "5800-6900, Florence, New Calib"
+ymin = 900  # 900
+ymax = ymin + 500
+
+name = "18950-19250, Rh=3.32, Beq=0.039, ss=20, Et=calc, Tp=9.4, Kc=0.0016"
 print(name)
 
 # _____________________________________________
@@ -103,13 +106,14 @@ x_s = routine.ocean_shoreline(topo, MHW)
 Rhigh = Rhigh * np.ones(obs_topo_final.shape[0])
 Rlow = Rlow * np.ones(obs_topo_final.shape[0])
 
+RNG = np.random.default_rng(seed=13)
 
 # _____________________________________________
 # Overwash, Beach, & Dune Change
 topo_prestorm = copy.deepcopy(topo)  # [m NAVD88]
 
 
-sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
+sim_topo_post_storm, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes_2(
     topo,
     Rhigh,
     Rlow,
@@ -132,9 +136,10 @@ sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = rou
     Qs_bb_min=1,
     substep_i=6,
     substep_r=7,
-    beach_equilibrium_slope=0.012,
-    beach_erosiveness=1.84,
-    beach_substeps=51,
+    beach_equilibrium_slope=0.039,
+    swash_transport_coefficient=1e-3,
+    wave_period_storm=9.4,
+    beach_substeps=20,
     x_s=x_s,
     cellsize=1,
     spec1=spec1,
@@ -142,6 +147,8 @@ sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = rou
     flow_reduction_max_spec1=0.17,
     flow_reduction_max_spec2=0.44,
 )
+
+sim_topo_final = routine.enforceslopes(sim_topo_post_storm, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, RNG=RNG)[0]
 
 SimDuration = time.time() - start_time
 print()
@@ -264,22 +271,20 @@ print(tabulate({
 # _____________________________________________
 # Plot
 
-ymin = 700  # 900
-ymax = ymin + 500
 
-# Categorical
-catfig = plt.figure(figsize=(14, 7.5))
-cmap2 = colors.ListedColormap(['green', 'yellow', 'gray', 'red'])
-bounds = [0.5, 1.5, 2.5, 3.5, 4.5]
-norm = colors.BoundaryNorm(bounds, cmap2.N)
-ax1 = catfig.add_subplot(211)
-cax1 = ax1.matshow(cat_Mask[:, ymin: ymax], cmap=cmap2, norm=norm)
-cbar1 = plt.colorbar(cax1, boundaries=bounds, ticks=[1, 2, 3, 4])
-cbar1.set_ticklabels(['Hit', 'False Alarm', 'Correct Reject', 'Miss'])
-ax2 = catfig.add_subplot(212)
-cax2 = ax2.matshow(cat_NoMask[:, ymin: ymax], cmap=cmap2, norm=norm)
-cbar2 = plt.colorbar(cax2, boundaries=bounds, ticks=[1, 2, 3, 4])
-cbar2.set_ticklabels(['Hit', 'False Alarm', 'Correct Reject', 'Miss'])
+# # Categorical
+# catfig = plt.figure(figsize=(14, 7.5))
+# cmap2 = colors.ListedColormap(['green', 'yellow', 'gray', 'red'])
+# bounds = [0.5, 1.5, 2.5, 3.5, 4.5]
+# norm = colors.BoundaryNorm(bounds, cmap2.N)
+# ax1 = catfig.add_subplot(211)
+# cax1 = ax1.matshow(cat_Mask[:, ymin: ymax], cmap=cmap2, norm=norm)
+# cbar1 = plt.colorbar(cax1, boundaries=bounds, ticks=[1, 2, 3, 4])
+# cbar1.set_ticklabels(['Hit', 'False Alarm', 'Correct Reject', 'Miss'])
+# ax2 = catfig.add_subplot(212)
+# cax2 = ax2.matshow(cat_NoMask[:, ymin: ymax], cmap=cmap2, norm=norm)
+# cbar2 = plt.colorbar(cax2, boundaries=bounds, ticks=[1, 2, 3, 4])
+# cbar2.set_ticklabels(['Hit', 'False Alarm', 'Correct Reject', 'Miss'])
 
 # Change Comparisons
 cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
@@ -324,22 +329,30 @@ ax4.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
 # cbar.set_label('Elevation Change [m]', rotation=270, labelpad=20)
 plt.tight_layout()
 
-# Cumulative Discharge
-plt.figure(figsize=(14, 7.5))
-plt.plot(np.sum(netDischarge, axis=0))
-plt.ylabel("Cumulative Discharge")
+# # Cumulative Discharge
+# plt.figure(figsize=(14, 7.5))
+# plt.plot(np.sum(netDischarge, axis=0))
+# plt.ylabel("Cumulative Discharge")
 
-# Cumulative Discharge
-plt.matshow(inundated)
-plt.title("Inundated")
+# # Cumulative Discharge
+# plt.matshow(inundated)
+# plt.title("Inundated")
+
+# # Profile Change
+# xx = 150
+# proffig = plt.figure(figsize=(11, 7.5))
+# plt.plot(topo_prestorm[xx, ymin: ymax], c='black')
+# plt.plot(obs_topo_final[xx, ymin: ymax], c='green')
+# plt.plot(sim_topo_final[xx, ymin: ymax], c='red')
+# plt.legend(["Pre", "Post Obs", "Post Sim"])
+# plt.title(name)
 
 # Profile Change
-xx = 100
+xx = 164  # 118
 proffig = plt.figure(figsize=(11, 7.5))
-plt.plot(topo_prestorm[xx, ymin: ymax], c='black')
-plt.plot(obs_topo_final[xx, ymin: ymax], c='green')
-plt.plot(sim_topo_final[xx, ymin: ymax], c='red')
-plt.legend(["Pre", "Post Obs", "Post Sim"])
+plt.plot(topo_prestorm[xx, ymin + 115: ymin + 415], c='black')
+plt.plot(sim_topo_final[xx, ymin + 115: ymin + 415], c='red')
+plt.legend(["Pre", "Post Sim"])
 plt.title(name)
 
 print()

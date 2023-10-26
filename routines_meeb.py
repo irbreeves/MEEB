@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 23 October 2023
+Last update: 26 October 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -940,7 +940,7 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, longshore, MHW,
         Rlow = (Rhigh - (Swash / 2))
 
         # No storm if TWL < MHW
-        if Rhigh <= MHW:
+        if (Rhigh <= MHW).all():
             storm = False
     else:
         Rhigh = 0
@@ -1245,7 +1245,7 @@ def storm_processes(
                     Elevation[TS, :, :] = Elev_Out
                     BeachDune_Volume_Change += dV
 
-        inundated = np.logical_or(inundated, wetMap)  # Update inundated map with cells seaward of dune crest
+            inundated = np.logical_or(inundated, wetMap)  # Update inundated map with cells seaward of dune crest
 
     # Update Interior Domain After Storm
     topo_change = Elevation[-1, :, :] - domain_topo_start  # [m] Change in elevation of barrier
@@ -1258,6 +1258,426 @@ def storm_processes(
     inundated[netDischarge > 1] = True  # Update inundated map to include cells landward of dune crest (i.e., inundated by overwash)
 
     return topof, topo_change, OWloss, netDischarge, inundated, BeachDune_Volume_Change
+
+
+def storm_processes_2(
+        topof,
+        Rhigh,
+        Rlow,
+        dur,
+        threshold_in,
+        Rin_i,
+        Rin_r,
+        Cx,
+        AvgSlope,
+        nn,
+        MaxUpSlope,
+        fluxLimit,
+        Qs_min,
+        Kr,
+        Ki,
+        mm,
+        MHW,
+        Cbb_i,
+        Cbb_r,
+        Qs_bb_min,
+        substep_i,
+        substep_r,
+        beach_equilibrium_slope,
+        swash_transport_coefficient,
+        wave_period_storm,
+        beach_substeps,
+        x_s,
+        cellsize,
+        spec1,
+        spec2,
+        flow_reduction_max_spec1,
+        flow_reduction_max_spec2,
+):
+    """Resolves topographical change from storm events. Landward of dune crest: overwashes barrier interior where storm water levels exceed
+        pre-storm dune crests following Barrier3D (Reeves et al., 2021) flow routing. Seaward of dune crest: determines topographic change of beach
+        and dune face following swash transport equations from Larson et al. (2004).
+
+        Parameters
+        ----------
+        topof : ndarray
+            [m NAVD88] Current elevation domain.
+        Rhigh : ndarray
+            [m NAVD88] Highest elevation of the landward margin of runup (i.e. total water level).
+        Rlow : ndarray
+            [m NAVD88] Lowest elevation of the landward margin of runup.
+        dur: int
+            [hrs] Duration of storm.
+        threshold_in : float
+            [%] Threshold percentage of overtopped dune cells needed to be in inundation overwash regime.
+        Rin_i : float
+            [m^3/hr] Flow infiltration and drag parameter, inundation overwash regime.
+        Rin_r : float
+            [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime.
+        Cx : float
+            Constant for representing flow momentum for sediment transport in inundation overwash regime.
+        AvgSlope : float
+            Average slope of the barrier interior; invariable.
+        nn : float
+            Flow routing constant.
+        MaxUpSlope : float
+            Maximum slope water can flow uphill.
+        fluxLimit : float
+            [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
+        Qs_min : float
+            [m^3/hr] Minimum discharge out of cell needed to transport sediment.
+        Kr : float
+            Sediment transport coefficient for run-up overwash regime.
+        Ki : float
+            Sediment transport coefficient for inundation overwash regime.
+        mm : float
+            Inundation overwash constant.
+        MHW : float
+            [m NAVD88] Mean high water.
+        Cbb_i : float
+            [%] Coefficient for exponential decay of sediment load entering back-barrier bay, inundation regime.
+        Cbb_r : float
+            [%] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime.
+        Qs_bb_min : float
+            [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment.
+        substep_i : int
+            Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes).
+        substep_r : int
+            Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes).
+        beach_equilibrium_slope : float
+            Beach equilibrium slope.
+        swash_transport_coefficient : float
+            Non-dimensional transport coefficient (Larson, Kubota, et al., 2004) expected to depend on several factors (particularly grain size); values typically 0.001 - 0.003 and can be calibrated
+        wave_period_storm : float
+            [sec] Deep-water wave period during storm conditions
+        beach_substeps : int
+            Number of substeps per iteration of beach/duneface model; instabilities will occur if too low.
+        x_s : ndarray
+            Alongshore array of ocean shoreline locations.
+        cellsize : float
+            [m] Horizontal dimension of model grid cells
+        spec1 : ndarray
+            [%] Map of  vegetation effectiveness for species 1
+        spec2 : ndarray
+            [%] Map of  vegetation effectiveness for species 2
+        flow_reduction_max_spec1 : float
+            Proportion of overwash flow reduction through a cell populated with species 1 at full effectiveness (i.e., full density)
+        flow_reduction_max_spec2 : float
+            Proportion of overwash flow reduction through a cell populated with species 2 at full effectiveness (i.e., full density)
+
+        Returns
+        ----------
+        topof
+            [m NAVD88] Updated elevation domain.
+        topof_change
+            [m] Array of topographic change from storm overwash processes.
+        OWloss
+            [m^3] Volume of overwash deposition landward of dune crest for each cell unit alongshore.
+        netDischarge
+            [m^3] Map of discharge aggregated for duration of entire storm.
+        inundated
+            [bool] Map of cells inundated during storm event
+        BeachDune_Volume_Change
+            [m^3/m] Dune & beach volumetric change summed for each row alongshore.
+        """
+
+    longshore, crossshore = topof.shape
+    inundated = np.zeros(topof.shape).astype(bool)  # Initialize
+
+    # --------------------------------------
+    # OVERWASH
+
+    iterations = int(math.floor(dur) * substep_r)
+
+    # Set Up Flow Routing Domain
+    domain_width_start = 0
+    domain_width_end = int(crossshore)  # [m]
+    domain_width = domain_width_end - domain_width_start
+    Elevation = np.zeros([iterations, longshore, domain_width])
+    domain_topo_start = topof[:, domain_width_start:].copy()  # [m NAVD88]
+    Elevation[0, :, :] = domain_topo_start.copy()  # [m NAVD88]
+
+    # Initialize Memory Storage Arrays
+    Discharge = np.zeros([iterations, longshore, domain_width])
+    SedFluxIn = np.zeros([iterations, longshore, domain_width])
+    SedFluxOut = np.zeros([iterations, longshore, domain_width])
+    OWloss = np.zeros([longshore])  # [m^3] Aggreagate volume of overwash deposition landward of dune crest for this storm
+
+    # Modify based on number of substeps
+    substep = substep_r
+    fluxLimit /= substep  # [m/hr] Maximum elevation change during one storm hour allowed
+    Qs_min /= substep
+    Qs_bb_min /= substep
+
+    TWL = Rhigh.copy()
+    twl_step = (TWL - Rlow) / (iterations / 2)
+
+    BeachDune_Volume_Change = np.zeros([longshore])  # [m^3] Initialize dune/beach volume change: (-) loss, (+) gain
+
+    # Run Storm
+    for TS in range(iterations):
+
+        # Begin timestep with elevation from end of last
+        if TS > 0:
+            Elevation[TS, :, :] = Elevation[TS - 1, :, :]
+
+        # Find TWL for this timestep
+        # if TS < iterations / 2:  # IRBR 13Sep23: Varying TWL causes crazy beach/dune behavior for small storms, unsure why
+        #     Rhigh_TS = Rlow + twl_step * TS
+        # else:
+        #     Rhigh_TS = TWL - (twl_step * (TS - iterations / 2))
+        Rhigh_TS = Rhigh.copy()  # This line prescribes a static TWL over course of storm
+
+        # Find dune crest locations and heights for this storm iteration
+        dune_crest_loc = foredune_crest(Elevation[TS, :, :], MHW)  # Cross-shore location of pre-storm dune crest
+
+        Elevation, Discharge, SedFluxIn, SedFluxOut = route_overwash(
+            TS,
+            Elevation,
+            Discharge,
+            SedFluxIn,
+            SedFluxOut,
+            dune_crest_loc,
+            MHW,
+            domain_width,
+            domain_width_start,
+            longshore,
+            Rhigh_TS,
+            Rlow,
+            Rin_i,
+            Rin_r,
+            Cx,
+            AvgSlope,
+            nn,
+            mm,
+            MaxUpSlope,
+            Kr,
+            Ki,
+            Qs_min,
+            threshold_in,
+            Cbb_r,
+            Cbb_i,
+            Qs_bb_min,
+            spec1,
+            spec2,
+            flow_reduction_max_spec1,
+            flow_reduction_max_spec2,
+        )
+
+        # Update Elevation After Every Storm Hour of Overwash
+        ElevationChange = (SedFluxIn[TS, :, :] - SedFluxOut[TS, :, :]) / substep
+        ElevationChange[ElevationChange > fluxLimit] = fluxLimit
+        ElevationChange[ElevationChange < -fluxLimit] = -fluxLimit
+        ElevationChange[np.arange(longshore), dune_crest_loc - domain_width_start] = 0  # Do not update elevation change at dune crest cell where discharge was introduced
+        Elevation[TS, :, :] = Elevation[TS, :, :] + ElevationChange
+
+        # Calculate and save volume of sediment deposited on/behind the barrier interior for every hour
+        OWloss = OWloss + np.sum(ElevationChange, axis=1)  # [m^3] For each cell alongshore
+
+        # # Shrub Burial/Erosion
+        # if Shrubs:
+        #     # Insert calculation of burial/erosion for each shrub
+
+        # ----------------------------
+        # Beach and Duneface Change
+        if TS % substep == 0:
+            beach_ss = beach_substeps  # Reset to default minimum value
+            wetMap = np.logical_and(np.zeros(Elevation[0, :, :].shape), False)  # Initialize
+            valid = False
+            invalid_count = 0
+
+            while not valid:
+                elevChange, dV, wetMap = calc_beach_dune_change(
+                    Elevation[TS, :, :].copy(),
+                    cellsize,
+                    dune_crest_loc,
+                    x_s,
+                    MHW,
+                    Rhigh_TS,
+                    beach_equilibrium_slope,
+                    swash_transport_coefficient,
+                    wave_period_storm,
+                    beach_ss,  # Beach substeps
+                )
+                if np.isnan(np.sum(elevChange)) or np.isinf(np.sum(elevChange)):
+                    if invalid_count >= 10:
+                        valid = True  # To prevent unlikely case of perpetual while loop, give up if more than 10 invalid attempts and return no change
+                    beach_ss = int(beach_ss * 1.5)  # Increase beach substeps if instabilities arise and try again
+                    invalid_count += 1
+                else:  # Exit loop if no instabilities arise
+                    valid = True
+                    elevChange_smooth = scipy.ndimage.gaussian_filter(elevChange, sigma=3, mode='constant', axes=[0])  # Smooth beach/dune topo change in alongshore direction (diffuse transects alongshore)
+                    Elevation[TS, :, :] += elevChange_smooth
+                    BeachDune_Volume_Change += dV
+
+            inundated = np.logical_or(inundated, wetMap)  # Update inundated map with cells seaward of dune crest
+        # ----------------------------
+
+    # Update Interior Domain After Storm
+    topo_change = Elevation[-1, :, :] - domain_topo_start  # [m] Change in elevation of barrier
+
+    # Update interior domain
+    topof += topo_change  # [m NAVD88]
+
+    # Variable Calculations
+    netDischarge = np.hstack((np.zeros([longshore, domain_width_start]), np.sum(Discharge, axis=0)))
+    inundated[netDischarge > 1] = True  # Update inundated map to include cells landward of dune crest (i.e., inundated by overwash)
+
+    return topof, topo_change, OWloss, netDischarge, inundated, BeachDune_Volume_Change
+
+
+@njit
+def calc_beach_dune_change(topo,
+                           dx,
+                           crestline,
+                           x_s,
+                           MHW,
+                           Rhigh,
+                           Beq,
+                           Kc,
+                           Tp,
+                           substeps,
+                           ):
+    """Updates the topography seaward of the dune crest after one storm iteration (1 yr) using cross-shore sand flux equations
+    from Larson et al. (2004).
+
+    Parameters
+    ----------
+    topo : ndarray
+        [m] Elevation domain.
+    dx : float
+        [m] Cell horizontal dimension.
+    crestline : ndarray
+        Alongshore array of dune crest locations.
+    x_s : ndarray
+        Alongshore array of ocean shoreline locations.
+    MHW : float
+        [m] Mean high water.
+    Rhigh : ndarray
+        [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
+    Beq : float
+        Beach equilibrium slope.
+    Kc : float
+        Non-dimensional transport coefficient (Larson, Kubota, et al., 2004) expected to depend on several factors (particularly grain size); values typically 0.001 - 0.003 and can be calibrated
+    Tp : float
+        [sec] Deep-water wave period during storm conditions
+    substeps : int
+        Number of substeps per iteration of beach/duneface model; instabilities will occur if too low.
+
+    Returns
+    ----------
+    topoChange
+        [m] Change in elevation for one storm iteration (1 hr).
+    dV
+        [m^3/m] Dune & beach volumetric change summed for each row alongshore.
+    wetMap
+        [bool] Map of beach/duneface cells inundated this storm iteration
+    """
+
+    dT = 60 * 60  # [sec] Time step length (1 hr)
+    Et = dT / Tp  # [sec/sec] Flux timescale, i.e. number of seconds within the hour that sediment flux is active
+
+    Q = int(Et / substeps)  # Flux multiplier
+
+    # Initialize
+    longshore, crossshore = topo.shape  # Domain dimensions
+    fluxMap = np.zeros(topo.shape)  # Initialize map of sediment flux aggregated over duration of storm
+    wetMap = np.logical_and(np.zeros(topo.shape), False)
+    topoPrestorm = topo.copy()
+
+    for t in range(substeps):
+
+        # Loop through each cell alongshore
+        for y in range(longshore):
+            xD = crestline[y]  # [m] Dune crest location
+            hD = topo[y, xD]  # [m NAVD88] Dune crest elevation
+            Rh = Rhigh[y]  # [m NAVD88] Total water level
+            R = Rh - MHW  # [m MHW] Run-up height relative to MHW
+            xStart = int(x_s[y])  # [m] Start loction
+            xFinish = xD + 1  # [m] Stop location
+
+            cont = True
+            size = crossshore - xStart
+            flux = np.zeros(size)  # Array of sediment flux for this substep at cross-shore position y
+
+            wetMap[y, :xStart] = True  # All cells seaward of shoreline marked as inundated
+
+            # Loop through each cell in domain from ocean shoreline to back-barrier bay shoreline
+            for x in range(xStart, xFinish):
+
+                # Cell to operate on
+                hi = topo[y, x]
+
+                # Definition of boundary conditions
+                if x == 0:
+                    hprev = MHW  # SHOULD THIS BE RLOW INSTEAD??
+                else:
+                    hprev = topo[y, x - 1]
+
+                if x == xFinish - 1:
+                    hnext = topo[y, xFinish]
+                else:
+                    hnext = topo[y, x + 1]
+
+                if hi <= Rh < topo[y, x + 1]:
+                    hnext = Rh
+                    cont = False
+
+                # Local topo gradient
+                Bl = 0.5 * (hnext - hprev) / dx
+
+                # Surfzone/Swashzone Boundary (Initialize)
+                if x == xStart:
+                    # Calculate transport at surfzone/swashzone boundary
+                    qS = Kc * 2 * math.sqrt(2 * 9.8) * R ** (3 / 2) * (Beq - Bl)  # Sediment flux Eqn 5 from Larson et al. (2004)
+
+                    Bls = Bl  # Save local slope at surfzone edge
+                    qs = qS  # Sediment flux
+
+                # Shoreline to Dune Crest
+                elif xStart < x < xD:
+                    qs = qS * (1 - ((hi - MHW) / R)) ** 2 * ((Beq - Bl) / (Beq - Bls))  # Sediment flux following Eqn 6 and Eqn 21 from Larson et al. (2004)
+
+                # Dune Crest Boundary & Landward
+                else:
+                    qs = 0  # Sediment flux
+
+                # Store Sediment Flux
+                flux[x - xStart] = qs  # Update array of sediment flux for this substep at cross-shore position y
+                fluxMap[y, x] += qs  # Update map of sediment flux
+
+                # Break if next cell not inundated
+                if not cont:
+                    break
+
+            # Topo Evolution
+            divq = gradient(flux, dx)  # [m/s] Flux divergence
+            topo[y, xStart:] -= Q * divq  # [m/substep] Update elevation for this substep
+
+    topoChange = topo - topoPrestorm
+
+    dV = np.sum(topoChange, axis=1) * (dx ** 3)  # [m^3] Dune/beach volume change: (-) loss, (+) gain
+
+    return topoChange, dV, wetMap
+
+
+@njit
+def gradient(y, dx=1.0):
+    """Computes the gradient using second order accurate central differences in the interior points
+    and first order accurate one-sides (forward or backwards) differences at the boundaries. The returned gradient
+    hence has the same shape as the input array."""
+
+    stop = len(y) - 1
+    grad = np.zeros(y.shape)
+
+    grad[0] = (y[0 + 1] - y[0]) / dx
+
+    grad[-1] = (y[-1] - y[-1 - 1]) / dx
+
+    for i in range(1, stop):
+        grad[i] = (y[i + 1] - y[i - 1]) / (2 * dx)
+
+    return grad
 
 
 @njit
@@ -2052,3 +2472,37 @@ def reduce_raster_resolution(raster, reduction_factor):
     sh = shape[0], raster.shape[0] // shape[0], shape[1], raster.shape[1] // shape[1]
 
     return raster.reshape(sh).mean(-1).mean(1)
+
+
+@njit()
+def calculate_beach_slope(topof, x_s, dune_crest_loc, average_dune_toe_height, MHW):
+    """Finds the beach slope for each cell alongshore. Slope is calculated using the average dune toe height.
+
+    Parameters
+    ----------
+    topof : ndarray
+        [m] Elevation grid.
+    x_s : array of float
+        [m] Cross-shore position of the ocean shoreline for each cell alongshore.
+    dune_crest_loc : array of float
+        [m] Cross-shore position of the foredune crest for each cell alongshore.
+    average_dune_toe_height : float
+        [m] Time- and space-averaged dune toe height above MHW.
+    MHW : float
+        [m] Mean high water elevation.
+
+    Returns
+    ----------
+    beach_slopes
+        Slope of the beach for each cell alongshore.
+    """
+    beach_slopes = np.zeros(topof.shape[0])  # Initialize
+    toe_locs = np.zeros(topof.shape[0])  # Initialize
+
+    # Find local active beach slope
+    for ls in range(topof.shape[0]):
+        toe_loc = dune_crest_loc[ls] - np.argmax(np.flip(topof[ls, :dune_crest_loc[ls]]) <= MHW + average_dune_toe_height)
+        toe_locs[ls] = toe_loc
+        beach_slopes[ls] = average_dune_toe_height / (toe_loc - x_s[ls])
+
+    return beach_slopes

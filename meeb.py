@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 19 October 2023
+Last update: 26 October 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -65,7 +65,7 @@ class MEEB:
 
             # SHOREFACE, BEACH, & SHORELINE
             beach_equilibrium_slope=0.039,  # Equilibrium slope of the beach
-            beach_erosiveness=1.75,  # Beach erosiveness timescale constant: larger (smaller) Et == lesser (greater) storm erosiveness
+            swash_transport_coefficient=0.001,  # Non-dimensional swash transport coefficient (Larson, Kubota, et al., 2004) expected to depend on several factors (particularly grain size); typically 0.001 - 0.003 and can be calibrated
             beach_substeps=40,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
             shoreface_flux_rate=5000,  # [m3/m/yr] Shoreface flux rate coefficient
             shoreface_equilibrium_slope=0.02,  # Equilibrium slope of the shoreface
@@ -75,6 +75,7 @@ class MEEB:
             wave_high_angle_fraction=0,  # Fraction of waves approaching at angles higher than 45 degrees from shore normal
             mean_wave_height=1.0,  # [m] Mean offshore significant wave height
             mean_wave_period=10,  # [s] Mean wave period
+            wave_period_storm=10,  # [s] Representative wave period for storm conditions
             alongshore_section_length=25,  # [m] Distance alongshore between shoreline positions used in the shoreline diffusion calculations
             average_dune_toe_height=1.39,  # [m] Time- and space-averaged dune toe height above MHW
             estimate_shoreface_parameters=True,  # [bool] Turn on to estimate shoreface parameters as function of specific wave and sediment characteristics
@@ -181,7 +182,7 @@ class MEEB:
         self._jumplength = jumplength
         self._clim = clim
         self._beach_equilibrium_slope = beach_equilibrium_slope
-        self._beach_erosiveness = beach_erosiveness
+        self._swash_transport_coefficient = swash_transport_coefficient
         self._beach_substeps = beach_substeps
         self._k_sf = shoreface_flux_rate
         self._s_sf_eq = shoreface_equilibrium_slope
@@ -191,6 +192,7 @@ class MEEB:
         self._wave_high_angle_fraction = wave_high_angle_fraction
         self._mean_wave_height = mean_wave_height
         self._mean_wave_period = mean_wave_period
+        self._wave_period_storm = wave_period_storm
         self._alongshore_section_length = alongshore_section_length
         self._average_dune_toe_height = average_dune_toe_height
         self._sp1_a = sp1_a
@@ -291,7 +293,7 @@ class MEEB:
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
         self._veg[self._veg < 0] = 0
-        self._effective_veg = scipy.ndimage.filters.gaussian_filter(self._veg, [self._effective_veg_sigma, self._effective_veg_sigma], mode='constant')  # Effective vegetation cover represents effect of nearby vegetation on local wind
+        self._effective_veg = scipy.ndimage.gaussian_filter(self._veg, [self._effective_veg_sigma, self._effective_veg_sigma], mode='constant')  # Effective vegetation cover represents effect of nearby vegetation on local wind
         self._growth_reduction_timeseries = np.linspace(0, self._VGR / 100, int(np.ceil(self._simulation_time_yr)))
 
         # STORMS
@@ -385,11 +387,15 @@ class MEEB:
         if it % self._storm_update_frequency == 0:
             iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
 
+            # Beach slopes
+            foredune_crest_loc = routine.foredune_crest(self._topo, self._MHW)
+            beach_slopes = routine.calculate_beach_slope(self._topo, self._x_s, foredune_crest_loc, self._average_dune_toe_height, self._MHW)
+
             # Generate Storms Stats
             if self._hindcast:  # Empirical storm time series
                 storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._MHW, self._simulation_start_iteration)  # [m NAVD88]
             else:  # Stochastic storm model
-                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, self._beach_equilibrium_slope, self._longshore, self._MHW, self._RNG)  # [m initial MSL]
+                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, beach_slopes, self._longshore, self._MHW, self._RNG)  # [m initial MSL]
                 # Account for change in mean sea-level on synthetic storm elevations by adding aggregate RSLR since simulation start (i.e., convert from initial MSL to m NAVD88)
                 Rhigh += (self._MHW - self._MHW_init)  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
                 Rlow += (self._MHW - self._MHW_init)  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
@@ -398,7 +404,7 @@ class MEEB:
 
                 # Storm Processes: Beach/duneface change, overwash
                 self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, np.max(Rhigh), np.max(Rlow), dur]))
-                self._topo, topo_change, self._OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
+                self._topo, topo_change, self._OWflux, netDischarge, inundated, Qbe = routine.storm_processes_2(
                     topof=self._topo,
                     Rhigh=Rhigh,
                     Rlow=Rlow,
@@ -422,7 +428,8 @@ class MEEB:
                     substep_i=self._substep_in,
                     substep_r=self._substep_ru,
                     beach_equilibrium_slope=self._beach_equilibrium_slope,
-                    beach_erosiveness=self._beach_erosiveness,
+                    swash_transport_coefficient=self._swash_transport_coefficient,
+                    wave_period_storm=self._wave_period_storm,
                     beach_substeps=self._beach_substeps,
                     x_s=self._x_s,
                     cellsize=self._cellsize,
@@ -557,7 +564,7 @@ class MEEB:
             self._veg[self._veg < 0] = 0
 
             # Determine effective vegetation cover by smoothing; represents effect of nearby vegetation on local wind
-            self._effective_veg = scipy.ndimage.filters.gaussian_filter(self._veg, [self._effective_veg_sigma, self._effective_veg_sigma], mode='constant')
+            self._effective_veg = scipy.ndimage.gaussian_filter(self._veg, [self._effective_veg_sigma, self._effective_veg_sigma], mode='constant')
 
             self._vegcount = self._vegcount + 1  # Update counter
 
