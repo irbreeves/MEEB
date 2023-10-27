@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 26 October 2023
+Last update: 27 October 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -1539,7 +1539,8 @@ def calc_beach_dune_change(topo,
                            substeps,
                            ):
     """Updates the topography seaward of the dune crest after one storm iteration (1 yr) using cross-shore sand flux equations
-    from Larson et al. (2004).
+    from Larson et al. (2004). Elevation change is calculated to the dune crest; in MEEB, this function is coupled with an overwash flow
+    routing function that modifies the landscape landward of the dune crest
 
     Parameters
     ----------
@@ -1575,14 +1576,13 @@ def calc_beach_dune_change(topo,
     """
 
     dT = 60 * 60  # [sec] Time step length (1 hr)
-    Et = dT / Tp  # [sec/sec] Flux timescale, i.e. number of seconds within the hour that sediment flux is active
+    Tf = dT / Tp  # [sec/sec] Flux timescale, i.e. number of seconds within the hour that sediment flux is active
 
-    Q = int(Et / substeps)  # Flux multiplier
+    Q = int(Tf / substeps)  # Flux multiplier
 
     # Initialize
     longshore, crossshore = topo.shape  # Domain dimensions
-    fluxMap = np.zeros(topo.shape)  # Initialize map of sediment flux aggregated over duration of storm
-    wetMap = np.logical_and(np.zeros(topo.shape), False)
+    wetMap = np.logical_and(np.zeros(topo.shape), False)  # Initialize map of beach/duneface cells inundated this storm iteration
     topoPrestorm = topo.copy()
 
     for t in range(substeps):
@@ -1590,7 +1590,6 @@ def calc_beach_dune_change(topo,
         # Loop through each cell alongshore
         for y in range(longshore):
             xD = crestline[y]  # [m] Dune crest location
-            hD = topo[y, xD]  # [m NAVD88] Dune crest elevation
             Rh = Rhigh[y]  # [m NAVD88] Total water level
             R = Rh - MHW  # [m MHW] Run-up height relative to MHW
             xStart = int(x_s[y])  # [m] Start loction
@@ -1610,7 +1609,7 @@ def calc_beach_dune_change(topo,
 
                 # Definition of boundary conditions
                 if x == 0:
-                    hprev = MHW  # SHOULD THIS BE RLOW INSTEAD??
+                    hprev = MHW
                 else:
                     hprev = topo[y, x - 1]
 
@@ -1626,12 +1625,11 @@ def calc_beach_dune_change(topo,
                 # Local topo gradient
                 Bl = 0.5 * (hnext - hprev) / dx
 
-                # Surfzone/Swashzone Boundary (Initialize)
+                # Surfzone/Swashzone Boundary
                 if x == xStart:
                     # Calculate transport at surfzone/swashzone boundary
                     qS = Kc * 2 * math.sqrt(2 * 9.8) * R ** (3 / 2) * (Beq - Bl)  # Sediment flux Eqn 5 from Larson et al. (2004)
-
-                    Bls = Bl  # Save local slope at surfzone edge
+                    Bls = Bl  # Local slope at surfzone edge
                     qs = qS  # Sediment flux
 
                 # Shoreline to Dune Crest
@@ -1644,19 +1642,20 @@ def calc_beach_dune_change(topo,
 
                 # Store Sediment Flux
                 flux[x - xStart] = qs  # Update array of sediment flux for this substep at cross-shore position y
-                fluxMap[y, x] += qs  # Update map of sediment flux
 
-                # Break if next cell not inundated
+                # Break if next cell is not inundated
                 if not cont:
                     break
+                else:
+                    wetMap[y, x] = True  # Record cell as inundated
 
             # Topo Evolution
             divq = gradient(flux, dx)  # [m/s] Flux divergence
-            topo[y, xStart:] -= Q * divq  # [m/substep] Update elevation for this substep
+            topo[y, xStart:] -= Q * divq  # [m/substep] Update elevation for this substep with the flux multiplier
 
+    # Determine topographic change for storm iteration
     topoChange = topo - topoPrestorm
-
-    dV = np.sum(topoChange, axis=1) * (dx ** 3)  # [m^3] Dune/beach volume change: (-) loss, (+) gain
+    dV = np.sum(topoChange, axis=1) * (dx ** 3)  # [m^3] Change in volume for the beach/dune system from the storm iteration: (-) loss, (+) gain
 
     return topoChange, dV, wetMap
 
@@ -1665,15 +1664,25 @@ def calc_beach_dune_change(topo,
 def gradient(y, dx=1.0):
     """Computes the gradient using second order accurate central differences in the interior points
     and first order accurate one-sides (forward or backwards) differences at the boundaries. The returned gradient
-    hence has the same shape as the input array."""
+    hence has the same shape as the input array. Same as numpy.gradient(), but this one works with numba.
+
+    Parameters
+    ----------
+    y : ndarray
+        Array to compute gradient on.
+    dx : float, optional
+        Spacing between points in y.
+
+    Returns
+    ----------
+    grad
+        Gradient, in array same size as input.
+    """
 
     stop = len(y) - 1
     grad = np.zeros(y.shape)
-
-    grad[0] = (y[0 + 1] - y[0]) / dx
-
-    grad[-1] = (y[-1] - y[-1 - 1]) / dx
-
+    grad[0] = (y[0 + 1] - y[0]) / dx  # Boundary
+    grad[-1] = (y[-1] - y[-1 - 1]) / dx  # Boundary
     for i in range(1, stop):
         grad[i] = (y[i + 1] - y[i - 1]) / (2 * dx)
 
