@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 26 October 2023
+IRBR 27 October 2023
 """
 
 import numpy as np
@@ -59,13 +59,13 @@ sim_duration = 8
 # Initial Conditions
 
 # Define Alongshore Coordinates of Domain
-ymin = 6500  # Alongshore
+ymin = 6400  # Alongshore
 ymax = 6700  # Alongshore
 xmin = 700  # Cross-shore   900
 xmax = 1400  # Cross-shore  1500
 MHW = 0.39  # [m NAVD88]
 
-name = '6500-6700, 8 yr, RSLR8'
+name = '6400-6700, 8 yr, RSLR8'
 
 # Load Initial Domains
 Init = np.load("Input/" + start)
@@ -117,7 +117,8 @@ meeb = MEEB(
     substep_ru=7,
     beach_equilibrium_slope=0.039,
     swash_transport_coefficient=1e-3,
-    beach_substeps=10,
+    wave_period_storm=9.4,
+    beach_substeps=20,
     flow_reduction_max_spec1=0.17,
     flow_reduction_max_spec2=0.44,
     # --- Shoreline --- #

@@ -3,7 +3,7 @@ Script for testing MEEB hindcast simulations.
 
 Runs a hindcast simulation and calculates fitess scores for morphologic and ecologic change between simulated and observed.
 
-IRBR 14 September 2023
+IRBR 27 October 2023
 """
 
 import numpy as np
@@ -179,17 +179,17 @@ def model_skill_categorical(obs, sim, catmask):
 # startdate = '20140406'
 # hindcast_duration = 3.44
 
-# 2014 - 2018
-start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
-startdate = '20140406'
-hindcast_duration = 4.5
-
-# # 2014 - 2019
+# # 2014 - 2018
 # start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2019_PreDorian.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
 # startdate = '20140406'
-# hindcast_duration = 5.4
+# hindcast_duration = 4.5
+
+# 2014 - 2019
+start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2019_PreDorian.npy"
+startdate = '20140406'
+hindcast_duration = 5.4
 
 # # 2016 - 2017
 # start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
@@ -219,22 +219,22 @@ hindcast_duration = 4.5
 # INPUT
 
 # Define Alongshore Coordinates of Domain
-xmin = 6450  # 6500 # 5880 # 18950
-xmax = 6600  # 6600 # 5980 # 19250
+xmin = 18800  # 6500 # 5880 # 18950
+xmax = 19800  # 6600 # 5980 # 19250
 
 # Define Cross-Shore Limits for Plotting
-ymin = 700  # 900  # 700
+ymin = 900  # 900  # 700
 ymax = ymin + 500
 
 # Define Cross-Shore Limits for Skill Score Mask
 mask_ymin = 1050  # 835 # 1050
-mask_ymax = 1250  # 950 # 1300
+mask_ymax = 1300  # 950 # 1300
 
 MHW = 0.39  # [m NAVD88]
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
 
-name = '6450-6600, 2014-2018, 10-22-56-11-55-5-22-18/246-27-0.63-622-7-0.012-1.84-51-17-44'
+name = '18800-19800, 2014-2019, 10-22-16-11-20-8-20-30/246-27-0.63-622-7-0.02-2.73-22-17-44'
 
 # _____________________
 # LOAD INITIAL DOMAINS
@@ -297,16 +297,17 @@ meeb = MEEB(
     repose_veg=30,
     wind_rose=(0.55, 0.05, 0.22, 0.18),  # (right, down, left, up)
     # --- Storms --- #
-    Rin_ru=183,
-    Cx=56,
-    MaxUpSlope=2.05,
-    K_ru=0.0000575,
-    substep_ru=6,
-    beach_equilibrium_slope=0.02,
-    beach_erosiveness=2.73,
-    beach_substeps=22,
-    flow_reduction_max_spec1=0.05,
-    flow_reduction_max_spec2=0.2,
+    Rin_ru=246,
+    Cx=27,
+    MaxUpSlope=0.63,
+    K_ru=0.0000622,
+    substep_ru=7,
+    beach_equilibrium_slope=0.039,
+    swash_transport_coefficient=1e-3,
+    wave_period_storm=9.4,
+    beach_substeps=20,
+    flow_reduction_max_spec1=0.17,
+    flow_reduction_max_spec2=0.44,
     # --- Shoreline --- #
     wave_asymetry=0.6,
     wave_high_angle_fraction=0.39,

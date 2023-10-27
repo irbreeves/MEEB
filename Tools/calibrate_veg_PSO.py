@@ -3,7 +3,7 @@ Script for calibrating MEEB vegetation parameters using Particle Swarms Optimiza
 
 Calibrates based on fitess score for morphologic and ecologic change between two timesteps.
 
-IRBR 10 August 2023
+IRBR 27 October 2023
 """
 
 import numpy as np
@@ -96,14 +96,17 @@ def veg_fitness(solution):
         repose_veg=28,
         wind_rose=(0.48, 0.20, 0.10, 0.22),  # (right, down, left, up)
         # --- Storms --- #
-        Rin_ru=183,
-        Cx=56,
-        MaxUpSlope=2.05,
-        K_ru=0.0000575,
-        substep_ru=6,
-        beach_equilibrium_slope=0.02,
-        beach_erosiveness=2.73,
-        beach_substeps=22,
+        Rin_ru=246,
+        Cx=27,
+        MaxUpSlope=0.63,
+        K_ru=0.0000622,
+        substep_ru=7,
+        beach_equilibrium_slope=0.039,
+        swash_transport_coefficient=1e-3,
+        wave_period_storm=9.4,
+        beach_substeps=20,
+        flow_reduction_max_spec1=0.17,
+        flow_reduction_max_spec2=0.44,
         # --- Veg Params --- #
         sp1_b=-0.1,
         sp1_c=solution[0],  # 0.5

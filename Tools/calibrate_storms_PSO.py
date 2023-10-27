@@ -3,7 +3,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 
 Calibrates based on fitess score for all beach/dune/overwash morphologic change.
 
-IRBR 17 September 2023
+IRBR 27 October September 2023
 """
 
 import numpy as np
@@ -69,7 +69,7 @@ def storm_fitness(solution):
 
     # Run Model
     topo_start_copy = copy.deepcopy(topo_start)
-    topo_end_sim, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
+    topo_end_sim, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes_2(
         topo_start_copy,
         Rhigh,
         Rlow,
@@ -93,7 +93,8 @@ def storm_fitness(solution):
         substep_i=6,
         substep_r=int(round(solution[6])),
         beach_equilibrium_slope=solution[7],
-        beach_erosiveness=solution[8],
+        swash_transport_coefficient=solution[8],
+        wave_period_storm=9.4,
         beach_substeps=int(round(solution[9])),
         x_s=x_s,
         cellsize=1,
@@ -228,21 +229,21 @@ bounds = (
               0.02,  # flow_reduction_max_spec1
               8e-06,  # Kr
               0.05,  # flow_reduction_max_spec2
-              1,  # OW substep
-              0.002,  # Beq
-              0.25,  # Et
-              10]),  # BD substep
+              1,  # substep_r (overwash)
+              0.002,  # beach_equilibrium_slope
+              0.00025,  # swash_transport_coefficient
+              10]),  # beach_substep
     # Maximum
-    np.array([450,
-              100,
-              2.5,
+    np.array([450,  # Rin
+              100,  # Cx
+              2.5,  # MaxUpSlope
               0.4,  # flow_reduction_max_spec1
-              1e-04,
+              1e-04,  # Kr
               0.5,  # flow_reduction_max_spec2
-              12,
-              0.03,
-              3,
-              80])
+              12,  # substep_r (overwash)
+              0.03,  # beach_equilibrium_slope
+              0.0035,  # swash_transport_coefficient
+              80])  # beach_substep
 )
 
 # _____________________________________________
@@ -277,10 +278,10 @@ print(tabulate({
     "flow_reduction_max_spec2": [best_solution[5]],
     "SSo": [best_solution[6]],
     "Beq": [best_solution[7]],
-    "Et": [best_solution[8]],
+    "Kc": [best_solution[8]],
     "SSb": [best_solution[9]],
     "Score": [solution_fitness * -1]
-}, headers="keys", floatfmt=(None, ".0f", ".0f", ".2f", ".2f", ".7f", ".2f", ".0f", ".3f", ".2f", ".0f", ".4f"))
+}, headers="keys", floatfmt=(None, ".0f", ".0f", ".2f", ".2f", ".7f", ".2f", ".0f", ".3f", ".5f", ".0f", ".4f"))
 )
 
 # _____________________________________________

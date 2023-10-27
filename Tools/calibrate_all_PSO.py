@@ -3,7 +3,7 @@ Script for calibrating MEEB parameters using Particle Swarms Optimization.
 
 Calibrates based on fitess score for morphologic and ecologic change between two timesteps.
 
-IRBR 10 August 2023
+IRBR 27 October 2023
 """
 
 import numpy as np
@@ -140,7 +140,8 @@ def meeb_fitness(solution):
         K_ru=solution[11],
         substep_ru=int(round(solution[12])),
         beach_equilibrium_slope=0.02,
-        beach_erosiveness=2.73,
+        swash_transport_coefficient=0.001,
+        wave_period_storm=9.4,
         beach_substeps=22,
         # --- Shoreline --- #
         wave_asymetry=0.6,
