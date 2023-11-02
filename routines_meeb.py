@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 27 October 2023
+Last update: 2 November 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -61,7 +61,7 @@ def shadowzones(topof, shadowangle, direction):
             step = topof - np.roll(topof, -i, axis=1)  # Shift across columns (2nd dimension; along a row)
             tempinshade = step < -(steplimit * i)  # Identify cells with too great a stepheight (IRBR 4May23: Removed floor rounding of steplimit)
             tempinshade[:, -1 - i:-1] = 0  # Part that is rolled back into beginning of space is ignored
-        elif direction == 4:
+        else:
             step = topof - np.roll(topof, -i, axis=0)  # Shift across columns (2nd dimension; along a row)
             tempinshade = step < -(steplimit * i)  # Identify cells with too great a stepheight (IRBR 4May23: Removed floor rounding of steplimit)
             tempinshade[-1 - i:-1, :] = 0  # Part that is rolled back into beginning of space is ignored
@@ -225,7 +225,7 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, direction, random_hoplength, RNG
                 depocells = np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim)  # True where slab should be deposited
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[:, -1 - hop: -1] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
-        elif direction == 4:
+        else:
             inmotion = np.roll(inmotion, -shift, axis=0)  # Shift the moving slabs one hop length to the up
             if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
                 depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
@@ -720,7 +720,7 @@ def foredune_crest(topo, MHW):
     crestline = np.argmax(moving_avg_elevation, axis=1)  # Cross-shore location of maximum elevation of averaged topography
 
     # Step 2: Broad smoothening of maximum-elevation line. This gives a rough area of where the dunes are or should be
-    crestline = np.round(scipy.signal.savgol_filter(crestline, window_large, 1)).astype(int)
+    crestline = np.round(signal.savgol_filter(crestline, window_large, 1)).astype(int)
 
     # Step 3: Find peaks with buffer of broadly-smoothened line. If no peak is found, location is marked as gap
     crestline, not_gap = find_crest_buffer(topo, crestline, crestline, buff, MHW)
@@ -733,7 +733,7 @@ def foredune_crest(topo, MHW):
         crestline = np.interp(x, xp, fp)  # Interpolate
 
     # Step 5: Narrow smoothening of peak-buffer line
-    crestline = np.round(scipy.signal.savgol_filter(crestline, window_small, 1)).astype(int)
+    crestline = np.round(signal.savgol_filter(crestline, window_small, 1)).astype(int)
 
     # # Debugging
     # tempfig = plt.figure(figsize=(8, 8))
@@ -1468,6 +1468,7 @@ def storm_processes_2(
         ElevationChange = (SedFluxIn[TS, :, :] - SedFluxOut[TS, :, :]) / substep
         ElevationChange[ElevationChange > fluxLimit] = fluxLimit
         ElevationChange[ElevationChange < -fluxLimit] = -fluxLimit
+        dune_crest_flux_out = ElevationChange[np.arange(longshore), dune_crest_loc - domain_width_start] / 60 / 60  # [m^3/s] Overwash sediment flux out of dune crest cells
         ElevationChange[np.arange(longshore), dune_crest_loc - domain_width_start] = 0  # Do not update elevation change at dune crest cell where discharge was introduced
         Elevation[TS, :, :] = Elevation[TS, :, :] + ElevationChange
 
@@ -1491,6 +1492,7 @@ def storm_processes_2(
                     Elevation[TS, :, :].copy(),
                     cellsize,
                     dune_crest_loc,
+                    dune_crest_flux_out,
                     x_s,
                     MHW,
                     Rhigh_TS,
@@ -1530,6 +1532,7 @@ def storm_processes_2(
 def calc_beach_dune_change(topo,
                            dx,
                            crestline,
+                           crestflux,
                            x_s,
                            MHW,
                            Rhigh,
@@ -1539,8 +1542,9 @@ def calc_beach_dune_change(topo,
                            substeps,
                            ):
     """Updates the topography seaward of the dune crest after one storm iteration (1 yr) using cross-shore sand flux equations
-    from Larson et al. (2004). Elevation change is calculated to the dune crest; in MEEB, this function is coupled with an overwash flow
-    routing function that modifies the landscape landward of the dune crest
+    from Larson et al. (2004). This function determines elevation change up to the dune crest and is coupled with the overwash flow
+    routing function (which modifies the landscape landward of the dune crest) by using the sediment flux across the dune crest
+    calculated in the overwash flow routing function as the landward flux boundary condition in this function.
 
     Parameters
     ----------
@@ -1550,6 +1554,8 @@ def calc_beach_dune_change(topo,
         [m] Cell horizontal dimension.
     crestline : ndarray
         Alongshore array of dune crest locations.
+    crestflux : ndarray
+        [m^3/s] Alongshore array of overwash sediment flux over the dune crest for this storm iteration.
     x_s : ndarray
         Alongshore array of ocean shoreline locations.
     MHW : float
@@ -1592,6 +1598,7 @@ def calc_beach_dune_change(topo,
             xD = crestline[y]  # [m] Dune crest location
             Rh = Rhigh[y]  # [m NAVD88] Total water level
             R = Rh - MHW  # [m MHW] Run-up height relative to MHW
+            qD = crestflux[y]
             xStart = int(x_s[y])  # [m] Start loction
             xFinish = xD + 1  # [m] Stop location
 
@@ -1634,11 +1641,11 @@ def calc_beach_dune_change(topo,
 
                 # Shoreline to Dune Crest
                 elif xStart < x < xD:
-                    qs = qS * (1 - ((hi - MHW) / R)) ** 2 * ((Beq - Bl) / (Beq - Bls))  # Sediment flux following Eqn 6 and Eqn 21 from Larson et al. (2004)
+                    qs = qD + (qS - qD) * (1 - ((hi - MHW) / R)) ** 2 * ((Beq - Bl) / (Beq - Bls))  # Sediment flux following Eqn 6 and Eqn 21 from Larson et al. (2004)
 
-                # Dune Crest Boundary & Landward
+                # At Dune Crest
                 else:
-                    qs = 0  # Sediment flux
+                    qs = qD  # Sediment flux
 
                 # Store Sediment Flux
                 flux[x - xStart] = qs  # Update array of sediment flux for this substep at cross-shore position y
@@ -1651,7 +1658,11 @@ def calc_beach_dune_change(topo,
 
             # Topo Evolution
             divq = gradient(flux, dx)  # [m/s] Flux divergence
-            topo[y, xStart:] -= Q * divq  # [m/substep] Update elevation for this substep with the flux multiplier
+
+            dzdt = Q * divq  # [m/substep] Change in elevation for this timestep
+            dzdt[dzdt < -0.025] = -0.025  # Apply maximum accretion limit to prevent potential instabilities
+            dzdt[dzdt > 0.025] = 0.025  # Apply maximum erosion limit to prevent potential instabilities
+            topo[y, xStart:] -= dzdt  # [m/substep] Update elevation for this substep with the flux multiplier
 
     # Determine topographic change for storm iteration
     topoChange = topo - topoPrestorm
@@ -2307,7 +2318,7 @@ def shoreline_change_from_AST_2(x_s,
     """
 
     # Take shoreline position every dy [m] alongshore
-    x_s_ast = x_s.copy()[0::dy]
+    x_s_ast = x_s[0::dy]
 
     # Find shoreline angles
     shoreline_angles = (180 * (np.arctan2((x_s_ast[np.r_[1: len(x_s_ast), 0]] - x_s_ast), dy)) / np.pi)
