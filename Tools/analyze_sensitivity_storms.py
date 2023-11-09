@@ -11,12 +11,13 @@ import matplotlib.pyplot as plt
 import routines_meeb as routine
 import copy
 import time
+from tqdm import tqdm
 from tabulate import tabulate
+from joblib import Parallel, delayed
 from SALib.sample import sobol as sobol_sample
 from SALib.sample import morris as morris_sample
 from SALib.analyze import sobol as sobol
 from SALib.analyze import morris as morris
-from joblib import Parallel, delayed
 
 
 # ___________________________________________________________________________________________________________________________________
@@ -145,7 +146,8 @@ def storm_fitness(solution):
 def run_model(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
-    solutions = Parallel(n_jobs=15)(delayed(storm_fitness)(X[q, :]) for q in range(X.shape[0]))
+    with routine.tqdm_joblib(tqdm(desc="Progress", total=X.shape[0])) as progress_bar:
+        solutions = Parallel(n_jobs=15)(delayed(storm_fitness)(X[q, :]) for q in range(X.shape[0]))
 
     return np.array(solutions)
 
@@ -239,7 +241,7 @@ inputs = {
                [0.02, 0.4],
                [0.05, 0.5]]
 }
-N = 1000  # Number of samples = N * (2 * num_vars + 2)
+N = 10 #1000  # Number of samples = N * (2 * num_vars + 2)
 
 # _____________________________________________
 # Generate Samples

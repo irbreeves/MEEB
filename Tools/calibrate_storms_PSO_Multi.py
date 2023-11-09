@@ -4,7 +4,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 Calibrates based on fitess score for all beach/dune/overwash morphologic change, and incorporates multiple
 storm events and/or locations into each fitness score.
 
-IRBR 27 October 2023
+IRBR 9 November 2023
 """
 
 import numpy as np
@@ -15,6 +15,7 @@ import time
 from tabulate import tabulate
 import pyswarms as ps
 from joblib import Parallel, delayed
+from tqdm import tqdm
 
 
 # ___________________________________________________________________________________________________________________________________
@@ -138,7 +139,7 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
     else:
         weighted_bss = np.average([bss_ow, bss_bd], weights=[2, 1])
 
-    score = weighted_bss  # This is the skill score used in particle swarms optimization
+    score = bss  # This is the skill score used in particle swarms optimization
 
     return score
 
@@ -186,8 +187,6 @@ def multi_fitness(solution):
     if multi_score > BestScore:
         BestScore = multi_score
         BestScores = score_list
-        # print(score_list)
-    print("  >> multi_score:", multi_score)
 
     return multi_score
 
@@ -195,7 +194,8 @@ def multi_fitness(solution):
 def opt_func(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
-    solutions = Parallel(n_jobs=9)(delayed(multi_fitness)(X[i, :]) for i in range(swarm_size))
+    with routine.tqdm_joblib(tqdm(desc="Iteration Progress", total=swarm_size)) as progress_bar:
+        solutions = Parallel(n_jobs=5)(delayed(multi_fitness)(X[i, :]) for i in range(swarm_size))
 
     print("  >>> solutions:", solutions)
 
@@ -214,7 +214,7 @@ MHW = 0.39  # [m NAVD88]
 
 # Observed Overwash Mask
 Florence_Overwash_Mask = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")  # Load observed overwash mask
-name = 'Multi-Location Storm (Florence), Particle Swarms Optimization'
+name = 'Multi-Location Storm (Florence), Particle Swarms Optimization, NON-Weighted Score, Nswarm 16, Iterations 40, 2Nov23'
 
 BestScore = -1e10
 BestScores = []
@@ -239,13 +239,10 @@ storm_dur = [83]
 
 # _____________________________________________
 # Define Multiple Locations
-# x_min = [575, 1450, 2000, 2150, 2600]
-# x_max = [825, 1900, 2150, 2350, 2700]
-# # small flat, large flat, small gap, large gap, tall ridge
 
-x_min = [18950, 19825, 20375, 20525]  # 20975
-x_max = [19250, 20275, 20525, 20725]  # 21125
-# small flat, large flat, small gap, large gap # tall ridge
+x_min = [18950, 19825, 20375, 20525, 6300]  # 20975
+x_max = [19250, 20275, 20525, 20725, 6600]  # 21125
+# small flat, large flat, small gap, large gap, tall ridge  # tall ridge
 
 
 # ___________________________________________________________________________________________________________________________________
@@ -256,7 +253,7 @@ x_max = [19250, 20275, 20525, 20725]  # 21125
 # Prepare Particle Swarms Parameters
 
 iterations = 40
-swarm_size = 18
+swarm_size = 20
 dimensions = 10  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
@@ -333,3 +330,5 @@ print(tabulate({
 plt.plot(np.array(optimizer.cost_history) * -1)
 plt.ylabel('Fitness (BSS)')
 plt.xlabel('Iteration')
+
+plt.show()

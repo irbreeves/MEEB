@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 27 October 2023
+IRBR 9 November 2023
 """
 
 import numpy as np
@@ -9,9 +9,11 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import time
 import os
+from tqdm import tqdm
 from matplotlib import colors
-from multiprocessing import Pool
 from joblib import Parallel, delayed
+import routines_meeb as routine
+
 from meeb import MEEB
 
 
@@ -58,7 +60,7 @@ def run_individual_sim(rslr):
         beach_equilibrium_slope=0.039,
         swash_transport_coefficient=1e-3,
         wave_period_storm=9.4,
-        beach_substeps=22,
+        beach_substeps=10,
         flow_reduction_max_spec1=0.17,
         flow_reduction_max_spec2=0.44,
         # --- Shoreline --- #
@@ -73,12 +75,8 @@ def run_individual_sim(rslr):
 
     # Loop through time
     for time_step in range(int(meeb.iterations)):
-        print("\r", "Time Step: ", (time_step + 1) / meeb.iterations_per_cycle, "years", end="")
-
         # Run time step
         meeb.update(time_step)
-
-    print("   > Simulation Complete")
 
     # Topo change
     topo_start_sim = meeb.topo_TS[:, :, 0]  # [m NAVDD88]
@@ -118,9 +116,8 @@ def internal_probabilistic_change(rslr):
     # Create storage array
     topo_change_bins = np.zeros([num_bins, num_saves, longshore, crossshore])
 
-    topo_change_bins_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(rslr) for i in range(duplicates))
-
-    # TODO: try Pool multiprocessing as alternative?
+    with routine.tqdm_joblib(tqdm(desc="Scenario RSLR[" + str(rslr) + "]", total=duplicates)) as progress_bar:
+        topo_change_bins_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(rslr) for i in range(duplicates))
 
     for ts in range(num_saves):
         for b in range(num_bins):
@@ -146,8 +143,6 @@ def joint_probabilistic_change():
     joint_prob_temp = np.zeros([4, num_bins, num_saves, longshore, crossshore])
 
     for r in range(len(RSLR_prob)):
-        count += 1
-        print("\r", "Running scenario: ", count, " / ", num_scenario, end="")
         internal_prob_change = internal_probabilistic_change(RSLR_bin[r])
         external_prob_change = internal_prob_change * RSLR_prob[r]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
         joint_prob_change += external_prob_change
@@ -359,7 +354,7 @@ bin_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
 sim_duration = 5  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 
-duplicates = 16  # To account for internal stochasticity (e.g., storms, aeolian)
+duplicates = 6  # To account for internal stochasticity (e.g., storms, aeolian)
 core_num = min(duplicates, 20)  # Number of cores to use in the parallelization (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
@@ -369,8 +364,8 @@ xmin = 1000  # [m] Cross-shore coordinate (for plotting)
 xmax = 1600  # [m] Cross-shore coordinate (for plotting)
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 
-name = '16 duplicates, 5 yrs, RSLR (2, 5) (0.5, 0.5)'  # Name of simulation suite
-
+# name = '16 duplicates, 5 yrs, RSLR (2, 5) (0.5, 0.5)'  # Name of simulation suite
+name = '6 duplicates, 5 yrs, RSLR (2, 5) (0.5, 0.5)'  # Name of simulation suite
 
 # _____________________
 # INITIAL CONDITIONS
@@ -390,6 +385,7 @@ num_saves = int(np.floor(sim_duration/save_frequency)) + 1
 
 print()
 print(name)
+print()
 
 start_time = time.time()  # Record time at start of simulation
 
@@ -408,7 +404,7 @@ print("Elapsed Time: ", SimDuration, "sec")
 
 plot_bin_maps(it=-1)
 plot_most_probable_outcome(it=-1)
-
+plot_most_probable_outcome_contour(it=-1)
 
 # -----------------
 # Animation 1

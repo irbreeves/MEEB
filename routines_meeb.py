@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 2 November 2023
+Last update: 9 November 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -16,6 +16,8 @@ import numpy as np
 import math
 import copy
 import scipy
+import joblib
+import contextlib
 from scipy import signal
 from AST.alongshore_transporter import AlongshoreTransporter, calc_alongshore_transport_k
 from AST.waves import ashton, WaveAngleGenerator
@@ -1600,7 +1602,7 @@ def calc_beach_dune_change(topo,
             R = Rh - MHW  # [m MHW] Run-up height relative to MHW
             qD = crestflux[y]
             xStart = int(x_s[y])  # [m] Start loction
-            xFinish = xD + 1  # [m] Stop location
+            xFinish = xD + 2  # [m] Stop location
 
             cont = True
             size = crossshore - xStart
@@ -2526,3 +2528,20 @@ def calculate_beach_slope(topof, x_s, dune_crest_loc, average_dune_toe_height, M
         beach_slopes[ls] = average_dune_toe_height / (toe_loc - x_s[ls])
 
     return beach_slopes
+
+
+@contextlib.contextmanager
+def tqdm_joblib(tqdm_object):
+    """Context manager to patch joblib to report into tqdm progress bar given as argument"""
+    class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
+        def __call__(self, *args, **kwargs):
+            tqdm_object.update(n=self.batch_size)
+            return super().__call__(*args, **kwargs)
+
+    old_batch_callback = joblib.parallel.BatchCompletionCallBack
+    joblib.parallel.BatchCompletionCallBack = TqdmBatchCompletionCallback
+    try:
+        yield tqdm_object
+    finally:
+        joblib.parallel.BatchCompletionCallBack = old_batch_callback
+        tqdm_object.close()

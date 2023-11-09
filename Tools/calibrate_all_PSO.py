@@ -14,6 +14,7 @@ import time
 from tabulate import tabulate
 import pyswarms as ps
 from joblib import Parallel, delayed
+from tqdm import tqdm
 
 from meeb import MEEB
 
@@ -232,7 +233,8 @@ def meeb_fitness(solution):
 def opt_func(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
-    solutions = Parallel(n_jobs=9)(delayed(meeb_fitness)(X[i, :]) for i in range(swarm_size))
+    with routine.tqdm_joblib(tqdm(desc="Iteration Progress", total=swarm_size)) as progress_bar:
+        solutions = Parallel(n_jobs=9)(delayed(meeb_fitness)(X[i, :]) for i in range(swarm_size))
 
     return np.array(solutions)
 

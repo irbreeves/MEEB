@@ -12,6 +12,7 @@ import routines_meeb as routine
 import copy
 import time
 from tabulate import tabulate
+from tqdm import tqdm
 from SALib.sample import sobol as sobol_sample
 from SALib.sample import morris as morris_sample
 from SALib.analyze import sobol as sobol
@@ -169,7 +170,6 @@ def aeolian_fitness(solution):
 
     # Loop through time
     for time_step in range(int(meeb.iterations)):
-        print("\r", "Time Step: ", (time_step + 1) / meeb.iterations_per_cycle, "years", end="")
         # Run time step
         meeb.update(time_step)
 
@@ -237,7 +237,8 @@ def aeolian_fitness(solution):
 def run_model(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
-    solutions = Parallel(n_jobs=18)(delayed(aeolian_fitness)(X[q, :]) for q in range(X.shape[0]))
+    with routine.tqdm_joblib(tqdm(desc="Progress", total=X.shape[0])) as progress_bar:
+        solutions = Parallel(n_jobs=20)(delayed(aeolian_fitness)(X[q, :]) for q in range(X.shape[0]))
 
     return np.array(solutions)
 

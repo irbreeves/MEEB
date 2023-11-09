@@ -3,7 +3,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 
 Calibrates based on fitess score for all beach/dune/overwash morphologic change.
 
-IRBR 27 October September 2023
+IRBR 9 November 2023
 """
 
 import numpy as np
@@ -14,6 +14,7 @@ import time
 from tabulate import tabulate
 import pyswarms as ps
 from joblib import Parallel, delayed
+from tqdm import tqdm
 
 
 # ___________________________________________________________________________________________________________________________________
@@ -142,7 +143,8 @@ def storm_fitness(solution):
 def opt_func(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
-    solutions = Parallel(n_jobs=10)(delayed(storm_fitness)(X[i, :]) for i in range(swarm_size))
+    with routine.tqdm_joblib(tqdm(desc="Iteration Progress", total=swarm_size)) as progress_bar:
+        solutions = Parallel(n_jobs=10)(delayed(storm_fitness)(X[i, :]) for i in range(swarm_size))
 
     return np.array(solutions) * -1
 
