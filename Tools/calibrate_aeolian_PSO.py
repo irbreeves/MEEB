@@ -3,7 +3,7 @@ Script for calibrating MEEB aeolian parameters using Particle Swarms Optimizatio
 
 Calibrates based on fitess score for morphologic and ecologic change between two timesteps.
 
-IRBR 10 August 2023
+IRBR 9 November 2023
 """
 
 import numpy as np
@@ -104,10 +104,11 @@ def aeolian_fitness(solution):
     """Run a hindcast this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
     # Construct wind rose
-    wind_dir_1 = solution[8] / (solution[8] + solution[9] + solution[10] + solution[11])  # Proportion towards right
-    wind_dir_2 = solution[9] / (solution[8] + solution[9] + solution[10] + solution[11])  # Proportion towards down
-    wind_dir_3 = solution[10] / (solution[8] + solution[9] + solution[10] + solution[11])  # Proportion towards left
-    wind_dir_4 = 1 - (wind_dir_1 + wind_dir_2 + wind_dir_3)  # Proportion towards up
+    wind_axis_ratio = solution[8]  # Proportion of cross-shore winds (right/left, i.e. onshore/offshore) versus alongshore winds (up/down)
+    wind_dir_1 = max(0, solution[9] * wind_axis_ratio)  # Onshore (proportion towards right)
+    wind_dir_2 = max(0, (1 - solution[9]) * wind_axis_ratio)  # Offshore (proportion towards left)
+    wind_dir_3 = max(0, solution[10] * (1 - wind_axis_ratio))  # Alongshore (proportion towards down)
+    wind_dir_4 = max(0, 1 - (wind_dir_1 + wind_dir_2 + wind_dir_3))  # Alongshore (proportion towards up)
     rose = (wind_dir_1, wind_dir_2, wind_dir_3, wind_dir_4)  # Tuple that sums to 1.0
 
     # Create an instance of the BMI class
@@ -134,17 +135,17 @@ def aeolian_fitness(solution):
         repose_veg=int(round(solution[6] + solution[7])),
         wind_rose=rose,
         # --- Storms --- #
-        Rin_ru=246,
-        Cx=27,
-        MaxUpSlope=0.63,
-        K_ru=0.0000622,
-        substep_ru=7,
-        beach_equilibrium_slope=0.039,
-        swash_transport_coefficient=1e-3,
+        Rin_ru=164,
+        Cx=47,
+        MaxUpSlope=1.32,
+        K_ru=0.0000468,
+        substep_ru=3,
+        beach_equilibrium_slope=0.027,
+        swash_transport_coefficient=0.00086,
         wave_period_storm=9.4,
         beach_substeps=20,
-        flow_reduction_max_spec1=0.17,
-        flow_reduction_max_spec2=0.44,
+        flow_reduction_max_spec1=0.25,
+        flow_reduction_max_spec2=0.14,
         # --- Veg --- #
         # sp1_c=1.20,
         # sp2_c=-0.47,
@@ -306,7 +307,6 @@ veg_end[veg_end > 1] = 1
 veg_end[veg_end < 0] = 0
 
 
-
 # ___________________________________________________________________________________________________________________________________
 # ___________________________________________________________________________________________________________________________________
 # PARTICLE SWARMS OPTIMIZATION
@@ -316,7 +316,7 @@ veg_end[veg_end < 0] = 0
 
 iterations = 30
 swarm_size = 18
-dimensions = 12  # Number of free paramters
+dimensions = 11  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
 w: Inertia weight constant. [0-1] Determines how much the particle keeps on with its previous velocity (i.e., speed and direction of the search). 
@@ -330,14 +330,13 @@ bounds = (
               0.05,  # p_dep_sand_VegMax
               0.02,  # p_ero_sand
               0.05,  # entrainment_veg_limit
-              0.15,  # saltation_veg_limit
+              0.05,  # saltation_veg_limit
               5,     # shadowangle
               15,    # repose_bare
               5,     # repose_veg
-              0,     # wind direction 1 (right)
-              0,     # wind direction 2 (down)
-              0,     # wind direction 3 (left)
-              0]),   # wind direction 4 (up)
+              0,     # Proportion of cross-shore winds versus alongshore
+              0,     # Proportion of cross-shore winds towards right (onshore)
+              0]),   # Proportion of alongshore winds towards down
     # Maximum
     np.array([0.5,
               0.5,
@@ -347,7 +346,6 @@ bounds = (
               15,
               30,
               10,
-              1,
               1,
               1,
               1])
@@ -375,6 +373,12 @@ print("Elapsed Time: ", SimDuration, "sec")
 print()
 print("Complete.")
 
+best_wind_axis_ratio = best_solution[8]  # Proportion of cross-shore winds (right/left, i.e. onshore/offshore) versus alongshore winds (up/down)
+best_wind_dir_1 = best_solution[9] * best_wind_axis_ratio  # Onshore (proportion towards right)
+best_wind_dir_2 = (1 - best_solution[9]) * best_wind_axis_ratio  # Offshore (proportion towards left)
+best_wind_dir_3 = best_solution[10] * (1 - best_wind_axis_ratio)  # Alongshore (proportion towards down)
+best_wind_dir_4 = 1 - (best_wind_dir_1 + best_wind_dir_2 + best_wind_dir_3)  # Alongshore (proportion towards up)
+
 print()
 print(tabulate({
     "BEST SOLUTION": ["NMAE"],
@@ -386,12 +390,12 @@ print(tabulate({
     "shadowangle": [best_solution[5]],
     "repose_bare": [best_solution[6]],
     "repose_veg": [best_solution[6] + best_solution[7]],
-    "direction1": [best_solution[8] / (best_solution[8] + best_solution[9] + best_solution[10] + best_solution[11])],
-    "direction2": [best_solution[9] / (best_solution[8] + best_solution[9] + best_solution[10] + best_solution[11])],
-    "direction3": [best_solution[10] / (best_solution[8] + best_solution[9] + best_solution[10] + best_solution[11])],
-    "direction4": [best_solution[11] / (best_solution[8] + best_solution[9] + best_solution[10] + best_solution[11])],
+    "direction1": [best_wind_dir_1],
+    "direction2": [best_wind_dir_2],
+    "direction3": [best_wind_dir_3],
+    "direction4": [best_wind_dir_4],
     "Score": [solution_fitness]
-    }, headers="keys", floatfmt=(None, ".2f", ".2f", ".2f", ".2f", ".2f", ".0f", ".0f", ".0f", ".3f", ".3f", ".3f", ".3f", ".4f"))
+    }, headers="keys", floatfmt=(None, ".2f", ".2f", ".2f", ".2f", ".2f", ".0f", ".0f", ".0f", ".3f", ".3f", ".3f", ".4f"))
 )
 
 # _____________________________________________
