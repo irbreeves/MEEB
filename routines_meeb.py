@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 9 November 2023
+Last update: 15 November 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -26,7 +26,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import spsolve
 
 
-def shadowzones(topof, shadowangle, direction):
+def shadowzones(topof, shadowangle, direction, MHW):
     """Returns a boolean map with all shadowzones identified as ones. Wind from left to right, along the +2 dimension.
 
     Parameters
@@ -37,12 +37,20 @@ def shadowzones(topof, shadowangle, direction):
         Shadow angle.
     direction : int
         Wind direction (1 right, 2 down, 3 left, 4 up).
+    MHW : float
+        [m NAVD88] Mean high water.
 
     Returns
     -------
     inshade
         [Bool] Map of cells in shadow zones
     """
+
+    init_topo_copy = topof.copy()
+    x_s_min = np.min(ocean_shoreline(topof, MHW))
+    x_b_max = np.max(backbarrier_shoreline(topof, MHW))
+
+    topof = topof[:, x_s_min: x_b_max]
 
     longshore, crossshore = topof.shape
     steplimit = math.tan(shadowangle * math.pi / 180)  # The maximum step difference allowed given the shadowangle
@@ -68,6 +76,8 @@ def shadowzones(topof, shadowangle, direction):
             tempinshade = step < -(steplimit * i)  # Identify cells with too great a stepheight (IRBR 4May23: Removed floor rounding of steplimit)
             tempinshade[-1 - i:-1, :] = 0  # Part that is rolled back into beginning of space is ignored
         inshade = np.bitwise_or(inshade, tempinshade)  # Merge with previous inshade zones
+
+    inshade = np.hstack((np.zeros([longshore, x_s_min]), inshade, np.zeros([longshore, init_topo_copy.shape[1] - x_b_max])))
 
     return inshade
 
@@ -153,7 +163,7 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg, topof, grou
     return Pd
 
 
-def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, direction, random_hoplength, RNG):
+def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, direction, random_hoplength, topo, MHW, RNG):
     """Shifts the sand from wind. Returns a map of surface elevation change. Open boundaries, no feeding from the sea side.
 
     Follows modifications by Teixeira et al. (2023) that allow larger hop lengths while still accounting for vegetation interactions
@@ -166,7 +176,7 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, direction, random_hoplength, RNG
     ----------
     Pe : ndarray
         Map of erosion probabilities.
-    Pd : float
+    Pd : ndarray
         Map of deposition probabilities.
     hop_avg : int
         [cell length] Slab hop length.
@@ -178,6 +188,10 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, direction, random_hoplength, RNG
         Wind direction (1 right, 2 down, 3 left, 4 up).
     random_hoplength : bool
         When True, hop length varies randomly +/- 2 around the average hop length.
+    topo : ndarray
+        [m NAV88] Topography.
+    MHW : float
+        [m NAVD88] Mean high water.
     RNG
         Random Number Generator object.
 
@@ -185,6 +199,13 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, direction, random_hoplength, RNG
     -------
     elevation_change
         [slabs] Net change in surface elevation in vertical units of slabs."""
+
+    x_s_min = np.min(ocean_shoreline(topo, MHW))
+    x_b_max = np.max(backbarrier_shoreline(topo, MHW))
+
+    Pe = Pe[:, x_s_min: x_b_max]
+    Pd = Pd[:, x_s_min: x_b_max]
+    vegf = vegf[:, x_s_min: x_b_max]
 
     longshore, crossshore = vegf.shape
 
@@ -242,10 +263,12 @@ def shiftslabs(Pe, Pd, hop_avg, vegf, vegf_lim, direction, random_hoplength, RNG
 
     elevation_change = totaldeposit - pickedup  # [slabs] Deposition - erosion
 
+    elevation_change = np.hstack((np.zeros([longshore, x_s_min]), elevation_change, np.zeros([longshore, topo.shape[1] - x_b_max])))
+
     return elevation_change
 
 
-def enforceslopes(topo, vegf, sh, anglesand, angleveg, th, RNG):
+def enforceslopes(topo, vegf, sh, anglesand, angleveg, th, MHW, RNG):
     """Function to enforce the angle of repose, with open boundaries.
 
     Parameters
@@ -259,9 +282,11 @@ def enforceslopes(topo, vegf, sh, anglesand, angleveg, th, RNG):
     anglesand : int
         [deg] Angle of repose for bare sand cells.
     angleveg : int
-        [deg] Angle of repose for vegetated cells
+        [deg] Angle of repose for vegetated cells.
     th : float
-        Vegetation effectiveness threshold for applying vegetated angle of repose (versus bare angle of repose)
+        Vegetation effectiveness threshold for applying vegetated angle of repose (versus bare angle of repose).
+    MHW : float
+        [m NAVD88] Mean high water.
     RNG :
         Random Number Generator object.
 
@@ -273,7 +298,12 @@ def enforceslopes(topo, vegf, sh, anglesand, angleveg, th, RNG):
         Number of slabs moved this iteration
     """
 
-    topof = topo.copy() / sh  # [slabs] Convert from m to slabs NAVD88
+    x_s_min = np.min(ocean_shoreline(topo, MHW))
+    x_b_max = np.max(backbarrier_shoreline(topo, MHW))
+
+    topof = topo.copy()[:, x_s_min: x_b_max] / sh  # [slabs] Convert from m to slabs NAVD88
+    vegf = vegf[:, x_s_min: x_b_max]
+    subaerial = topof > MHW
 
     steplimitsand = np.floor(np.tan(anglesand * np.pi / 180) / sh)  # Maximum allowed height difference for sandy cells
     steplimitsanddiagonal = np.floor(np.sqrt(2) * np.tan(anglesand * np.pi / 180) / sh)  # Maximum allowed height difference for sandy cells along diagonal
@@ -310,14 +340,14 @@ def enforceslopes(topo, vegf, sh, anglesand, angleveg, th, RNG):
         minima = np.amin(slopes, axis=2)  # Identify for each cell the value of the lowest (negative) slope of all 8 directions
 
         # True (1) if steepest slope is in this direction & is more negative than the repose limit
-        exceeds[:, :, 0] = (minima == slopes[:, :, 0]) * (slopes[:, :, 0] < -steplimit)
-        exceeds[:, :, 1] = (minima == slopes[:, :, 1]) * (slopes[:, :, 1] < -steplimitdiagonal)
-        exceeds[:, :, 2] = (minima == slopes[:, :, 2]) * (slopes[:, :, 2] < -steplimit)
-        exceeds[:, :, 3] = (minima == slopes[:, :, 3]) * (slopes[:, :, 3] < -steplimitdiagonal)
-        exceeds[:, :, 4] = (minima == slopes[:, :, 4]) * (slopes[:, :, 4] < -steplimit)
-        exceeds[:, :, 5] = (minima == slopes[:, :, 5]) * (slopes[:, :, 5] < -steplimitdiagonal)
-        exceeds[:, :, 6] = (minima == slopes[:, :, 6]) * (slopes[:, :, 6] < -steplimit)
-        exceeds[:, :, 7] = (minima == slopes[:, :, 7]) * (slopes[:, :, 7] < -steplimitdiagonal)
+        exceeds[:, :, 0] = (minima == slopes[:, :, 0]) * (slopes[:, :, 0] < -steplimit) * subaerial
+        exceeds[:, :, 1] = (minima == slopes[:, :, 1]) * (slopes[:, :, 1] < -steplimitdiagonal) * subaerial
+        exceeds[:, :, 2] = (minima == slopes[:, :, 2]) * (slopes[:, :, 2] < -steplimit) * subaerial
+        exceeds[:, :, 3] = (minima == slopes[:, :, 3]) * (slopes[:, :, 3] < -steplimitdiagonal) * subaerial
+        exceeds[:, :, 4] = (minima == slopes[:, :, 4]) * (slopes[:, :, 4] < -steplimit) * subaerial
+        exceeds[:, :, 5] = (minima == slopes[:, :, 5]) * (slopes[:, :, 5] < -steplimitdiagonal) * subaerial
+        exceeds[:, :, 6] = (minima == slopes[:, :, 6]) * (slopes[:, :, 6] < -steplimit) * subaerial
+        exceeds[:, :, 7] = (minima == slopes[:, :, 7]) * (slopes[:, :, 7] < -steplimitdiagonal) * subaerial
 
         # If there are multiple equally steepest slopes that exceed the angle of repose, one of them needs to be assigned and the rest set to 0
         k = np.argwhere(np.sum(exceeds, axis=2) > 1)  # Identify cells with multiple equally steepest minima in different directions that all exceed repose angle
@@ -342,7 +372,7 @@ def enforceslopes(topo, vegf, sh, anglesand, angleveg, th, RNG):
         slabsmoved = np.sum(exceeds)  # Count moved slabs during this loop
         avalanched_cells = avalanched_cells + slabsmoved  # Total number of moved slabs this iteration
 
-    topof_updated = topof.copy() * sh  # [m NAVD88] Convert back to m
+    topof_updated = np.hstack((topo[:, :x_s_min], topof.copy() * sh, topo[:, x_b_max:]))  # [m NAVD88] Convert back to m
 
     return topof_updated, avalanched_cells
 
@@ -707,6 +737,11 @@ def foredune_crest(topo, MHW):
         Cross-shore location of the dune crest for each row alongshore.
     """
 
+    x_s_min = np.min(ocean_shoreline(topo, MHW))
+    x_b_max = np.max(backbarrier_shoreline(topo, MHW))
+
+    topo = topo[:, x_s_min: x_b_max]
+
     # Parameters
     buff = 25  # [m] Buffer for searching for foredune crests around rough estimate of dune location
     window_XL = 150  # Window size for alongshore moving average of topography
@@ -736,6 +771,9 @@ def foredune_crest(topo, MHW):
 
     # Step 5: Narrow smoothening of peak-buffer line
     crestline = np.round(signal.savgol_filter(crestline, window_small, 1)).astype(int)
+
+    # Step 6: Add back x-coordinate removed from original domain (to speed up function)
+    crestline += x_s_min
 
     # # Debugging
     # tempfig = plt.figure(figsize=(8, 8))

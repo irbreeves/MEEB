@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 2 November 2023
+Last update: 15 November 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -361,7 +361,7 @@ class MEEB:
 
         # Find subaerial and shadow cells
         subaerial = self._topo > self._MHW  # [bool] True for subaerial cells
-        wind_shadows = routine.shadowzones(self._topo, self._shadowangle, direction=int(self._wind_direction[it]))  # [bool] Map of True for in shadow, False not in shadow
+        wind_shadows = routine.shadowzones(self._topo, self._shadowangle, direction=int(self._wind_direction[it]), MHW=self._MHW)  # [bool] Map of True for in shadow, False not in shadow
 
         # Erosion/Deposition Probabilities
         aeolian_erosion_prob = routine.erosprobs(self._effective_veg, wind_shadows, subaerial, self._topo, self._groundwater_elevation, self._p_ero_sand, self._entrainment_veg_limit, self._slabheight, self._MHW)  # Returns map of erosion probabilities
@@ -369,13 +369,13 @@ class MEEB:
 
         # Move sand slabs
         if self._wind_direction[it] == 1 or self._wind_direction[it] == 3:  # Left or Right wind direction
-            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._jumplength, self._effective_veg, self._saltation_veg_limit, int(self._wind_direction[it]), True, self._RNG)  # Returns map of height changes in units of slabs
+            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._jumplength, self._effective_veg, self._saltation_veg_limit, int(self._wind_direction[it]), True, self._topo, self._MHW, self._RNG)  # Returns map of height changes in units of slabs
         else:  # Up or Down wind direction
-            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._jumplength, self._effective_veg, self._saltation_veg_limit, int(self._wind_direction[it]), True, self._RNG)  # Returns map of height changes in units of slabs
+            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._jumplength, self._effective_veg, self._saltation_veg_limit, int(self._wind_direction[it]), True, self._topo, self._MHW, self._RNG)  # Returns map of height changes in units of slabs
 
         # Apply changes, make calculations
         self._topo += aeolian_elevation_change * self._slabheight  # [m NAVD88] Changes applied to the topography; convert aeolian_elevation_change from slabs to meters
-        self._topo, aval = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)  # Enforce angles of repose: avalanching
+        self._topo, aval = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._RNG)  # Enforce angles of repose: avalanching
         self._sedimentation_balance = self._sedimentation_balance + (self._topo - topo_iteration_start)  # [m] Update the sedimentation balance map
         balance_init = self._sedimentation_balance + (self._topo - topo_iteration_start)
         self._topographic_change = self._topographic_change + abs(self._topo - topo_iteration_start)  # [m]
@@ -439,8 +439,8 @@ class MEEB:
                     flow_reduction_max_spec2=self._flow_reduction_max_spec2,
                 )
 
-                # Enforce angles of repose again after overwash
-                # self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._RNG)[0]  # [m NAVD88]
+                # Enforce angles of repose again after storm
+                self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._RNG)[0]  # [m NAVD88]
 
                 # Update vegetation from storm effects
                 self._spec1[inundated] = 0  # Remove species where beach is inundated
