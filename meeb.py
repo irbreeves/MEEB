@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 15 November 2023
+Last update: 20 November 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -34,44 +34,43 @@ class MEEB:
             vegetation_iterations_per_year=1,  # Number of vegetation updates in 1 model year
             save_frequency=0.5,  # [years] Save results every n years
             simulation_time_yr=15.0,  # [yr] Length of the simulation time
-            cellsize=1,  # [m] Interpreted cell size
-            slabheight=0.02,  # Ratio of cell dimension (0.02, Teixeira et al. 2023)
+            cellsize=1,  # [m] Cell length and width
+            slabheight=0.02,  # Height of slabs for aeolian transport, proportion of cell dimension (0.02, Teixeira et al. 2023)
             alongshore_domain_boundary_min=0,  # [m] Alongshore minimum boundary location for model domain
             alongshore_domain_boundary_max=10e7,  # [m] Alongshore maximum boundary location for model domain; if left to this default value, it will automatically adjust to the actual full length of the domain
             inputloc="Input/",  # Input file directory (end string with "/")
             outputloc="Output/",  # Output file directory (end string with "/")
-            init_filename="Init_NorthernNCB_2017_PreFlorence.npy",  # [m NVD88] Name of initial topography and vegetation input file
+            init_filename="Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy",  # [m NVD88] Name of initial topography and vegetation input file
             hindcast=False,  # [bool] Determines whether the model is run with the default stochastisity generated storms [hindcast=False], or an empirical storm, wind, wave, temp timeseries [hindcast=True]
-            simulation_start_date='20040716',  # [date] Date from which to start hindcast; must be string in format 'yyyymmdd'
+            simulation_start_date='20181007',  # [date] Date from which to start hindcast; must be string in format 'yyyymmdd'
             hindcast_timeseries_start_date='19790101',  # [date] Start date of hindcast timeseries input data; format 'yyyymmdd'
             seeded_random_numbers=True,  # [bool] Determines whether to use seeded random number generator for reproducibility
             save_data=False,
 
             # AEOLIAN
             groundwater_depth=0.8,  # Proportion of the smoothend topography used to set groundwater profile
-            wind_rose=(0.8, 0, 0.2, 0),  # Proportion of wind TOWARDS (right, down, left, up)
-            p_dep_sand=0.1,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
-            p_dep_sand_VegMax=0.2,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover. Must be greater than or equal to p_dep_sand/p_dep_base.
+            wind_rose=(0.7, 0.1, 0.1, 0.1),  # Proportion of wind TOWARDS (right, down, left, up)
+            p_dep_sand=0.33,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
+            p_dep_sand_VegMax=0.56,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover. Must be greater than or equal to p_dep_sand/p_dep_base.
             p_dep_base=0.1,  # [0-1] Probability of deposition of base cells
-            p_ero_sand=0.5,  # [0-1] Probability of erosion of bare/sandy cells
-            entrainment_veg_limit=0.5,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible.
-            shadowangle=15,  # [deg]
+            p_ero_sand=0.17,  # [0-1] Probability of erosion of bare/sandy cells
+            entrainment_veg_limit=0.1,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible.
+            saltation_veg_limit=0.3,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path needed to be considered vegetated
+            shadowangle=9,  # [deg]
             repose_bare=20,  # [deg]
             repose_veg=30,  # [deg]
-            repose_threshold=0.3,  # Vegetation threshold for applying repose_veg
-            saltation_veg_limit=0.25,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path needed to be considered vegetated
-            jumplength=5,  # [cell length] Hop length for slabs (5, Teixeira et al. 2023)
-            clim=0.5,  # Vegetation cover that limits erosion
+            repose_threshold=0.3,  # [0-1] Vegetation threshold for applying repose_veg
+            jumplength=5,  # [cell lengths] Hop length for slabs (5, Teixeira et al. 2023)
 
             # SHOREFACE, BEACH, & SHORELINE
-            beach_equilibrium_slope=0.039,  # Equilibrium slope of the beach
+            beach_equilibrium_slope=0.03,  # Equilibrium slope of the beach
             swash_transport_coefficient=0.001,  # Non-dimensional swash transport coefficient (Larson, Kubota, et al., 2004) expected to depend on several factors (particularly grain size); typically 0.001 - 0.003 and can be calibrated
-            beach_substeps=40,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
+            beach_substeps=20,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
             shoreface_flux_rate=5000,  # [m3/m/yr] Shoreface flux rate coefficient
             shoreface_equilibrium_slope=0.02,  # Equilibrium slope of the shoreface
             shoreface_depth=10,  # [m] Depth to shoreface toe (i.e. depth of ‘closure’)
             shoreface_length_init=500,  # [m] Initial length of shoreface
-            wave_asymetry=0.5,  # Fraction of waves approaching from the left (when looking offshore)
+            wave_asymetry=0.5,  # [0-1] Fraction of waves approaching from the left (when looking offshore)
             wave_high_angle_fraction=0,  # Fraction of waves approaching at angles higher than 45 degrees from shore normal
             mean_wave_height=1.0,  # [m] Mean offshore significant wave height
             mean_wave_period=10,  # [s] Mean wave period
@@ -98,13 +97,13 @@ class MEEB:
             sp1_peak=0.2,  # Growth peak, spec1
             sp2_peak=0.05,  # Growth peak, spec2
             VGR=0,  # [%] Growth reduction by end of period
-            lateral_probability=0.2,  # Probability of lateral expansion of existing vegetation
-            pioneer_probability=0.05,  # Probability of occurrence of new pioneering vegetation
+            lateral_probability=0.2,  # [0-1] Probability of lateral expansion of existing vegetation
+            pioneer_probability=0.05,  # [0-1] Probability of occurrence of new pioneering vegetation
             maxvegeff=1.0,  # [0-1] Value of maximum vegetation effectiveness allowed
             Spec1_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 1 (1 m MHW for A. brevigulata from Young et al., 2011)
             Spec2_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 2
-            flow_reduction_max_spec1=0.05,  # Proportion of overwash flow reduction through a cell populated with species 1 at full density
-            flow_reduction_max_spec2=0.20,  # Proportion of overwash flow reduction through a cell populated with species 2 at full density
+            flow_reduction_max_spec1=0.15,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 1 at full density
+            flow_reduction_max_spec2=0.25,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 2 at full density
             effective_veg_sigma=3,  # Standard deviation for Gaussian filter of vegetation cover
 
             # STORM OVERWASH AND DUNE EROSION
@@ -112,19 +111,19 @@ class MEEB:
             storm_timeseries_filename="StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
             threshold_in=0.25,  # [%] Threshold percentage of overtopped dune cells exceeded by Rlow needed to be in inundation overwash regime
             Rin_in=5,  # [m^3/hr] Flow infiltration and drag parameter, inundation overwash regime
-            Rin_ru=325,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
-            Cx=25,  # Constant for representing flow momentum for sediment transport in inundation overwash regime
+            Rin_ru=165,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
+            Cx=45,  # Constant for representing flow momentum for sediment transport in overwash
             nn=0.5,  # Flow routing constant
-            MaxUpSlope=1,  # Maximum slope water can flow uphill
+            MaxUpSlope=1.25,  # Maximum slope water can flow uphill
             fluxLimit=1,  # [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
             Qs_min=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
-            K_ru=5.15e-05,  # Sediment transport coefficient for run-up overwash regime
+            K_ru=4.7e-05,  # Sediment transport coefficient for run-up overwash regime
             K_in=5e-04,  # Sediment transport coefficient for inundation overwash regime
             mm=1.0,  # Inundation overwash constant
-            Cbb_in=0.85,  # [%] Coefficient for exponential decay of sediment load entering back-barrier bay, inundation regime
-            Cbb_ru=0.7,  # [%] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
+            Cbb_in=0.85,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, inundation regime
+            Cbb_ru=0.7,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
             Qs_bb_min=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
-            substep_in=3,  # Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+            substep_in=5,  # Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
             substep_ru=5,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
 
     ):
@@ -180,7 +179,6 @@ class MEEB:
         self._repose_threshold = repose_threshold
         self._saltation_veg_limit = saltation_veg_limit
         self._jumplength = jumplength
-        self._clim = clim
         self._beach_equilibrium_slope = beach_equilibrium_slope
         self._swash_transport_coefficient = swash_transport_coefficient
         self._beach_substeps = beach_substeps
@@ -471,6 +469,7 @@ class MEEB:
                 self._x_t,
                 self._MHW,
                 self._alongshore_section_length,
+                self._storm_iterations_per_year,
             )
 
             # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)
@@ -502,6 +501,7 @@ class MEEB:
                 self._MHW,
                 shoreface_slope,
                 self._RSLR,
+                self._storm_iterations_per_year,
             )
 
             # Store shoreline and shoreface toe locations

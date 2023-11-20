@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 15 November 2023
+Last update: 20 November 2023
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -613,44 +613,49 @@ def shoreline_change_from_CST(
         x_t,
         MHW,
         dy,
+        storm_iterations_per_year,
 ):
     """Shoreline change from cross-shore sediment transport following Lorenzo-Trueba and Ashton (2014).
 
     Parameters
     ----------
     topof : ndarray
-        [m NAVD88] Present elevation domain
+        [m NAVD88] Present elevation domain.
     d_sf : float
-        [m] Shoreface depth
+        [m] Shoreface depth.
     k_sf : flaot
-        [k^m/m/yr] Shoreface flux constant
+        [k^m/m/yr] Shoreface flux constant.
     s_sf_eq : float
-        Shoreface equilibrium slope
+        Shoreface equilibrium slope.
     RSLR :  float
-        [m/ts] Relative sea-level rise rate
+        [m/yr] Relative sea-level rise rate.
     Qbe : ndarray
-        [m^3/m/ts] Volume of sediment removed from (or added to) the upper shoreface by fairweather beach/duneface change
+        [m^3/m/ts] Volume of sediment removed from (or added to) the upper shoreface by fairweather beach/duneface change.
     Qow : ndarray
-        [m^3/ts] Volume of sediment removed from the upper shoreface by overwash
+        [m^3/ts] Volume of sediment removed from the upper shoreface by overwash.
     x_s : ndarray
-        [m] Cross-shore shoreline position relative to start of simulation
+        [m] Cross-shore shoreline position relative to start of simulation.
     x_t : ndarray
-        [m] Cross-shore shoreface toe position relative to start of simulation
+        [m] Cross-shore shoreface toe position relative to start of simulation.
     MHW : float
-        [m NAVD88] Present mean high water
+        [m NAVD88] Present mean high water.
     dy : int
-        [m] Alongshore length between shoreline nodes, i.e. alongshore section length
+        [m] Alongshore length between shoreline nodes, i.e. alongshore section length.
+    storm_iterations_per_year : int
+        Number of storm/shoreline change iterations in a model year.
 
     Returns
     ----------
     x_s
-        [m] New cross-shore shoreline position relative to start of simulation for each cell length alongshore
+        [m] New cross-shore shoreline position relative to start of simulation for each cell length alongshore.
     x_t
-        [m] New cross-shore shoreface toe position relative to start of simulation for each cell length alongshore
+        [m] New cross-shore shoreface toe position relative to start of simulation for each cell length alongshore.
     s_sf
-        [m/m] Slope of the shoreface for each row cell length alongshore
+        [m/m] Slope of the shoreface for each row cell length alongshore.
     """
 
+    RSLR /= storm_iterations_per_year  # [m] Convert from m/year to m/timestep (timestep typically 0.04 yr)
+    k_sf /= storm_iterations_per_year  # [m^3/yr] Convert from m^3/year to m^3/timestep (timestep typically 0.04 yr)
     Qow[Qow < 0] = 0
 
     h_b = np.array(np.ma.array(topof, mask=(topof < MHW)).mean(axis=1))  # [m NAV88] Average height of subaerial barrier for each cell length alongshore
@@ -1683,7 +1688,7 @@ def calc_beach_dune_change(topo,
                 elif xStart < x < xD:
                     qs = qD + (qS - qD) * (1 - ((hi - MHW) / R)) ** 2 * ((Beq - Bl) / (Beq - Bls))  # Sediment flux following Eqn 6 and Eqn 21 from Larson et al. (2004)
 
-                # At Dune Crest
+                # At Dune Crest or beyond
                 else:
                     qs = qD  # Sediment flux
 
@@ -1970,30 +1975,24 @@ def route_overwash(
 
                     # Calculate Sed Movement
 
-                    # Run-up Regime
+                    # Run-up Regime - Murray and Paola (1994, 1997) Rule 3
                     if not inundation:
-                        if Q1 > Qs_min:  # and S1 >= 0:
-                            # Qs1 = max(0, Kr * Q1)
-                            Qs1 = max(0, Kr * Q1 * (S1 + C))
-                            # Qs1 = max(0, Kr * (Q1 * (S1 + C)) ** mm)
+                        if Q1 > Qs_min:
+                            Qs1 = max(0, Kr * (Q1 * (S1 + C)) ** mm)
                         else:
                             Qs1 = 0
 
-                        if Q2 > Qs_min:  # and S2 >= 0:
-                            # Qs2 = max(0, Kr * Q2)
-                            Qs2 = max(0, Kr * Q2 * (S2 + C))
-                            # Qs2 = max(0, Kr * (Q2 * (S2 + C)) ** mm)
+                        if Q2 > Qs_min:
+                            Qs2 = max(0, Kr * (Q2 * (S2 + C)) ** mm)
                         else:
                             Qs2 = 0
 
-                        if Q3 > Qs_min:  # and S3 >= 0:
-                            # Qs3 = max(0, Kr * Q3)
-                            Qs3 = max(0, Kr * Q3 * (S3 + C))
-                            # Qs3 = max(0, Kr * (Q3 * (S3 + C)) ** mm)
+                        if Q3 > Qs_min:
+                            Qs3 = max(0, Kr * (Q3 * (S3 + C)) ** mm)
                         else:
                             Qs3 = 0
 
-                    # Inundation Regime - Murray and Paola (1994, 1997) Rule 3 with flux limiter
+                    # Inundation Regime - Murray and Paola (1994, 1997) Rule 3
                     else:
                         if Q1 > Qs_min:
                             Qs1 = Ki * (Q1 * (S1 + C)) ** mm
@@ -2454,6 +2453,7 @@ def adjust_ocean_shoreline(
         MHW,
         shoreface_slope,
         RSLR,
+        storm_iterations_per_year
 ):
     """Adjust topography domain to according to amount of shoreline change.
 
@@ -2470,13 +2470,17 @@ def adjust_ocean_shoreline(
     shoreface_slope : ndarray
         [m/m] Active slope of the shoreface for each cell alongshore.
     RSLR : float
-        [m/yr] Relative sea-level rise rate
+        [m/yr] Relative sea-level rise rate.
+    storm_iterations_per_year : int
+        Number of storm/shoreline change iterations in a model year.
 
     Returns
     ----------
     topo
         [m NAVD88] Topobathy updated for ocean shoreline change.
     """
+
+    RSLR /= storm_iterations_per_year  # [m] Convert from m/year to m/timestep (timestep typically 0.04 yr)
 
     target_xs = np.floor(new_shoreline).astype(np.int64)
     prev_xs = np.floor(prev_shoreline).astype(np.int64)
@@ -2491,7 +2495,7 @@ def adjust_ocean_shoreline(
         if erosion[ls]:  # Erode the shoreline
             if target < topo.shape[1]:  # Shoreline is within model domain
                 # Adjust shoreline
-                topo[ls, target] = MHW - max(RSLR, 0.01)  # [m NAVD88]  # Old beach cell elevationss set to just below MHW
+                topo[ls, target] = min(MHW - ((MHW - topo[ls, prev]) / 2), MHW - RSLR)  # [m NAVD88]  # Old beach cell elevations set halfway between first subaqeuous cell MHW or to RSLR below MHW, whichever's lowest
                 # Adjust shoreface
                 shoreface = np.arange(-target, 0) * shoreface_slope[ls] + topo[ls, target]  # New shoreface cells
                 topo[ls, :target] = shoreface  # Insert into domain
@@ -2534,7 +2538,7 @@ def reduce_raster_resolution(raster, reduction_factor):
     return raster.reshape(sh).mean(-1).mean(1)
 
 
-@njit()
+@njit
 def calculate_beach_slope(topof, x_s, dune_crest_loc, average_dune_toe_height, MHW):
     """Finds the beach slope for each cell alongshore. Slope is calculated using the average dune toe height.
 
