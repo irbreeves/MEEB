@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 20 November 2023
+Last update: 8 February 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -35,7 +35,6 @@ class MEEB:
             save_frequency=0.5,  # [years] Save results every n years
             simulation_time_yr=15.0,  # [yr] Length of the simulation time
             cellsize=1,  # [m] Cell length and width
-            slabheight=0.02,  # Height of slabs for aeolian transport, proportion of cell dimension (0.02, Teixeira et al. 2023)
             alongshore_domain_boundary_min=0,  # [m] Alongshore minimum boundary location for model domain
             alongshore_domain_boundary_max=10e7,  # [m] Alongshore maximum boundary location for model domain; if left to this default value, it will automatically adjust to the actual full length of the domain
             inputloc="Input/",  # Input file directory (end string with "/")
@@ -48,14 +47,15 @@ class MEEB:
             save_data=False,
 
             # AEOLIAN
-            groundwater_depth=0.8,  # Proportion of the smoothend topography used to set groundwater profile
+            slabheight=0.02,  # Height of slabs for aeolian transport, proportion of cell dimension (0.02, Teixeira et al. 2023)
+            groundwater_depth=0.4,  # Proportion of the smoothed topography used to set groundwater profile
             wind_rose=(0.7, 0.1, 0.1, 0.1),  # Proportion of wind TOWARDS (right, down, left, up)
             p_dep_sand=0.33,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
             p_dep_sand_VegMax=0.56,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover. Must be greater than or equal to p_dep_sand/p_dep_base.
             p_dep_base=0.1,  # [0-1] Probability of deposition of base cells
             p_ero_sand=0.17,  # [0-1] Probability of erosion of bare/sandy cells
             entrainment_veg_limit=0.1,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible.
-            saltation_veg_limit=0.3,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path needed to be considered vegetated
+            saltation_veg_limit=0.3,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
             shadowangle=9,  # [deg]
             repose_bare=20,  # [deg]
             repose_veg=30,  # [deg]
@@ -84,16 +84,16 @@ class MEEB:
             specific_gravity_submerged_sed=1.65,  # Submerged specific gravity of sediment; used for optional shoreface parameter estimations
 
             # VEGETATION
-            sp1_a=-1.3,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
-            sp1_b=-0.1,  # Vertice b, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_a=-1.5,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_b=0.01,  # Vertice b, spec1. vegetation growth based on Nield and Baas (2008)
             sp1_c=0.5,  # Vertice c, spec1. vegetation growth based on Nield and Baas (2008)
             sp1_d=1.5,  # Vertice d, spec1. vegetation growth based on Nield and Baas (2008)
-            sp1_e=2.5,  # Vertice e, spec1. vegetation growth based on Nield and Baas (2008)
-            sp2_a=-1.4,  # Vertice a, spec2. vegetation growth based on Nield and Baas (2008)
-            sp2_b=-0.65,  # Vertice b, spec2. vegetation growth based on Nield and Baas (2008)
+            sp1_e=2.2,  # Vertice e, spec1. vegetation growth based on Nield and Baas (2008)
+            sp2_a=-1.6,  # Vertice a, spec2. vegetation growth based on Nield and Baas (2008)
+            sp2_b=-0.7,  # Vertice b, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_c=0.0,  # Vertice c, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_d=0.2,  # Vertice d, spec2. vegetation growth based on Nield and Baas (2008)
-            sp2_e=2.2,  # Vertice e, spec2. vegetation growth based on Nield and Baas (2008)
+            sp2_e=2.1,  # Vertice e, spec2. vegetation growth based on Nield and Baas (2008)
             sp1_peak=0.2,  # Growth peak, spec1
             sp2_peak=0.05,  # Growth peak, spec2
             VGR=0,  # [%] Growth reduction by end of period
@@ -354,7 +354,7 @@ class MEEB:
         topo_iteration_start = copy.deepcopy(self._topo)
 
         # Get present groundwater elevations
-        self._groundwater_elevation = scipy.ndimage.gaussian_filter(self._topo, sigma=12) * self._groundwater_depth  # [m NAVD88] Groundwater based on smoothed topography
+        self._groundwater_elevation = (scipy.ndimage.gaussian_filter(self._topo, sigma=12) - self._MHW) * self._groundwater_depth + self._MHW  # [m NAVD88] Groundwater elevation based on smoothed topographic height above SL
         self._groundwater_elevation[self._groundwater_elevation < self._MHW] = self._MHW  # [m NAVD88]
 
         # Find subaerial and shadow cells
