@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 20 November 2023
+Last update: 8 February 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -1514,7 +1514,7 @@ def storm_processes_2(
         ElevationChange[ElevationChange > fluxLimit] = fluxLimit
         ElevationChange[ElevationChange < -fluxLimit] = -fluxLimit
         dune_crest_flux_out = ElevationChange[np.arange(longshore), dune_crest_loc - domain_width_start] / 60 / 60  # [m^3/s] Overwash sediment flux out of dune crest cells
-        ElevationChange[np.arange(longshore), dune_crest_loc - domain_width_start] = 0  # Do not update elevation change at dune crest cell where discharge was introduced
+        ElevationChange[np.arange(longshore), dune_crest_loc - domain_width_start] = 0  # Do not yet update elevation change at dune crest (this will be done later in beach/dune change)
         Elevation[TS, :, :] = Elevation[TS, :, :] + ElevationChange
 
         # Calculate and save volume of sediment deposited on/behind the barrier interior for every hour
@@ -1645,7 +1645,7 @@ def calc_beach_dune_change(topo,
             R = Rh - MHW  # [m MHW] Run-up height relative to MHW
             qD = crestflux[y]
             xStart = int(x_s[y])  # [m] Start loction
-            xFinish = xD + 2  # [m] Stop location
+            xFinish = xD + 1  # [m] Stop location
 
             cont = True
             size = crossshore - xStart
@@ -1657,7 +1657,7 @@ def calc_beach_dune_change(topo,
             for x in range(xStart, xFinish):
 
                 # Cell to operate on
-                hi = topo[y, x]
+                zi = topo[y, x]
 
                 # Definition of boundary conditions
                 if x == 0:
@@ -1670,7 +1670,7 @@ def calc_beach_dune_change(topo,
                 else:
                     hnext = topo[y, x + 1]
 
-                if hi <= Rh < topo[y, x + 1]:
+                if zi <= Rh < topo[y, x + 1]:
                     hnext = Rh
                     cont = False
 
@@ -1686,7 +1686,7 @@ def calc_beach_dune_change(topo,
 
                 # Shoreline to Dune Crest
                 elif xStart < x < xD:
-                    qs = qD + (qS - qD) * (1 - ((hi - MHW) / R)) ** 2 * ((Beq - Bl) / (Beq - Bls))  # Sediment flux following Eqn 6 and Eqn 21 from Larson et al. (2004)
+                    qs = qD + (qS - qD) * (1 - ((zi - MHW) / R)) ** 2 * ((Beq - Bl) / (Beq - Bls))  # Sediment flux following Eqn 6 and Eqn 21 from Larson et al. (2004)
 
                 # At Dune Crest or beyond
                 else:
