@@ -405,6 +405,10 @@ def _build_matrix(
 
     r_ipl = coast_diff * dt / (2.0 * dy ** 2)
 
+    # Set non-periodic boundary conditions
+    r_ipl[0] = 0
+    r_ipl[-1] = 0
+
     mat = _build_tridiagonal_matrix(1.0 + 2.0 * r_ipl, lower=-r_ipl, upper=-r_ipl)
 
     rhs = (
