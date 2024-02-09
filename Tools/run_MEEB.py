@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 27 October 2023
+IRBR 8 February 2024
 """
 
 import numpy as np
@@ -9,9 +9,8 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import os
 import copy
-import time
+from tqdm import trange
 
-import routines_meeb
 import routines_meeb as routine
 from meeb import MEEB
 
@@ -52,20 +51,20 @@ start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
 startdate = '20181007'
 
 
-sim_duration = 8
+sim_duration = 10
 
 
 # _____________________
 # Initial Conditions
 
 # Define Alongshore Coordinates of Domain
-ymin = 6400  # Alongshore
-ymax = 6700  # Alongshore
-xmin = 700  # Cross-shore   900
-xmax = 1400  # Cross-shore  1500
+ymin = 21000  # Alongshore
+ymax = 21500  # Alongshore
+xmin = 900  # Cross-shore   1000
+xmax = xmin + 600  # Cross-shore  1500
 MHW = 0.39  # [m NAVD88]
 
-name = '6400-6700, 8 yr, RSLR8'
+name = '21000-21500, 2018-2028, RSLR=4'
 
 # Load Initial Domains
 Init = np.load("Input/" + start)
@@ -81,15 +80,13 @@ veg_start = spec1_i + spec2_i  # Determine the initial cumulative vegetation eff
 # __________________________________________________________________________________________________________________________________
 # RUN MODEL
 
-start_time = time.time()  # Record time at start of simulation
-
 # Create an instance of the MEEB class
 meeb = MEEB(
     name=name,
     simulation_time_yr=sim_duration,
     alongshore_domain_boundary_min=ymin,
     alongshore_domain_boundary_max=ymax,
-    RSLR=0.008,
+    RSLR=0.004,
     MHW=MHW,
     init_filename=start,
     hindcast=False,
@@ -100,27 +97,28 @@ meeb = MEEB(
     # --- Aeolian --- #
     jumplength=5,
     slabheight=0.02,
-    p_dep_sand=0.10,  # Q = hs * L * n * pe/pd
-    p_dep_sand_VegMax=0.22,
-    p_ero_sand=0.16,
-    entrainment_veg_limit=0.11,
-    saltation_veg_limit=0.20,
-    shadowangle=8,
+    p_dep_sand=0.42,  # Q = hs * L * n * pe/pd
+    p_dep_sand_VegMax=0.67,
+    p_ero_sand=0.15,
+    entrainment_veg_limit=0.07,
+    saltation_veg_limit=0.3,
+    shadowangle=5,
     repose_bare=20,
     repose_veg=30,
-    wind_rose=(0.55, 0.05, 0.22, 0.18),  # (right, down, left, up)
+    wind_rose=(0.81, 0.06, 0.11, 0.02),  # (right, down, left, up)
     # --- Storms --- #
-    Rin_ru=246,
-    Cx=27,
-    MaxUpSlope=0.63,
-    K_ru=0.0000622,
-    substep_ru=7,
-    beach_equilibrium_slope=0.039,
-    swash_transport_coefficient=1e-3,
+    Rin_ru=138,
+    Cx=68,
+    MaxUpSlope=1,
+    K_ru=0.0000227,
+    mm=1.04,
+    substep_ru=4,
+    beach_equilibrium_slope=0.024,
+    swash_transport_coefficient=0.00083,
     wave_period_storm=9.4,
     beach_substeps=20,
-    flow_reduction_max_spec1=0.17,
-    flow_reduction_max_spec2=0.44,
+    flow_reduction_max_spec1=0.2,
+    flow_reduction_max_spec2=0.3,
     # --- Shoreline --- #
     wave_asymetry=0.6,
     wave_high_angle_fraction=0.39,
@@ -129,32 +127,20 @@ meeb = MEEB(
     alongshore_section_length=25,
     estimate_shoreface_parameters=True,
     # --- Veg --- #
-    # sp1_c=1.20,
-    # sp2_c=-0.47,
-    # sp1_peak=0.307,
-    # sp2_peak=0.148,
-    # lateral_probability=0.34,
-    # pioneer_probability=0.11,
-    # Spec1_elev_min=0.60,
-    # Spec2_elev_min=0.13,
-    effective_veg_sigma=3,
 )
 
-print(meeb.name)
+print(meeb.name, end='\n' * 2)
 
 # Loop through time
-for time_step in range(int(meeb.iterations)):
-    # Print time step to screen
-    print("\r", "Time Step: ", (time_step + 1) / meeb.iterations_per_cycle, "years", end="")
+with trange(int(meeb.iterations)) as t:
+    for time_step in t:
+        # Run time step
+        meeb.update(time_step)
+        # Update progress bar
+        t.set_postfix({'Year': "{:.2f}".format((time_step + 1) / meeb.iterations_per_cycle) + '/' + "{:.2f}".format(meeb.simulation_time_yr)})
+        t.update()
 
-    # Run time step
-    meeb.update(time_step)
-
-# Print elapsed time of simulation
 print()
-SimDuration = time.time() - start_time
-print()
-print("Elapsed Time: ", SimDuration, "sec")
 
 # __________________________________________________________________________________________________________________________________
 # ASSESS MODEL RESULTS
@@ -190,8 +176,6 @@ vs = veg_end_sim[:, xmin: xmax] * subaerial_mask[:, xmin: xmax]
 
 maxxxx = max(abs(np.min(tcs)), abs(np.max(tcs)))
 
-MEEB_elevation = routines_meeb.get_MEEB_colormap()
-
 # -----------------
 # Final Elevation & Vegetation
 Fig = plt.figure(figsize=(14, 7.5))
@@ -202,7 +186,6 @@ cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps["terrain"]), 0.5, 0.9)
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 ax1 = Fig.add_subplot(211)
 cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=6.0)
-# cax1 = ax1.matshow(topo, cmap='terrain', vmin=-2, vmax=6.0)
 cbar = Fig.colorbar(cax1)
 cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
 ax2 = Fig.add_subplot(212)
@@ -239,19 +222,19 @@ plt.tight_layout()
 # ax2 = Fig.add_subplot(212)
 # ax2.matshow(vcs, cmap='BrBG', vmin=-1, vmax=1)
 
-# # -----------------
-# # Profiles
-# Fig = plt.figure(figsize=(14, 7.5))
-# ax1 = Fig.add_subplot(211)
-# profile_x = 10
-# plt.plot(topo_start_sim[profile_x, xmin: xmax], 'k--')
-# plt.plot(topo_end_sim[profile_x, xmin: xmax], 'r')
-# plt.title("Profile " + str(profile_x))
-# ax2 = Fig.add_subplot(212)
-# plt.plot(np.mean(topo_start_sim[:, xmin: xmax], axis=0), 'k--')
-# plt.plot(np.mean(topo_end_sim[:, xmin: xmax], axis=0), 'r')
-# plt.legend(['Start', 'Simulated'])
-# plt.title("Average Profile")
+# -----------------
+# Profiles
+Fig = plt.figure(figsize=(14, 7.5))
+ax1 = Fig.add_subplot(211)
+profile_x = 10
+plt.plot(topo_start_sim[profile_x, xmin: xmax], 'k--')
+plt.plot(topo_end_sim[profile_x, xmin: xmax], 'r')
+plt.title("Profile " + str(profile_x))
+ax2 = Fig.add_subplot(212)
+plt.plot(np.mean(topo_start_sim[:, xmin: xmax], axis=0), 'k--')
+plt.plot(np.mean(topo_end_sim[:, xmin: xmax], axis=0), 'r')
+plt.legend(['Start', 'Simulated'])
+plt.title("Average Profile")
 
 # -----------------
 # Shoreline Position Over Time

@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 9 November 2023
+IRBR 2 February 2024
 """
 
 import numpy as np
@@ -42,33 +42,35 @@ def run_individual_sim(rslr):
         # --- Aeolian --- #
         jumplength=5,
         slabheight=0.02,
-        p_dep_sand=0.10,  # Q = hs * L * n * pe/pd
-        p_dep_sand_VegMax=0.22,
-        p_ero_sand=0.16,
-        entrainment_veg_limit=0.11,
-        saltation_veg_limit=0.20,
-        shadowangle=8,
+        p_dep_sand=0.42,  # Q = hs * L * n * pe/pd
+        p_dep_sand_VegMax=0.67,
+        p_ero_sand=0.15,
+        entrainment_veg_limit=0.07,
+        saltation_veg_limit=0.3,
+        shadowangle=5,
         repose_bare=20,
         repose_veg=30,
-        wind_rose=(0.55, 0.05, 0.22, 0.18),  # (right, down, left, up)
+        wind_rose=(0.81, 0.06, 0.11, 0.02),  # (right, down, left, up)
+        groundwater_depth=0.4,
         # --- Storms --- #
-        Rin_ru=246,
-        Cx=27,
-        MaxUpSlope=0.63,
-        K_ru=0.0000622,
-        substep_ru=7,
-        beach_equilibrium_slope=0.039,
-        swash_transport_coefficient=1e-3,
+        Rin_ru=138,
+        Cx=68,
+        MaxUpSlope=1,
+        K_ru=0.0000227,
+        mm=1.04,
+        substep_ru=4,
+        beach_equilibrium_slope=0.024,
+        swash_transport_coefficient=0.00083,
         wave_period_storm=9.4,
-        beach_substeps=10,
-        flow_reduction_max_spec1=0.17,
-        flow_reduction_max_spec2=0.44,
+        beach_substeps=20,
+        flow_reduction_max_spec1=0.2,
+        flow_reduction_max_spec2=0.3,
         # --- Shoreline --- #
         wave_asymetry=0.6,
         wave_high_angle_fraction=0.39,
         mean_wave_height=0.98,
         mean_wave_period=6.6,
-        alongshore_section_length=50,
+        alongshore_section_length=25,
         estimate_shoreface_parameters=True,
         # --- Veg --- #
     )
@@ -190,7 +192,6 @@ def plot_most_probable_outcome(it):
     mmax_idx = np.argmax(prob_change[:, it, :, xmin: xmax], axis=0)  # Bin of most probably outcome
     confidence = 1 - np.max(prob_change[:, it, :, xmin: xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
 
-    cmap1f = colors.ListedColormap(['yellow', 'red', 'black', 'blue', 'green'])
     cmap2f = colors.ListedColormap(['white'])
 
     fig, ax = plt.subplots()
@@ -199,6 +200,39 @@ def plot_most_probable_outcome(it):
     tic = np.linspace(start=((num_bins - 1) / num_bins) / 2, stop=num_bins - 1 - ((num_bins - 1) / num_bins) / 2, num=num_bins)
     mcbar = fig.colorbar(cax, ticks=tic)
     mcbar.ax.set_yticklabels(bin_labels)
+    plt.xlabel('Alongshore Distance [m]')
+    plt.ylabel('Cross-Shore Distance [m]')
+    plt.title('Iteration: ' + str(it))
+
+
+def plot_most_probable_outcome_3bin(it):
+    """Plots the most probable outcome across the domain at a particular time step. Note: this returns the first max occurance,
+    i.e. if multiple bins are tied for the maximum probability of occuring, the first one will be plotted as the most likely.
+
+    Parameters
+    ----------
+    it : int
+        Iteration to draw probabilities from.
+    """
+
+    prob_change_3bin = np.zeros([3, longshore, crossshore])
+    prob_change_3bin[0, :, :] = np.sum((prob_change[0, it, :, :], prob_change[1, it, :, :]), axis=0)
+    prob_change_3bin[1, :, :] = prob_change[2, it, :, :]
+    prob_change_3bin[2, :, :] = np.sum((prob_change[3, it, :, :], prob_change[4, it, :, :]), axis=0)
+
+    mmax_idx = np.argmax(prob_change_3bin[:, :, xmin: xmax], axis=0)  # Bin of most probably outcome
+    confidence = 1 - np.max(prob_change_3bin[:, :, xmin: xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
+    confidence[confidence < 0] = 0
+
+    cmap1f = colors.ListedColormap(['red', 'black', 'mediumblue'])
+    cmap2f = colors.ListedColormap(['white'])
+
+    fig, ax = plt.subplots()
+    cax = ax.matshow(mmax_idx, cmap=cmap1f, vmin=0, vmax=3-1)
+    cax2 = ax.matshow(np.ones(mmax_idx.shape), cmap=cmap2f, vmin=0, vmax=1, alpha=confidence)
+    tic = np.linspace(start=((3 - 1) / 3) / 2, stop=3 - 1 - ((3 - 1) / 3) / 2, num=3)
+    mcbar = fig.colorbar(cax, ticks=tic)
+    mcbar.ax.set_yticklabels(bin_labels_3)
     plt.xlabel('Alongshore Distance [m]')
     plt.ylabel('Cross-Shore Distance [m]')
     plt.title('Iteration: ' + str(it))
@@ -217,8 +251,6 @@ def plot_most_probable_outcome_contour(it):
 
     mmax_idx = np.argmax(prob_change[:, it, :, xmin: xmax], axis=0)  # Bin of most probably outcome
     confidence = 1 - np.max(prob_change[:, it, :, xmin: xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
-
-    cmap1f = colors.ListedColormap(['yellow', 'red', 'black', 'blue', 'green'])
 
     fig, ax = plt.subplots()
     cax = ax.matshow(mmax_idx, cmap=cmap1f, vmin=0, vmax=num_bins-1)
@@ -341,31 +373,33 @@ startdate = '20181007'
 
 # _____________________
 # PROBABILISTIC PROJECTIONS
-RSLR_bin = [0.002, 0.005]  # [m/yr] Bins of future RSLR rates
-RSLR_prob = [0.5, 0.5]  # Probability of future RSLR bins (must sum to 1.0)
+RSLR_bin = [0.0068, 0.0096, 0.0124]  # [m/yr] Bins of future RSLR rates
+RSLR_prob = [0.26, 0.55, 0.19]  # Probability of future RSLR bins (must sum to 1.0)
 
 bin_edges = [-np.inf, -0.5, -0.1, 0.1, 0.5, np.inf]  # [m] Elevation change
 bin_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
+cmap1f = colors.ListedColormap(['red', 'gold', 'black', 'aquamarine', 'mediumblue'])
+bin_labels_3 = ['< -0.1', '-0.1 - 0.1', '> 0.1']
 
 
 # _____________________
 # INITIAL PARAMETERS
 
-sim_duration = 5  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
+sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 
-duplicates = 6  # To account for internal stochasticity (e.g., storms, aeolian)
-core_num = min(duplicates, 20)  # Number of cores to use in the parallelization (IR PC: 24)
+duplicates = 24  # To account for internal stochasticity (e.g., storms, aeolian)
+core_num = min(duplicates, 12)  # Number of cores to use in the parallelization (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
-ymin = 18950  # [m] Alongshore coordinate
-ymax = 19250  # [m] Alongshore coordinate
-xmin = 1000  # [m] Cross-shore coordinate (for plotting)
-xmax = 1600  # [m] Cross-shore coordinate (for plotting)
+ymin = 21000  # [m] Alongshore coordinate
+ymax = 21500  # [m] Alongshore coordinate
+xmin = 900  # [m] Cross-shore coordinate (for plotting)
+xmax = xmin + 600  # [m] Cross-shore coordinate (for plotting)
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 
-# name = '16 duplicates, 5 yrs, RSLR (2, 5) (0.5, 0.5)'  # Name of simulation suite
-name = '6 duplicates, 5 yrs, RSLR (2, 5) (0.5, 0.5)'  # Name of simulation suite
+name = '21000-21500, 24 duplicates, 2018-2050, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19)'  # Name of simulation suite
+
 
 # _____________________
 # INITIAL CONDITIONS
@@ -454,7 +488,7 @@ ani1.save("Output/Animation/meeb_prob_bins_" + str(c) + ".gif", dpi=150, writer=
 # Set animation base figure
 Fig = plt.figure(figsize=(14, 7.5))
 ax1 = Fig.add_subplot(111)
-cmap1 = colors.ListedColormap(['yellow', 'red', 'black', 'blue', 'green'])
+cmap1 = colors.ListedColormap(['red', 'gold', 'black', 'aquamarine', 'mediumblue'])
 cmap2 = colors.ListedColormap(['white'])
 max_idx = np.argmax(prob_change[:, 0, :, xmin: xmax], axis=0)
 conf = 1 - np.max(prob_change[:, 0, :, xmin: xmax], axis=0)

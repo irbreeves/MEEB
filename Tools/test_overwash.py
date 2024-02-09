@@ -1,6 +1,6 @@
 """
 Script for testing MEEB overwash function.
-IRBR 26 October 2023
+IRBR 8 February 2024
 """
 
 import numpy as np
@@ -72,13 +72,13 @@ Init = np.load("Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy")
 End = np.load("Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy")
 
 # Define Alongshore Coordinates of Domain
-xmin = 18950  # 20525  # 19825  # 18950
-xmax = 19250  # 20725  # 20275  # 19250
+xmin = 21000  # 19250 8230 22400 6855
+xmax = 21500  # 19750 8730 22900 7355
 
-ymin = 900  # 900
-ymax = ymin + 500
+ymin = 900
+ymax = ymin + 600
 
-name = "18950-19250, Rh=3.32, Beq=0.039, ss=20, Et=calc, Tp=9.4, Kc=0.0016"
+name = "8230-8730, Florence Rh=3.32"
 print(name)
 
 # _____________________________________________
@@ -120,35 +120,35 @@ sim_topo_post_storm, topo_change_overwash, OWflux, netDischarge, inundated, Qbe 
     dur,
     threshold_in=0.25,
     Rin_i=5,
-    Rin_r=246,
-    Cx=27,
+    Rin_r=144,
+    Cx=40,
     AvgSlope=2/200,
     nn=0.5,
-    MaxUpSlope=0.63,
+    MaxUpSlope=1.3,
     fluxLimit=1,
     Qs_min=1,
-    Kr=0.0000622,
+    Kr=0.0000382,
     Ki=5e-06,
-    mm=1,
+    mm=1.04,
     MHW=MHW,
     Cbb_i=0.85,
     Cbb_r=0.7,
     Qs_bb_min=1,
     substep_i=6,
-    substep_r=7,
-    beach_equilibrium_slope=0.039,
-    swash_transport_coefficient=1e-3,
+    substep_r=4,
+    beach_equilibrium_slope=0.024,
+    swash_transport_coefficient=0.00083,
     wave_period_storm=9.4,
     beach_substeps=20,
     x_s=x_s,
     cellsize=1,
     spec1=spec1,
     spec2=spec2,
-    flow_reduction_max_spec1=0.17,
-    flow_reduction_max_spec2=0.44,
+    flow_reduction_max_spec1=0.2,
+    flow_reduction_max_spec2=0.3,
 )
 
-sim_topo_final = routine.enforceslopes(sim_topo_post_storm, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, RNG=RNG)[0]
+sim_topo_final = routine.enforceslopes(sim_topo_post_storm, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, RNG=RNG)[0]
 
 SimDuration = time.time() - start_time
 print()
@@ -165,7 +165,7 @@ obs_change_m = obs_topo_final - topo_prestorm  # [m] Observed change
 sim_change_m = sim_topo_final - topo_prestorm  # [m] Simulated change
 
 # Masks for skill scoring
-subaerial_mask = sim_topo_final > MHW  # [bool] Map of every cell above water
+subaerial_mask = np.logical_and(sim_topo_final > MHW, obs_topo_final > MHW)  # [bool] Map of every cell above water
 
 Florence_Overwash_Mask = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")  # Load observed overwash mask
 Florence_OW_Mask = np.logical_and(Florence_Overwash_Mask[xmin: xmax, :], subaerial_mask)
@@ -295,8 +295,8 @@ Fig = plt.figure(figsize=(14, 7.5))
 ax1 = Fig.add_subplot(221)
 topo1 = obs_topo_final[:, ymin: ymax]  # [m] Post-storm
 topo1 = np.ma.masked_where(topo1 < MHW, topo1)  # Mask cells below MHW
-cax1 = ax1.matshow(topo1, cmap=cmap1, vmin=0, vmax=5.0)
-ax1.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
+cax1 = ax1.matshow(topo1, cmap=cmap1, vmin=0, vmax=6.0)
+# ax1.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
 plt.title('Observed')
 plt.suptitle(name)
 
@@ -304,18 +304,20 @@ plt.suptitle(name)
 ax2 = Fig.add_subplot(222)
 topo2 = sim_topo_final[:, ymin: ymax]  # [m]
 topo2 = np.ma.masked_where(topo2 < MHW, topo2)  # Mask cells below MHW
-cax2 = ax2.matshow(topo2, cmap=cmap1, vmin=0, vmax=5.0)
+cax2 = ax2.matshow(topo2, cmap=cmap1, vmin=0, vmax=6.0)
 plt.title('Simulated')
-# cbar = Fig.colorbar(cax2)
-# cbar.set_label('Elevation [m MHW]', rotation=270, labelpad=20)
+cbar = Fig.colorbar(cax2)
+cbar.set_label('Elevation [m MHW]', rotation=270, labelpad=20)
 
 # Simulated Topo Change
 maxx = max(abs(np.min(obs_change_m)), abs(np.max(obs_change_m)))
 maxxx = max(abs(np.min(sim_change_m)), abs(np.max(sim_change_m)))
-maxxxx = 1  # max(maxx, maxxx)
+
+maxxxx = 1.5  # max(maxx, maxxx)
+
 ax3 = Fig.add_subplot(224)
-cax3 = ax3.matshow(sim_change_m[:, ymin: ymax], cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
-ax3.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
+cax3 = ax3.matshow(sim_change_m[:, ymin: ymax], cmap='bwr_r', vmin=-maxxxx, vmax=maxxxx)
+# ax3.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
 # cbar = Fig.colorbar(cax3)
 # cbar.set_label('Change [m]', rotation=270, labelpad=20)
 
@@ -323,10 +325,10 @@ ax3.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
 ax4 = Fig.add_subplot(223)
 obs_change_masked = obs_change_m.copy()
 obs_change_masked[~mask_obs] = 0
-cax4 = ax4.matshow(obs_change_masked[:, ymin: ymax], cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
-ax4.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
-# cbar = Fig.colorbar(cax4)
-# cbar.set_label('Elevation Change [m]', rotation=270, labelpad=20)
+cax4 = ax4.matshow(obs_change_masked[:, ymin: ymax], cmap='bwr_r', vmin=-maxxxx, vmax=maxxxx)
+# ax4.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
+cbar = Fig.colorbar(cax4)
+cbar.set_label('Elevation Change [m]', rotation=270, labelpad=20)
 plt.tight_layout()
 
 # # Cumulative Discharge
@@ -334,26 +336,27 @@ plt.tight_layout()
 # plt.plot(np.sum(netDischarge, axis=0))
 # plt.ylabel("Cumulative Discharge")
 
-# # Cumulative Discharge
+# # Inundated
 # plt.matshow(inundated)
 # plt.title("Inundated")
 
 # # Profile Change
-# xx = 150
+# xx = 210
 # proffig = plt.figure(figsize=(11, 7.5))
 # plt.plot(topo_prestorm[xx, ymin: ymax], c='black')
 # plt.plot(obs_topo_final[xx, ymin: ymax], c='green')
 # plt.plot(sim_topo_final[xx, ymin: ymax], c='red')
 # plt.legend(["Pre", "Post Obs", "Post Sim"])
-# plt.title(name)
+# plt.title(name + ", x =" + str(xx))
 
 # Profile Change
-xx = 164  # 118
-proffig = plt.figure(figsize=(11, 7.5))
+xx = 118
+proffig2 = plt.figure(figsize=(11, 7.5))
 plt.plot(topo_prestorm[xx, ymin + 115: ymin + 415], c='black')
+plt.plot(obs_topo_final[xx, ymin + 115: ymax + 415], c='green')
 plt.plot(sim_topo_final[xx, ymin + 115: ymin + 415], c='red')
-plt.legend(["Pre", "Post Sim"])
-plt.title(name)
+plt.legend(["Pre", "Post Obs", "Post Sim"])
+plt.title(name + ", x =" + str(xx))
 
 print()
 print("Complete.")

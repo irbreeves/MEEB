@@ -3,7 +3,7 @@ Script for testing MEEB hindcast simulations.
 
 Runs a hindcast simulation and calculates fitess scores for morphologic and ecologic change between simulated and observed.
 
-IRBR 27 October 2023
+IRBR 8 February 2024
 """
 
 import numpy as np
@@ -12,9 +12,9 @@ import matplotlib.animation as animation
 import matplotlib.colors as colors
 import routines_meeb as routine
 import copy
-import time
 import os
 from tabulate import tabulate
+from tqdm import trange
 
 from meeb import MEEB
 
@@ -127,7 +127,7 @@ def model_skill_categorical(obs, sim, catmask):
 
 # # 2009 - 2018
 # start = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
 # startdate = '20090824'
 # hindcast_duration = 9.12
 
@@ -157,7 +157,7 @@ def model_skill_categorical(obs, sim, catmask):
 
 # # 2012 - 2018
 # start = "Init_NCB-NewDrum-Ocracoke_2012_PostSandyUSGS_MinimalThin.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
 # startdate = '20121129'
 # hindcast_duration = 5.84
 
@@ -173,11 +173,11 @@ def model_skill_categorical(obs, sim, catmask):
 # startdate = '20140406'
 # hindcast_duration = 2.52
 
-# # 2014 - 2017
-# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# startdate = '20140406'
-# hindcast_duration = 3.44
+# 2014 - 2017
+start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
+startdate = '20140406'
+hindcast_duration = 3.44
 
 # # 2014 - 2018
 # start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
@@ -185,11 +185,11 @@ def model_skill_categorical(obs, sim, catmask):
 # startdate = '20140406'
 # hindcast_duration = 4.5
 
-# 2014 - 2019
-start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-stop = "Init_NCB-NewDrum-Ocracoke_2019_PreDorian.npy"
-startdate = '20140406'
-hindcast_duration = 5.4
+# # 2014 - 2019
+# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2019_PreDorian.npy"
+# startdate = '20140406'
+# hindcast_duration = 5.4
 
 # # 2016 - 2017
 # start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
@@ -199,13 +199,13 @@ hindcast_duration = 5.4
 
 # # 2016 - 2018
 # start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
 # startdate = '20161012'
 # hindcast_duration = 1.96
 
 # # 2017 - 2018
 # start = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
 # startdate = '20170916'
 # hindcast_duration = 1.06
 
@@ -219,22 +219,22 @@ hindcast_duration = 5.4
 # INPUT
 
 # Define Alongshore Coordinates of Domain
-xmin = 18800  # 6500 # 5880 # 18950
-xmax = 19800  # 6600 # 5980 # 19250
+xmin = 4000  # 22400 8400 4000 20500
+xmax = 4500  # 22900 8900 4500 21000
 
 # Define Cross-Shore Limits for Plotting
-ymin = 900  # 900  # 700
-ymax = ymin + 500
+ymin = 600
+ymax = ymin + 900
 
 # Define Cross-Shore Limits for Skill Score Mask
-mask_ymin = 1050  # 835 # 1050
-mask_ymax = 1300  # 950 # 1300
+mask_ymin = 720  # 1070  # 930  # 720  # 1070
+mask_ymax = 790  # 1150  # 990  # 790  # 1120
 
 MHW = 0.39  # [m NAVD88]
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
 
-name = '18800-19800, 2014-2019, 10-22-16-11-20-8-20-30/246-27-0.63-622-7-0.02-2.73-22-17-44'
+name = '4000-4500, 2014-2017, RSLR = 4'
 
 # _____________________
 # LOAD INITIAL DOMAINS
@@ -269,15 +269,13 @@ veg_end[veg_end < 0] = 0
 # __________________________________________________________________________________________________________________________________
 # RUN MODEL
 
-start_time = time.time()  # Record time at start of simulation
-
 # Create an instance of the MEEB class
 meeb = MEEB(
     name=name,
     simulation_time_yr=hindcast_duration,
     alongshore_domain_boundary_min=xmin,
     alongshore_domain_boundary_max=xmax,
-    RSLR=0.00,
+    RSLR=0.0004,
     MHW=MHW,
     init_filename=start,
     hindcast=True,
@@ -285,63 +283,53 @@ meeb = MEEB(
     simulation_start_date=startdate,
     storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
     # --- Aeolian --- #
-    jumplength=5,
-    slabheight=0.02,
-    p_dep_sand=0.10,  # Q = hs * L * n * pe/pd
-    p_dep_sand_VegMax=0.22,
-    p_ero_sand=0.16,
-    entrainment_veg_limit=0.11,
-    saltation_veg_limit=0.20,
-    shadowangle=8,
+    p_dep_sand=0.42,  # Q = hs * L * n * pe/pd
+    p_dep_sand_VegMax=0.67,
+    p_ero_sand=0.15,
+    entrainment_veg_limit=0.07,
+    saltation_veg_limit=0.3,
+    shadowangle=5,
     repose_bare=20,
     repose_veg=30,
-    wind_rose=(0.55, 0.05, 0.22, 0.18),  # (right, down, left, up)
+    wind_rose=(0.81, 0.06, 0.11, 0.02),  # (right, down, left, up)
+    groundwater_depth=0.4,
     # --- Storms --- #
-    Rin_ru=246,
-    Cx=27,
-    MaxUpSlope=0.63,
-    K_ru=0.0000622,
-    substep_ru=7,
-    beach_equilibrium_slope=0.039,
-    swash_transport_coefficient=1e-3,
+    Rin_ru=138,
+    Cx=68,
+    MaxUpSlope=1,
+    K_ru=0.0000227,
+    mm=1.04,
+    substep_ru=4,
+    beach_equilibrium_slope=0.024,
+    swash_transport_coefficient=0.00083,
     wave_period_storm=9.4,
     beach_substeps=20,
-    flow_reduction_max_spec1=0.17,
-    flow_reduction_max_spec2=0.44,
+    flow_reduction_max_spec1=0.2,
+    flow_reduction_max_spec2=0.3,
     # --- Shoreline --- #
     wave_asymetry=0.6,
     wave_high_angle_fraction=0.39,
     mean_wave_height=0.98,
     mean_wave_period=6.6,
-    alongshore_section_length=50,
+    alongshore_section_length=25,
     estimate_shoreface_parameters=True,
     # --- Veg --- #
-    # sp1_c=1.20,
-    # sp2_c=-0.47,
-    # sp1_peak=0.307,
-    # sp2_peak=0.148,
-    # lateral_probability=0.34,
-    # pioneer_probability=0.11,
-    # Spec1_elev_min=0.60,
-    # Spec2_elev_min=0.13,
-    effective_veg_sigma=3,
 )
 
 print(meeb.name)
+print()
 
 # Loop through time
-for time_step in range(int(meeb.iterations)):
-    # Print time step to screen
-    print("\r", "Time Step: ", (time_step + 1) / meeb.iterations_per_cycle, "years", end="")
+with trange(int(meeb.iterations)) as t:
+    for time_step in t:
+        # Run time step
+        meeb.update(time_step)
+        # Update progress bar
+        t.set_postfix({'Year': "{:.2f}".format((time_step + 1) / meeb.iterations_per_cycle) + '/' + "{:.2f}".format(meeb.simulation_time_yr)})
+        t.update()
 
-    # Run time step
-    meeb.update(time_step)
+print()
 
-# Print elapsed time of simulation
-print()
-SimDuration = time.time() - start_time
-print()
-print("Elapsed Time: ", SimDuration, "sec")
 
 # __________________________________________________________________________________________________________________________________
 # ASSESS MODEL SKILL
@@ -360,7 +348,7 @@ veg_present_sim = veg_end_sim > 0.05  # [bool]
 veg_present_obs = veg_end > 0.05  # [bool]
 
 # Subaerial mask
-subaerial_mask = topo_end_sim > mhw_end_sim  # [bool] Mask for every cell above water
+subaerial_mask = np.logical_and(topo_end_sim > mhw_end_sim, topo_end_obs > mhw_end_sim)  # [bool] Mask for every cell above water
 
 # Beach mask
 dune_crest = routine.foredune_crest(topo_start, mhw_end_sim)
@@ -386,7 +374,7 @@ crest_height_change_sim = crest_height_sim - crest_height_obs_start
 elev_mask = topo_end_sim > 2.0  # [bool] Mask for every cell above water
 
 # Choose masks
-mask = subaerial_mask.copy()  # TODO: incorporate Florence OW mask?
+mask = subaerial_mask.copy()
 veg_mask = mask.copy()
 
 # Temp limit interior in analysis to dunes
@@ -415,7 +403,7 @@ pc_vc, hss_vc, cat_vc = model_skill_categorical(veg_change_obs, veg_change_sim, 
 pc_vp, hss_vp, cat_vp = model_skill_categorical(veg_present_obs, veg_present_sim, veg_mask)  # Vegetation skill based on presence or absense
 
 # Combine Skill Scores (Multi-Objective Optimization)
-multiobjective_score = np.average([nmae, nmae_dl, nmae_dh], weights=[1, 1, 1])  # This is the skill score used in particle swarms optimization
+multiobjective_score = np.average([bss, bss_dh])
 
 # Print scores
 print()
@@ -423,9 +411,9 @@ print(tabulate({
     "Scores": ["All Cells", "Foredune Location", "Foredune Elevation", "Vegetation Change", "Vegetation Presence", "Multi-Objective Score"],
     "NSE": [nse, nse_dl, nse_dh],
     "RMSE": [rmse, rmse_dl, rmse_dh],
-    "NMAE": [nmae, nmae_dl, nmae_dh, None, None, multiobjective_score],
+    "NMAE": [nmae, nmae_dl, nmae_dh],
     "MASS": [mass, mass_dl, mass_dh],
-    "BSS": [bss, bss_dl, bss_dh],
+    "BSS": [bss, bss_dl, bss_dh, None, None, multiobjective_score],
     "PC": [None, None, None, pc_vc, pc_vp],
     "HSS": [None, None, None, hss_vc, hss_vp],
 }, headers="keys", floatfmt=(None, ".3f", ".3f", ".3f", ".3f", ".3f", ".3f", ".3f"))
@@ -435,13 +423,14 @@ print(tabulate({
 # PLOT RESULTS
 
 # -----------------
+cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
+cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
+
 # Final Elevation & Vegetation
 Fig = plt.figure(figsize=(14, 7.5))
 Fig.suptitle(meeb.name, fontsize=13)
 topo = meeb.topo[:, ymin: ymax]
 topo = np.ma.masked_where(topo <= mhw_end_sim, topo)  # Mask cells below MHW
-cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps["terrain"]), 0.5, 0.9)  # Truncate colormap
-cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 if topo.shape[0] > topo.shape[1]:
     ax1 = Fig.add_subplot(121)
     ax2 = Fig.add_subplot(122)
@@ -490,29 +479,31 @@ else:
 
 maxx = max(abs(np.min(tco)), abs(np.max(tco)))
 maxxx = max(abs(np.min(tcs)), abs(np.max(tcs)))
-maxxxx = max(maxx, maxxx)
+maxxxx = 1.5  # max(maxx, maxxx)
 
 # -----------------
 # Topo Change, Observed vs Simulated
 Fig = plt.figure(figsize=(14, 7.5))
 Fig.suptitle(meeb.name, fontsize=13)
 ax1 = Fig.add_subplot(221)
-cax1 = ax1.matshow(to, cmap='terrain', vmin=-1, vmax=6)
+to = np.ma.masked_where(to < MHW, to)  # Mask cells below MHW
+cax1 = ax1.matshow(to, cmap=cmap1, vmin=0, vmax=6)
 plt.title("Observed")
 
 ax2 = Fig.add_subplot(222)
-cax2 = ax2.matshow(ts, cmap='terrain', vmin=-1, vmax=6)
+ts = np.ma.masked_where(ts < MHW, ts)  # Mask cells below MHW
+cax2 = ax2.matshow(ts, cmap=cmap1, vmin=0, vmax=6)
 plt.title("Simulated")
 
 ax3 = Fig.add_subplot(223)
-cax3 = ax3.matshow(tco, cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
+cax3 = ax3.matshow(tco, cmap='bwr_r', vmin=-maxxxx, vmax=maxxxx)
 # if not ResReduc:
 #     plt.plot(crest_loc_obs - ymin, np.arange(len(dune_crest)), 'black')
 #     plt.plot(crest_loc_sim - ymin, np.arange(len(dune_crest)), 'green')
 #     plt.legend(["Observed", "Simulated"])
 
 ax4 = Fig.add_subplot(224)
-cax4 = ax4.matshow(tcs, cmap='bwr', vmin=-maxxxx, vmax=maxxxx)
+cax4 = ax4.matshow(tcs, cmap='bwr_r', vmin=-maxxxx, vmax=maxxxx)
 plt.tight_layout()
 
 # -----------------
