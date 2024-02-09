@@ -4,7 +4,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 Calibrates based on fitess score for all beach/dune/overwash morphologic change, and incorporates multiple
 storm events and/or locations into each fitness score.
 
-IRBR 9 November 2023
+IRBR 8 February 2024
 """
 
 import numpy as np
@@ -75,7 +75,9 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
 
     # Run Model
     topo_start_copy = copy.deepcopy(topo_start_obs)
-    topo_end_sim, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes_2(
+    veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
+
+    sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes_2(
         topo_start_copy,
         Rhigh,
         Rlow,
@@ -86,29 +88,31 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
         Cx=int(round(solution[1])),
         AvgSlope=2 / 200,
         nn=0.5,
-        MaxUpSlope=solution[2],
+        MaxUpSlope=solution[6],
         fluxLimit=1,
         Qs_min=1,
-        Kr=solution[4],
+        Kr=solution[2],
         Ki=5e-06,
-        mm=1,
+        mm=round(solution[5], 2),
         MHW=MHW,
         Cbb_i=0.85,
         Cbb_r=0.7,
         Qs_bb_min=1,
         substep_i=6,
-        substep_r=int(round(solution[6])),
-        beach_equilibrium_slope=solution[7],
-        swash_transport_coefficient=solution[8],
+        substep_r=4,
+        beach_equilibrium_slope=solution[3],
+        swash_transport_coefficient=solution[4],
         wave_period_storm=9.4,
-        beach_substeps=int(round(solution[9])),
+        beach_substeps=20,
         x_s=x_s,
         cellsize=1,
         spec1=spec1,
         spec2=spec2,
-        flow_reduction_max_spec1=solution[3],  # Grass
-        flow_reduction_max_spec2=solution[5],  # Shrub
+        flow_reduction_max_spec1=0.2,  # Grass
+        flow_reduction_max_spec2=0.3,  # Shrub
     )
+
+    topo_end_sim = routine.enforceslopes(sim_topo_final, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, RNG=RNG)[0]
 
     topo_change_sim = topo_end_sim - topo_start_obs  # [m] Simulated change
     topo_change_obs = topo_end_obs - topo_start_obs  # [m] Observed change
@@ -116,7 +120,7 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
     # _____________________________________________
     # Model Skill: Comparisons to Observations
 
-    subaerial_mask = topo_end_sim > MHW  # [bool] Map of every cell above water
+    subaerial_mask = np.logical_and(topo_end_sim > MHW, topo_end_obs > MHW)  # [bool] Map of every cell above water
 
     beach_duneface_mask = np.zeros(topo_end_sim.shape)
     for l in range(topo_start_obs.shape[0]):
@@ -133,11 +137,6 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
     nse, rmse, nmae, mass, bss = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask_all)
     nse_ow, rmse_ow, nmae_ow, mass_ow, bss_ow = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask_overwash_all)  # Skill scores for just overwash
     nse_bd, rmse_bd, nmae_bd, mass_bd, bss_bd = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), beach_duneface_mask)  # Skill scores for just beach/dune
-
-    if np.isinf(bss_bd) or np.isinf(bss_ow):
-        weighted_bss = -10e6
-    else:
-        weighted_bss = np.average([bss_ow, bss_bd], weights=[2, 1])
 
     score = bss  # This is the skill score used in particle swarms optimization
 
@@ -195,7 +194,7 @@ def opt_func(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
     with routine.tqdm_joblib(tqdm(desc="Iteration Progress", total=swarm_size)) as progress_bar:
-        solutions = Parallel(n_jobs=5)(delayed(multi_fitness)(X[i, :]) for i in range(swarm_size))
+        solutions = Parallel(n_jobs=6)(delayed(multi_fitness)(X[i, :]) for i in range(swarm_size))
 
     print("  >>> solutions:", solutions)
 
@@ -207,6 +206,7 @@ def opt_func(X):
 # SET UP CALIBRATION
 
 start_time = time.time()  # Record time at start of calibration
+RNG = np.random.default_rng(seed=13)  # Seeded random numbers for reproducibility
 
 # _____________________________________________
 # Define Variables
@@ -214,7 +214,7 @@ MHW = 0.39  # [m NAVD88]
 
 # Observed Overwash Mask
 Florence_Overwash_Mask = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")  # Load observed overwash mask
-name = 'Multi-Location Storm (Florence), Particle Swarms Optimization, NON-Weighted Score, Nswarm 16, Iterations 40, 2Nov23'
+name = 'Multi-Location Storm (Florence), NON-Weighted BSS PSO, Nswarm 18, Iterations 50, 24Jan24'
 
 BestScore = -1e10
 BestScores = []
@@ -252,9 +252,9 @@ x_max = [19250, 20275, 20525, 20725, 6600]  # 21125
 # _____________________________________________
 # Prepare Particle Swarms Parameters
 
-iterations = 40
-swarm_size = 20
-dimensions = 10  # Number of free paramters
+iterations = 50
+swarm_size = 18
+dimensions = 7  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
 w: Inertia weight constant. [0-1] Determines how much the particle keeps on with its previous velocity (i.e., speed and direction of the search). 
@@ -264,28 +264,23 @@ particle itself and recognizing the search result of the swarm; Control the trad
 
 bounds = (
     # Minimum
-    np.array([50,  # Rin
-              1,  # Cx
-              0.5,  # MaxUpSlope
-              0.02,  # flow_reduction_max_spec1
+    np.array([100,  # Rin
+              10,  # Cx
               8e-06,  # Kr
-              0.05,  # flow_reduction_max_spec2
-              1,  # substep_r (overwash)
-              0.002,  # beach_equilibrium_slope
-              0.00025,  # swash_transport_coefficient
-              10]),  # beach_substep
+              0.01,  # beach_equilibrium_slope
+              0.0005,  # swash_transport_coefficient
+              1.0,  # mm
+              0.75]),  # MUS
     # Maximum
-    np.array([450,  # Rin
-              100,  # Cx
-              2.5,  # MaxUpSlope
-              0.4,  # flow_reduction_max_spec1
+    np.array([320,  # Rin
+              80,  # Cx
               1e-04,  # Kr
-              0.5,  # flow_reduction_max_spec2
-              12,  # substep_r (overwash)
-              0.03,  # beach_equilibrium_slope
+              0.04,  # beach_equilibrium_slope
               0.0035,  # swash_transport_coefficient
-              80])  # beach_substep
+              1.15,  # mm
+              1.75])  # MUS
 )
+
 
 # _____________________________________________
 # Call an instance of PSO
@@ -313,16 +308,13 @@ print(tabulate({
     "BEST SOLUTION": ["BSS"],
     "Rin": [best_solution[0]],
     "Cx": [best_solution[1]],
-    "MUS": [best_solution[2]],
-    "Qreduc_s1": [best_solution[3]],
-    "Kr": [best_solution[4]],
-    "Qreduc_s2": [best_solution[5]],
-    "SSo": [best_solution[6]],
-    "Beq": [best_solution[7]],
-    "Kc": [best_solution[8]],
-    "SSb": [best_solution[9]],
+    "Kr": [best_solution[2]],
+    "Beq": [best_solution[3]],
+    "Kc": [best_solution[4]],
+    "mm": [best_solution[5]],
+    "MaxUpSlope": [best_solution[6]],
     "Score": [solution_fitness * -1]
-}, headers="keys", floatfmt=(None, ".0f", ".0f", ".2f", ".2f", ".7f", ".2f", ".0f", ".3f", ".7f", ".0f", ".4f"))
+}, headers="keys", floatfmt=(None, ".0f", ".0f", ".7f", ".3f", ".5f", ".2f", ".2f", ".4f"))
 )
 
 # _____________________________________________

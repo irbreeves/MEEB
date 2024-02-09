@@ -3,7 +3,7 @@ Script for calibrating MEEB aeolian parameters using Particle Swarms Optimizatio
 
 Calibrates based on fitess score for morphologic and ecologic change between two timesteps.
 
-IRBR 9 November 2023
+IRBR 8 February 2024
 """
 
 import numpy as np
@@ -118,13 +118,13 @@ def aeolian_fitness(solution):
         simulation_time_yr=hindcast_duration,
         alongshore_domain_boundary_min=xmin,
         alongshore_domain_boundary_max=xmax,
-        RSLR=0.000,
+        RSLR=0.004,
         MHW=MHW,
         seeded_random_numbers=True,
         init_filename=start,
         hindcast=True,
         simulation_start_date=startdate,
-        storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
+        storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
         # --- Aeolian --- #
         p_dep_sand=solution[0],
         p_dep_sand_VegMax=solution[0] + solution[1],
@@ -136,26 +136,19 @@ def aeolian_fitness(solution):
         repose_veg=int(round(solution[6] + solution[7])),
         wind_rose=rose,
         # --- Storms --- #
-        Rin_ru=164,
-        Cx=47,
-        MaxUpSlope=1.32,
-        K_ru=0.0000468,
-        substep_ru=3,
-        beach_equilibrium_slope=0.027,
-        swash_transport_coefficient=0.00086,
+        Rin_ru=144,
+        Cx=40,
+        MaxUpSlope=1.3,
+        K_ru=0.0000382,
+        mm=1.04,
+        substep_ru=4,
+        beach_equilibrium_slope=0.024,
+        swash_transport_coefficient=0.00083,
         wave_period_storm=9.4,
         beach_substeps=20,
-        flow_reduction_max_spec1=0.25,
-        flow_reduction_max_spec2=0.14,
+        flow_reduction_max_spec1=0.2,
+        flow_reduction_max_spec2=0.3,
         # --- Veg --- #
-        # sp1_c=1.20,
-        # sp2_c=-0.47,
-        # sp1_peak=0.307,
-        # sp2_peak=0.148,
-        # lateral_probability=0.34,
-        # pioneer_probability=0.11,
-        # Spec1_elev_min=0.60,
-        # Spec2_elev_min=0.13,
     )
 
     # Loop through time
@@ -172,7 +165,7 @@ def aeolian_fitness(solution):
     topo_change_obs = topo_end_obs - topo_start  # [m]
 
     # Subaerial mask
-    subaerial_mask = topo_end_sim > mhw_end_sim  # [bool] Mask for every cell above water
+    subaerial_mask = np.logical_and(topo_end_sim > mhw_end_sim, topo_end_obs > mhw_end_sim)  # [bool] Mask for every cell above water
 
     # Beach mask
     dune_crest = routine.foredune_crest(topo_start, mhw_end_sim)
@@ -183,10 +176,8 @@ def aeolian_fitness(solution):
 
     # Cross-shore range mask
     range_mask = np.ones(topo_end_sim.shape)  # [bool] Mask for every cell between two cross-shore locations
-    # range_mask[:, :835] = False
-    # range_mask[:, 950:] = False
-    range_mask[:, :1100] = False
-    range_mask[:, 1350:] = False
+    range_mask[:, :835] = False
+    range_mask[:, 950:] = False
 
     # Elevation mask
     elev_mask = topo_end_sim > 2.0  # [bool] Mask for every cell above water
@@ -219,7 +210,7 @@ def aeolian_fitness(solution):
     nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh, pc_dh, hss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, np.full(crest_height_change_obs.shape, True))  # Foredune elevation
 
     # Combine Skill Scores (Multi-Objective Optimization)
-    score = np.average([nmae, nmae_dl, nmae_dh], weights=[1, 1, 1])  # This is the skill score used in particle swarms optimization
+    score = np.average([bss, bss_dh])  # This is the skill score used in particle swarms optimization
 
     return score
 
@@ -228,9 +219,9 @@ def opt_func(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
     with routine.tqdm_joblib(tqdm(desc="Iteration Progress", total=swarm_size)) as progress_bar:
-        solutions = Parallel(n_jobs=9)(delayed(aeolian_fitness)(X[i, :]) for i in range(swarm_size))
+        solutions = Parallel(n_jobs=18)(delayed(aeolian_fitness)(X[i, :]) for i in range(swarm_size))
 
-    return np.array(solutions)
+    return np.array(solutions) * -1
 
 
 # ___________________________________________________________________________________________________________________________________
@@ -241,44 +232,21 @@ start_time = time.time()  # Record time at start of calibration
 
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
-# # 2016 - 2017
-# start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# hindcast_duration = 0.92
-# startdate = '20161012'
 
-# # 2004 - 2009
-# start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
-# hindcast_duration = 5.1
-# startdate = '20040716'
-
-# # 2014 - 2017
-# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandyNCFMP.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# hindcast_duration = 3.44
-# startdate = '20140406'
-
-# # 2012 - 2017
-# start = "Init_NCB-NewDrum-Ocracoke_2012_PostSandyUSGS_NoThin.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# hindcast_duration = 4.78
-# startdate = '20121129'
-
-# 2014 - 2018
-start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy_NCFMP-Planet.npy"
-stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
+# 2014 - 2017
+start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
+hindcast_duration = 3.44
 startdate = '20140406'
-hindcast_duration = 4.5
 
 # Define Alongshore Coordinates of Domain
-xmin = 18950  # 575, 2000, 2150, 2000, 3800  # 2650
-xmax = 19250  # 825, 2125, 2350, 2600, 4450  # 2850
+xmin = 6300
+xmax = 6600
 
 MHW = 0.39  # [m NAVD88] Initial
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
-name = '18950-19250, 2014-2018, NMAE multi-objective'
+name = '6300-6600, 2014-2017, multi-objective BSS'
 
 # ____________________________________
 
@@ -383,7 +351,7 @@ best_wind_dir_4 = 1 - (best_wind_dir_1 + best_wind_dir_2 + best_wind_dir_3)  # A
 
 print()
 print(tabulate({
-    "BEST SOLUTION": ["NMAE"],
+    "BEST SOLUTION": ["Multi-Objective BSS"],
     "p_dep_sand": [best_solution[0]],
     "p_dep_sand_VegMax": [best_solution[0] + best_solution[1]],
     "p_ero_sand": [best_solution[2]],
@@ -403,5 +371,5 @@ print(tabulate({
 # _____________________________________________
 # Plot Results
 plt.plot(np.array(optimizer.cost_history) * 1)
-plt.ylabel('Fitness (Multi-Objective NMAE)')
+plt.ylabel('Fitness (Multi-Objective BSS)')
 plt.xlabel('Iteration')
