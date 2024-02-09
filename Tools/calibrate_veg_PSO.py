@@ -3,7 +3,7 @@ Script for calibrating MEEB vegetation parameters using Particle Swarms Optimiza
 
 Calibrates based on fitess score for morphologic and ecologic change between two timesteps.
 
-IRBR 9 November 2023
+IRBR 8 February 2024
 """
 
 import numpy as np
@@ -80,48 +80,58 @@ def veg_fitness(solution):
         init_filename=start,
         hindcast=True,
         simulation_start_date=startdate,
-        storm_timeseries_filename='StormTimeSeries_1980-2020_NCB-CE_Beta0pt039_BermEl2pt03.npy',
         alongshore_domain_boundary_min=xmin,
         alongshore_domain_boundary_max=xmax,
-        seeded_random_numbers=True,
-        RSLR=0.000,
-        MHW=MHW,
+        RSLR=0.004,
+        seeded_random_numbers=False,
+        storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
+        storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',
         # --- Aeolian --- #
-        p_dep_sand=0.18,  # Q = hs * L * n * pe/pd
-        p_dep_sand_VegMax=0.41,
-        p_ero_sand=0.24,
-        entrainment_veg_limit=0.20,
-        saltation_veg_limit=0.16,
-        shadowangle=10,
+        p_dep_sand=0.42,  # Q = hs * L * n * pe/pd
+        p_dep_sand_VegMax=0.67,
+        p_ero_sand=0.15,
+        entrainment_veg_limit=0.07,
+        saltation_veg_limit=0.3,
+        shadowangle=5,
         repose_bare=20,
-        repose_veg=28,
-        wind_rose=(0.48, 0.20, 0.10, 0.22),  # (right, down, left, up)
+        repose_veg=30,
+        wind_rose=(0.81, 0.06, 0.11, 0.02),  # (right, down, left, up)
+        groundwater_depth=0.4,
         # --- Storms --- #
-        Rin_ru=246,
-        Cx=27,
-        MaxUpSlope=0.63,
-        K_ru=0.0000622,
-        substep_ru=7,
-        beach_equilibrium_slope=0.039,
-        swash_transport_coefficient=1e-3,
+        Rin_ru=138,
+        Cx=68,
+        MaxUpSlope=1,
+        K_ru=0.0000227,
+        mm=1.04,
+        substep_ru=4,
+        beach_equilibrium_slope=0.024,
+        swash_transport_coefficient=0.00083,
         wave_period_storm=9.4,
         beach_substeps=20,
-        flow_reduction_max_spec1=0.17,
-        flow_reduction_max_spec2=0.44,
+        flow_reduction_max_spec1=0.2,
+        flow_reduction_max_spec2=0.3,
+        # --- Shoreline --- #
+        wave_asymetry=0.6,
+        wave_high_angle_fraction=0.39,
+        mean_wave_height=0.98,
+        mean_wave_period=6.6,
+        alongshore_section_length=25,
+        estimate_shoreface_parameters=True,
         # --- Veg Params --- #
-        sp1_b=-0.1,
-        sp1_c=solution[0],  # 0.5
-        sp1_d=1.5,
-        sp2_b=-0.65,
-        sp2_c=solution[1],  # 0.0
-        sp2_d=0.2,
-        sp1_peak=solution[2],  # 0.2
-        sp2_peak=solution[3],  # 0.05
-        VGR=0,  # [%] Growth reduction by end of period
-        lateral_probability=solution[4],  # 0.2
-        pioneer_probability=solution[5],  # 0.05
-        Spec1_elev_min=solution[6],  # 0.25
-        Spec2_elev_min=solution[7],  # 0.25
+        sp1_a=-1.5,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)ion[0],
+        sp1_b=solution[0],
+        sp1_c=solution[1],
+        sp1_d=solution[2],
+        sp1_e=2.2,
+        sp2_a=-1.6,
+        sp2_b=solution[3],
+        sp2_c=solution[4],
+        sp2_d=solution[5],
+        sp2_e=2.1,
+        sp1_peak=solution[6],
+        sp2_peak=solution[7],
+        lateral_probability=solution[8],
+        pioneer_probability=solution[9],
     )
 
     # Loop through time
@@ -140,11 +150,11 @@ def veg_fitness(solution):
     veg_present_obs = veg_end_obs > 0.05  # [bool]
 
     # Topo changes
-    topo_end_sim = meeb.slabheight  # [m MHW]
+    topo_end_sim = meeb.topo  # [m MHW]
     mhw_end_sim = meeb.slabheight  # [m NAVD88]
 
     # Subaerial mask
-    subaerial_mask = topo_end_sim > mhw_end_sim  # [bool] Mask for every cell above water
+    subaerial_mask = np.logical_and(topo_end_sim > mhw_end_sim, topo_end_obs > mhw_end_sim)  # [bool] Mask for every cell above water
 
     # Cross-shore range mask
     range_mask = np.ones(veg_end_sim.shape)  # [bool] Mask for every cell between two cross-shore locations
@@ -181,7 +191,7 @@ def opt_func(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
     with routine.tqdm_joblib(tqdm(desc="Iteration Progress", total=swarm_size)) as progress_bar:
-        solutions = Parallel(n_jobs=8)(delayed(veg_fitness)(X[i, :]) for i in range(swarm_size))
+        solutions = Parallel(n_jobs=n_jobs)(delayed(veg_fitness)(X[i, :]) for i in range(swarm_size))
 
     return np.array(solutions) * -1
 
@@ -194,44 +204,21 @@ start_time = time.time()  # Record time at start of calibration
 
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
-# # 2016 - 2017
-# start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# hindcast_duration = 0.92
-# startdate = '20161012'
-
-# # 2004 - 2009
-# start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
-# hindcast_duration = 5.1
-# startdate = '20040716'
-
-# # 2014 - 2017
-# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandyNCFMP.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# hindcast_duration = 3.44
-# startdate = '20140406'
-
-# # 2012 - 2017
-# start = "Init_NCB-NewDrum-Ocracoke_2012_PostSandyUSGS_NoThin.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# hindcast_duration = 4.78
-# startdate = '20121129'
 
 # 2014 - 2018
-start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy_NCFMP-Planet.npy"
-stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence.npy"
+start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
 startdate = '20140406'
 hindcast_duration = 4.5
 
 # Define Alongshore Coordinates of Domain
-xmin = 6400  # 575, 2000, 2150, 2000, 3800  # 2650
-xmax = 6500  # 825, 2125, 2350, 2600, 4450  # 2850
+xmin = 18950
+xmax = 19250
 
 MHW = 0.39  # [m NAVD88] Initial
 ResReduc = True  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
-name = '6400-6600, 2014-2018, HSS Present/Absent'
+name = '18950-19250, 2014-2018, HSS mean(present/absent, change)'
 
 # ____________________________________
 
@@ -263,7 +250,6 @@ veg_end[veg_end > 1] = 1
 veg_end[veg_end < 0] = 0
 
 
-
 # ___________________________________________________________________________________________________________________________________
 # ___________________________________________________________________________________________________________________________________
 # PARTICLE SWARMS OPTIMIZATION
@@ -271,9 +257,10 @@ veg_end[veg_end < 0] = 0
 # _____________________________________________
 # Prepare Particle Swarm Parameters
 
-iterations = 10
-swarm_size = 8
-dimensions = 8  # Number of free paramters
+iterations = 14
+swarm_size = 14
+dimensions = 10  # Number of free paramters
+n_jobs = 14
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
 w: Inertia weight constant. [0-1] Determines how much the particle keeps on with its previous velocity (i.e., speed and direction of the search). 
@@ -283,23 +270,27 @@ particle itself and recognizing the search result of the swarm; Control the trad
 
 bounds = (
     # Minimum
-    np.array([0.2,     # sp1_c
-              -0.55,   # sp2_c
-              0.05,    # sp1_peak
+    np.array([-0.7,     # sp1_b
+              0.3,     # sp1_c
+              1.0,     # sp1_d
+              -1.15,   # sp2_b
+              -0.35,   # sp2_c
+              0.1,   # sp2_d
+              0.1,    # sp1_peak
               0.01,    # sp2_peak
-              0.05,    # lateral_probability
-              0.01,    # pioneer_probability
-              0.05,    # spec1_elev_min
-              0.05]),  # spec2_elev_min
+              0.10,    # lateral_probability
+              0.01]),    # pioneer_probability
     # Maximum
-    np.array([1.4,     # sp1_c
-              0.15,    # sp2_c
-              0.4,     # sp1_peak
-              0.15,    # sp2_peak
-              0.4,     # lateral_probability
-              0.15,    # pioneer_probability
-              0.75,    # spec1_elev_min
-              0.75])   # spec2_elev_min
+    np.array([0.3,     # sp1_b
+              1.0,  # sp1_c
+              1.85,  # sp1_d
+              -0.35,  # sp2_b
+              0.1,  # sp2_c
+              1.15,  # sp2_d
+              0.55,     # sp1_peak
+              0.10,    # sp2_peak
+              0.3,     # lateral_probability
+              0.15])    # pioneer_probability
 )
 
 
@@ -329,16 +320,18 @@ best_solution = np.expand_dims(best_solution, axis=1)
 print()
 print(tabulate({
     "BEST SOLUTION": ["HSSp"],
-    "sp1_c": [best_solution[0]],
-    "sp2_c": best_solution[1],
-    "sp1_peak": [best_solution[2]],
-    "sp2_peak": [best_solution[3]],
-    "lateral_probability": [best_solution[4]],
-    "pioneer_probability": [best_solution[5]],
-    "spec1_elev_min": [best_solution[6]],
-    "spec2_elev_min": best_solution[7],
+    "sp1_b": [best_solution[0]],
+    "sp1_c": [best_solution[1]],
+    "sp1_d": [best_solution[2]],
+    "sp2_b": best_solution[3],
+    "sp2_c": best_solution[4],
+    "sp2_d": best_solution[5],
+    "sp1_peak": [best_solution[6]],
+    "sp2_peak": [best_solution[7]],
+    "lateral_probability": [best_solution[8]],
+    "pioneer_probability": [best_solution[9]],
     "Score": [solution_fitness]
-    }, headers="keys", floatfmt=(None, ".3f", ".3f", ".3f", ".3f", ".3f", ".3f", ".3f", ".3f"))
+    }, headers="keys", floatfmt=(None, ".3f", ".3f", ".3f", ".3f", ".3f", ".3f", ".3f", ".3f", ".3f", ".3f", ".3f"))
 )
 
 # _____________________________________________
