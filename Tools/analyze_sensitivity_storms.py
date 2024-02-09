@@ -3,7 +3,7 @@ Script for running sensitivity analyses of MEEB storm parameters using SALib.
 
 Model output used in sensitivity analysis is the Brier Skill Score for elevation.
 
-IRBR 8 November 2023
+IRBR 8 February 2024
 """
 
 import numpy as np
@@ -89,7 +89,7 @@ def storm_fitness(solution):
         Qs_min=1,
         Kr=solution[3],
         Ki=5e-06,
-        mm=1,
+        mm=solution[8],
         MHW=MHW,
         Cbb_i=0.85,
         Cbb_r=0.7,
@@ -115,7 +115,7 @@ def storm_fitness(solution):
     # _____________________________________________
     # Model Skill: Comparisons to Observations
 
-    subaerial_mask = topo_end_sim > MHW  # [bool] Map of every cell above water
+    subaerial_mask = np.logical_and(topo_end_sim > MHW, topo_final > MHW)  # [bool] Map of every cell above water
 
     beach_duneface_mask = np.zeros(topo_end_sim.shape)
     for q in range(topo_start_obs.shape[0]):
@@ -133,12 +133,7 @@ def storm_fitness(solution):
     nse_ow, rmse_ow, nmae_ow, mass_ow, bss_ow = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), overwash_mask_all)  # Skill scores for just overwash
     nse_bd, rmse_bd, nmae_bd, mass_bd, bss_bd = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), beach_duneface_mask)  # Skill scores for just beach/dune
 
-    if np.isinf(bss_bd) or np.isinf(bss_ow):
-        weighted_bss = -10e6
-    else:
-        weighted_bss = np.average([bss_ow, bss_bd], weights=[2, 1])
-
-    score = weighted_bss  # This is the skill score used in particle swarms optimization
+    score = bss  # This is the skill score used in particle swarms optimization
 
     return score
 
@@ -178,7 +173,7 @@ xmin = 18950  # 19825, 20375, 20525 20975
 xmax = 19250  # 20275, 20525, 20725 21125
 # small flat, large flat, small gap, large gap, tall ridge
 
-name = '18950-19250, weighted BSS, Morris and Sobol'
+name = '18950-19250, weighted BSS, Morris'
 
 # _____________________________________________
 # Conversions & Initializations
@@ -216,51 +211,39 @@ topo_prestorm = copy.deepcopy(topo)
 # _____________________________________________
 # Define Model Inputs
 
-# inputs = {
-#     'num_vars': 8,
-#     'names': ['Rin', 'Cx', 'MaxUpSlope', 'Kr', 'beq', 'Kc', 'frms1', 'frms2'],
-#     'bounds': [[50, 450],
-#                [1, 100],
-#                [0.5, 2.5],
-#                [8e-06, 1e-04],
-#                [0.002, 0.03],  # Should be larger, e.g. 0.04 or 0.05
-#                [0.00025, 0.0035],
-#                [0.02, 0.4],
-#                [0.05, 0.5]]
-# }
-
 inputs = {
-    'num_vars': 8,
-    'names': ['Rin', 'Cx', 'MaxUpSlope', 'Kr', 'beq', 'Kc', 'frms1', 'frms2'],
-    'bounds': [[120, 250],
-               [35, 70],
+    'num_vars': 9,
+    'names': ['Rin', 'Cx', 'MaxUpSlope', 'Kr', 'beq', 'Kc', 'frms1', 'frms2', 'mm'],
+    'bounds': [[100, 320],
+               [10, 80],
                [0.5, 2.0],
-               [1e-05, 8e-05],
-               [0.015, 0.040],  # Should be larger, e.g. 0.04 or 0.05
-               [0.0005, 0.002],
+               [8e-06, 1e-04],
+               [0.01, 0.04],  # Should be larger, e.g. 0.04 or 0.05
+               [0.0005, 0.0035],
                [0.02, 0.4],
-               [0.05, 0.5]]
+               [0.05, 0.5],
+               [1.0, 1.15]]
 }
-N = 10 #1000  # Number of samples = N * (2 * num_vars + 2)
+N = 500  # Number of samples = N * (2 * num_vars + 2) (Sobol') or N * (num_vars + 1) (Morris)
 
 # _____________________________________________
 # Generate Samples
 
-param_values_sobol = sobol_sample.sample(inputs, N)
-param_values_morris = morris_sample.sample(inputs, N, num_levels=4)
+# param_values_sobol = sobol_sample.sample(inputs, N)
+param_values_morris = morris_sample.sample(inputs, N, num_levels=6)
 
 # _____________________________________________
 # Run Model Simulations
 
-outputs_sobol = run_model(param_values_sobol)
+# outputs_sobol = run_model(param_values_sobol)
 outputs_morris = run_model(param_values_morris)
 
-SimDuration = time.time() - start_time
+SimDuration = int(time.time() - start_time)
 
 # _____________________________________________
 # Perform Analysis
 
-Si_sobol = sobol.analyze(inputs, outputs_sobol)  # Sobol' method (variance-based sensitivity analysis)
+# Si_sobol = sobol.analyze(inputs, outputs_sobol)  # Sobol' method (variance-based sensitivity analysis)
 Si_morris = morris.analyze(inputs, param_values_morris, outputs_morris)  # Morris method (Elementary Effects Test)
 
 # _____________________________________________
@@ -270,20 +253,20 @@ print()
 print("Elapsed Time: ", SimDuration, "sec")
 print()
 
-print()
-print(tabulate({
-    "Sobol'": ["1st-Order", "Total"],
-    "Rin": [Si_sobol['S1'][0], Si_sobol['ST'][0]],
-    "Cx": [Si_sobol['S1'][1], Si_sobol['ST'][1]],
-    "MUS": [Si_sobol['S1'][2], Si_sobol['ST'][2]],
-    "Kr": [Si_sobol['S1'][3], Si_sobol['ST'][3]],
-    "Beq": [Si_sobol['S1'][4], Si_sobol['ST'][4]],
-    "Kc": [Si_sobol['S1'][5], Si_sobol['ST'][5]],
-    "Qreduc_s1": [Si_sobol['S1'][6], Si_sobol['ST'][6]],
-    "Qreduc_s2": [Si_sobol['S1'][7], Si_sobol['ST'][7]],
-}, headers="keys", floatfmt=(None, ".4f", ".4f", ".4f", ".4f", ".4f", ".4f", ".4f", ".4f"))
-)
-print()
+# print()
+# print(tabulate({
+#     "Sobol'": ["1st-Order", "Total"],
+#     "Rin": [Si_sobol['S1'][0], Si_sobol['ST'][0]],
+#     "Cx": [Si_sobol['S1'][1], Si_sobol['ST'][1]],
+#     "MUS": [Si_sobol['S1'][2], Si_sobol['ST'][2]],
+#     "Kr": [Si_sobol['S1'][3], Si_sobol['ST'][3]],
+#     "Beq": [Si_sobol['S1'][4], Si_sobol['ST'][4]],
+#     "Kc": [Si_sobol['S1'][5], Si_sobol['ST'][5]],
+#     "Qreduc_s1": [Si_sobol['S1'][6], Si_sobol['ST'][6]],
+#     "Qreduc_s2": [Si_sobol['S1'][7], Si_sobol['ST'][7]],
+# }, headers="keys", floatfmt=(None, ".4f", ".4f", ".4f", ".4f", ".4f", ".4f", ".4f", ".4f"))
+# )
+# print()
 
 print()
 print(tabulate({
@@ -303,11 +286,11 @@ print()
 # _____________________________________________
 # Print & Plot Results
 
-axes_sobol = Si_sobol.plot()
-axes_sobol[0].set_yscale('linear')
-fig_sobol = plt.gcf()  # get current figure
-fig_sobol.set_size_inches(10, 4)
-plt.tight_layout()
+# axes_sobol = Si_sobol.plot()
+# axes_sobol[0].set_yscale('linear')
+# fig_sobol = plt.gcf()  # get current figure
+# fig_sobol.set_size_inches(10, 4)
+# plt.tight_layout()
 
 axes_morris = Si_morris.plot()
 axes_morris.set_yscale('linear')

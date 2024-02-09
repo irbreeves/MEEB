@@ -3,7 +3,7 @@ Script for running sensitivity analyses of MEEB aeolian parameters using SALib.
 
 Model output used in sensitivity analysis is the Brier Skill Score for elevation.
 
-IRBR 9 November 2023
+IRBR 8 February 2024
 """
 
 import numpy as np
@@ -121,7 +121,7 @@ def aeolian_fitness(solution):
         simulation_time_yr=hindcast_duration,
         alongshore_domain_boundary_min=xmin,
         alongshore_domain_boundary_max=xmax,
-        RSLR=0.000,
+        RSLR=0.004,
         MHW=MHW,
         seeded_random_numbers=True,
         init_filename=start,
@@ -139,17 +139,18 @@ def aeolian_fitness(solution):
         repose_veg=int(round(solution[6] + solution[7])),
         wind_rose=rose,
         # --- Storms --- #
-        Rin_ru=164,
-        Cx=47,
-        MaxUpSlope=1.32,
-        K_ru=0.0000468,
-        substep_ru=3,
-        beach_equilibrium_slope=0.027,
-        swash_transport_coefficient=0.00086,
+        Rin_ru=144,
+        Cx=40,
+        MaxUpSlope=1.3,
+        K_ru=0.0000382,
+        mm=1.04,
+        substep_ru=4,
+        beach_equilibrium_slope=0.024,
+        swash_transport_coefficient=0.00083,
         wave_period_storm=9.4,
         beach_substeps=20,
-        flow_reduction_max_spec1=0.25,
-        flow_reduction_max_spec2=0.14,
+        flow_reduction_max_spec1=0.2,
+        flow_reduction_max_spec2=0.3,
         # --- Shoreline --- #
         wave_asymetry=0.6,
         wave_high_angle_fraction=0.39,
@@ -158,14 +159,6 @@ def aeolian_fitness(solution):
         alongshore_section_length=25,
         estimate_shoreface_parameters=True,
         # --- Veg --- #
-        # sp1_c=1.20,
-        # sp2_c=-0.47,
-        # sp1_peak=0.307,
-        # sp2_peak=0.148,
-        # lateral_probability=0.34,
-        # pioneer_probability=0.11,
-        # Spec1_elev_min=0.60,
-        # Spec2_elev_min=0.13,
     )
 
     # Loop through time
@@ -182,7 +175,7 @@ def aeolian_fitness(solution):
     topo_change_obs = topo_end_obs - topo_start  # [m]
 
     # Subaerial mask
-    subaerial_mask = topo_end_sim > mhw_end_sim  # [bool] Mask for every cell above water
+    subaerial_mask = np.logical_and(topo_end_sim > mhw_end_sim, topo_end_obs > mhw_end_sim)  # [bool] Mask for every cell above water
 
     # Beach mask
     dune_crest = routine.foredune_crest(topo_start, mhw_end_sim)
@@ -195,8 +188,6 @@ def aeolian_fitness(solution):
     range_mask = np.ones(topo_end_sim.shape)  # [bool] Mask for every cell between two cross-shore locations
     range_mask[:, :835] = False
     range_mask[:, 950:] = False
-    # range_mask[:, :1100] = False
-    # range_mask[:, 1350:] = False
 
     # Elevation mask
     elev_mask = topo_end_sim > 2.0  # [bool] Mask for every cell above water
@@ -229,7 +220,7 @@ def aeolian_fitness(solution):
     nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh, pc_dh, hss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, np.full(crest_height_change_obs.shape, True))  # Foredune elevation
 
     # Combine Skill Scores (Multi-Objective Optimization)
-    score = np.average([nmae, nmae_dl, nmae_dh], weights=[1, 1, 1])  # This is the skill score used in particle swarms optimization
+    score = np.average([bss, bss_dh])  # This is the skill score used in particle swarms optimization
 
     return score
 
@@ -258,15 +249,9 @@ stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
 hindcast_duration = 3.44
 startdate = '20140406'
 
-# # 2014 - 2018
-# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
-# startdate = '20140406'
-# hindcast_duration = 4.5
-
 # Define Alongshore Coordinates of Domain
-xmin = 6300  # 18950
-xmax = 6600  # 19250
+xmin = 6300
+xmax = 6600
 
 MHW = 0.39  # [m NAVD88] Initial
 ResReduc = False  # Option to reduce raster resolution for skill assessment
@@ -319,13 +304,13 @@ inputs = {
                [0.05, 0.4],
                [5, 15],
                [15, 30],
-               [5, 10],
+               [5, 10],  # This is the amount MORE than repose bare
                [0, 1],  # Proportion of cross-shore winds versus alongshore
                [0, 1],  # Proportion of cross-shore winds towards right (onshore)
                [0, 1],  # Proportion of alongshore winds towards down
                ]
 }
-N = 30  # Number of samples: sobol = N * (2 * num_vars + 2), morris = N * (num_vars + 2)
+N = 30  # Number of samples: sobol = N * (2 * num_vars + 2), morris = N * (num_vars + 1)
 
 # _____________________________________________
 # Generate Samples
