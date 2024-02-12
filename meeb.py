@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 8 February 2024
+Last update: 12 February 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -386,7 +386,7 @@ class MEEB:
             iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
 
             # Beach slopes
-            foredune_crest_loc = routine.foredune_crest(self._topo, self._MHW)
+            foredune_crest_loc, not_gap = routine.foredune_crest(self._topo, self._MHW)
             beach_slopes = routine.calculate_beach_slope(self._topo, self._x_s, foredune_crest_loc, self._average_dune_toe_height, self._MHW)
 
             # Generate Storms Stats
@@ -659,6 +659,10 @@ class MEEB:
     @property
     def MHW(self):
         return self._MHW
+
+    @property
+    def MHW_init(self):
+        return self._MHW_init
 
     @property
     def StormRecord(self):

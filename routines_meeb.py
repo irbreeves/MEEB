@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 8 February 2024
+Last update: 12 February 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -787,7 +787,7 @@ def foredune_crest(topo, MHW):
     # ax_1.plot(crestline, np.arange(len(crestline)), color='blue')
     # plt.show()
 
-    return crestline.astype(int)
+    return crestline.astype(int), not_gap
 
 
 @njit
@@ -815,7 +815,7 @@ def find_crest_buffer(topo, line_init, crestline, buffer, MHW):
     return crestline, not_gap
 
 
-def foredune_heel(topof, crestline, threshold, slabheight_m):
+def foredune_heel(topof, crestline, not_gap, threshold):
     """Finds and returns the location of the foredune heel for each grid column alongshore."""
 
     longshore, crossshore = topof.shape
@@ -832,16 +832,75 @@ def foredune_heel(topof, crestline, threshold, slabheight_m):
                 break
             elif topof[ls, idx + 1] < topof[ls, idx]:
                 idx += 1
-            elif elevation_difference >= (threshold / slabheight_m):  # Convert threshold to slabs
+            elif elevation_difference >= threshold:
                 break
             elif topof[ls, idx + 1] * 0.95 >= topof[ls, idx]:
                 break
             else:
                 idx += 1
 
-        heelline[ls] = idx
+        # Make a reference copy of the profile with a straight line from the Shoreline to Crest
+        z = topof[ls, :]  # Elevation profile
+        crest_idx = crestline[ls]
+        z_ref = z.copy()
+        z_ref[crest_idx: idx] = np.linspace(start=z[crest_idx],
+                                            stop=z[idx],
+                                            num=idx - crest_idx)
 
-    return heelline.astype(int)
+        # Subtract the reference from the original profile and idenitfy the maximum point
+        z_diff = z_ref - z
+        heel_idx = np.argmax(z_diff)
+
+        heelline[ls] = heel_idx
+
+    # Fill in gaps with linear interpolation
+    x = np.arange(len(heelline))
+    xp = np.nonzero(heelline * not_gap)[0]
+    if len(xp) > 0:  # If there are any gaps
+        fp = heelline[xp]
+        heelline = np.interp(x, xp, fp)  # Interpolate
+
+    heelline = np.round(signal.savgol_filter(heelline, 11, 1)).astype(int)
+
+    return heelline
+
+
+def foredune_toe(topo, dune_crest_loc, MHW, not_gap):
+    """Finds the dune toe locationd using the stretched sheet method from Mitasova et al. (2011), based on AUTOMORPH (Itzkin et al., 2021)"""
+
+    longshore, crossshore = topo.shape
+    shoreline_loc = ocean_shoreline(topo, MHW)
+
+    dune_toe_loc = np.zeros([longshore])  # Initialize
+
+    for ls in range(longshore):
+        z = topo[ls, :]  # Elevation profile
+        crest_idx = dune_crest_loc[ls]
+        shoreline_idx = shoreline_loc[ls]
+
+        # Make a reference copy of the profile with a straight line from the Shoreline to Crest
+        z_ref = z.copy()
+        z_ref[shoreline_idx:crest_idx] = np.linspace(start=z[shoreline_idx],
+                                                     stop=z[crest_idx],
+                                                     num=crest_idx - shoreline_idx)
+
+        # Subtract the reference from the original profile and idenitfy the maximum point
+        z_diff = z_ref - z
+        toe_idx = np.argmax(z_diff)
+
+        # Store the toe location
+        dune_toe_loc[ls] = toe_idx
+
+    # Fill in gaps with linear interpolation
+    x = np.arange(len(dune_toe_loc))
+    xp = np.nonzero(dune_toe_loc * not_gap)[0]
+    if len(xp) > 0:  # If there are any gaps
+        fp = dune_toe_loc[xp]
+        dune_toe_loc = np.interp(x, xp, fp)  # Interpolate
+
+    dune_toeline = np.round(signal.savgol_filter(dune_toe_loc, 11, 1)).astype(int)
+
+    return dune_toeline
 
 
 @njit
@@ -1213,7 +1272,7 @@ def storm_processes(
         Rhigh_TS = Rhigh.copy()  # This line prescribes a static TWL over course of storm
 
         # Find dune crest locations and heights for this storm iteration
-        dune_crest_loc = foredune_crest(Elevation[TS, :, :], MHW)  # Cross-shore location of pre-storm dune crest
+        dune_crest_loc, not_gap = foredune_crest(Elevation[TS, :, :], MHW)  # Cross-shore location of pre-storm dune crest
 
         Elevation, Discharge, SedFluxIn, SedFluxOut = route_overwash(
             TS,
@@ -1474,7 +1533,7 @@ def storm_processes_2(
         Rhigh_TS = Rhigh.copy()  # This line prescribes a static TWL over course of storm
 
         # Find dune crest locations and heights for this storm iteration
-        dune_crest_loc = foredune_crest(Elevation[TS, :, :], MHW)  # Cross-shore location of pre-storm dune crest
+        dune_crest_loc, not_gap = foredune_crest(Elevation[TS, :, :], MHW)  # Cross-shore location of pre-storm dune crest
 
         Elevation, Discharge, SedFluxIn, SedFluxOut = route_overwash(
             TS,
@@ -2575,6 +2634,7 @@ def calculate_beach_slope(topof, x_s, dune_crest_loc, average_dune_toe_height, M
 @contextlib.contextmanager
 def tqdm_joblib(tqdm_object):
     """Context manager to patch joblib to report into tqdm progress bar given as argument"""
+
     class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
         def __call__(self, *args, **kwargs):
             tqdm_object.update(n=self.batch_size)
