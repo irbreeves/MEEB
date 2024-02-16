@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 12 February 2024
+Last update: 16 February 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -97,13 +97,15 @@ class MEEB:
             sp1_peak=0.2,  # Growth peak, spec1
             sp2_peak=0.05,  # Growth peak, spec2
             VGR=0,  # [%] Growth reduction by end of period
-            lateral_probability=0.2,  # [0-1] Probability of lateral expansion of existing vegetation
-            pioneer_probability=0.05,  # [0-1] Probability of occurrence of new pioneering vegetation
+            sp1_lateral_probability=0.2,  # [0-1] Probability of lateral expansion of existing vegetation
+            sp2_lateral_probability=0.2,  # [0-1] Probability of lateral expansion of existing vegetation
+            sp1_pioneer_probability=0.05,  # [0-1] Probability of occurrence of new pioneering vegetation
+            sp2_pioneer_probability=0.05,  # [0-1] Probability of occurrence of new pioneering vegetation
             maxvegeff=1.0,  # [0-1] Value of maximum vegetation effectiveness allowed
             Spec1_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 1 (1 m MHW for A. brevigulata from Young et al., 2011)
             Spec2_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 2
-            flow_reduction_max_spec1=0.15,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 1 at full density
-            flow_reduction_max_spec2=0.25,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 2 at full density
+            flow_reduction_max_spec1=0.02,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 1 at full density
+            flow_reduction_max_spec2=0.05,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 2 at full density
             effective_veg_sigma=3,  # Standard deviation for Gaussian filter of vegetation cover
 
             # STORM OVERWASH AND DUNE EROSION
@@ -206,8 +208,10 @@ class MEEB:
         self._sp1_peak = sp1_peak
         self._sp2_peak = sp2_peak
         self._VGR = VGR
-        self._lateral_probability = lateral_probability
-        self._pioneer_probability = pioneer_probability
+        self._sp1_lateral_probability = sp1_lateral_probability
+        self._sp2_lateral_probability = sp2_lateral_probability
+        self._sp1_pioneer_probability = sp1_pioneer_probability
+        self._sp2_pioneer_probability = sp2_pioneer_probability
         self._maxvegeff = maxvegeff
         self._Spec1_elev_min = Spec1_elev_min
         self._Spec2_elev_min = Spec2_elev_min
@@ -523,14 +527,14 @@ class MEEB:
             self._spec2 = routine.growthfunction2_sens(self._spec2, self._sedimentation_balance, self._sp2_a, self._sp2_b, self._sp2_d, self._sp2_e, self._sp2_peak)
 
             # Lateral Expansion
-            lateral1 = routine.lateral_expansion(spec1_prev, 1, self._lateral_probability * veg_multiplier, self._RNG)
-            lateral2 = routine.lateral_expansion(spec2_prev, 1, self._lateral_probability * veg_multiplier, self._RNG)
+            lateral1 = routine.lateral_expansion(spec1_prev, 1, self._sp1_lateral_probability * veg_multiplier, self._RNG)
+            lateral2 = routine.lateral_expansion(spec2_prev, 1, self._sp2_lateral_probability * veg_multiplier, self._RNG)
             lateral1[self._topo <= self._MHW] = False  # Constrain to subaerial
             lateral2[self._topo <= self._MHW] = False
 
             # Pioneer Establishment
-            pioneer1 = routine.establish_new_vegetation(self._topo, self._MHW, self._pioneer_probability * veg_multiplier, self._RNG) * (spec1_prev <= 0)
-            pioneer2 = routine.establish_new_vegetation(self._topo, self._MHW, self._pioneer_probability * veg_multiplier, self._RNG) * (spec2_prev <= 0) * (self._topographic_change == 0)
+            pioneer1 = routine.establish_new_vegetation(self._topo, self._MHW, self._sp1_pioneer_probability * veg_multiplier, self._RNG) * (spec1_prev <= 0)
+            pioneer2 = routine.establish_new_vegetation(self._topo, self._MHW, self._sp2_pioneer_probability * veg_multiplier, self._RNG) * (spec2_prev <= 0) * (self._topographic_change == 0)
             pioneer1[self._topo <= self._MHW] = False  # Constrain to subaerial
             pioneer2[self._topo <= self._MHW] = False
 
@@ -542,8 +546,8 @@ class MEEB:
             spec2_growth = spec2_diff * (spec2_diff > 0)  # Split cover changes into into gain and loss
             spec2_loss = spec2_diff * (spec2_diff < 0)
 
-            spec1_change_allowed = np.minimum(1 - self._veg, spec1_growth) * np.logical_or(lateral1, pioneer1)  # Only allow growth in adjacent or pioneer cells
-            spec2_change_allowed = np.minimum(1 - self._veg, spec2_growth) * np.logical_or(lateral2, pioneer2)  # Only allow growth in adjacent or pioneer cells
+            spec1_change_allowed = np.minimum(1 - self._veg, spec1_growth) * np.logical_or(spec1_prev > 0, np.logical_or(lateral1, pioneer1))  # Only allow growth in adjacent or pioneer cells
+            spec2_change_allowed = np.minimum(1 - self._veg, spec2_growth) * np.logical_or(spec2_prev > 0, np.logical_or(lateral2, pioneer2))  # Only allow growth in adjacent or pioneer cells
             self._spec1 = spec1_prev + spec1_change_allowed + spec1_loss  # Re-assemble gain and loss and add to original vegetation cover
             self._spec2 = spec2_prev + spec2_change_allowed + spec2_loss  # Re-assemble gain and loss and add to original vegetation cover
 

@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 12 February 2024
+Last update: 16 February 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -538,8 +538,6 @@ def lateral_expansion(veg, dist, prob, RNG):
     # Lateral expansion only takes place in a fraction <prob> of the possible cells
     width, length = veg.shape
     lateral_expansion_allowed = RNG.random((width, length)) < (lateral_expansion_possible * prob)
-    # Include existing vegetation to incorporate growth or decay of existing patches
-    lateral_expansion_allowed = lateral_expansion_allowed + veg
     lateral_expansion_allowed = lateral_expansion_allowed > 0
 
     return lateral_expansion_allowed
