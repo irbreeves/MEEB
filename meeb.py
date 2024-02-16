@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 16 February 2024
+Last update: 17 February 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -37,6 +37,8 @@ class MEEB:
             cellsize=1,  # [m] Cell length and width
             alongshore_domain_boundary_min=0,  # [m] Alongshore minimum boundary location for model domain
             alongshore_domain_boundary_max=10e7,  # [m] Alongshore maximum boundary location for model domain; if left to this default value, it will automatically adjust to the actual full length of the domain
+            crossshore_domain_boundary_min=0,  # [m] Cross-shore minimum boundary location for model domain
+            crossshore_domain_boundary_max=10e7,  # [m] Cross-shore maximum boundary location for model domain; if left to this default value, it will automatically adjust to the actual full length of the domain
             inputloc="Input/",  # Input file directory (end string with "/")
             outputloc="Output/",  # Output file directory (end string with "/")
             init_filename="Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy",  # [m NVD88] Name of initial topography and vegetation input file
@@ -162,6 +164,8 @@ class MEEB:
         self._slabheight = slabheight
         self._alongshore_domain_boundary_min = alongshore_domain_boundary_min
         self._alongshore_domain_boundary_max = alongshore_domain_boundary_max
+        self._crossshore_domain_boundary_min = crossshore_domain_boundary_min
+        self._crossshore_domain_boundary_max = crossshore_domain_boundary_max
         self._inputloc = inputloc
         self._outputloc = outputloc
         self._hindcast = hindcast
@@ -263,7 +267,8 @@ class MEEB:
         # TOPOGRAPHY
         Init = np.load(inputloc + init_filename)
         self._alongshore_domain_boundary_max = min(self._alongshore_domain_boundary_max, Init[0, :, :].shape[0])
-        self._topo_initial = Init[0, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, :]  # [m NAVD88] 2D array of initial topography
+        self._crossshore_domain_boundary_max = min(self._crossshore_domain_boundary_max, Init[0, :, :].shape[1])
+        self._topo_initial = Init[0, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [m NAVD88] 2D array of initial topography
         self._topo = self._topo_initial.copy()  # [m NAVD88] Initialise the topography
         self._longshore, self._crossshore = self._topo.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
         self._groundwater_elevation = np.zeros(self._topo.shape)  # [m NAVD88] Initialize
@@ -290,8 +295,8 @@ class MEEB:
                                                                                              self._longshore)
 
         # VEGETATION
-        self._spec1 = Init[1, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, :]  # [0-1] 2D array of vegetation effectiveness for spec1
-        self._spec2 = Init[2, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, :]  # [0-1] 2D array of vegetation effectiveness for spec2
+        self._spec1 = Init[1, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [0-1] 2D array of vegetation effectiveness for spec1
+        self._spec2 = Init[2, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [0-1] 2D array of vegetation effectiveness for spec2
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
         self._veg[self._veg < 0] = 0

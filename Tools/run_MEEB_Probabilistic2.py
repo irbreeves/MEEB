@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 16 February 2024
+IRBR 17 February 2024
 """
 
 import numpy as np
@@ -31,6 +31,8 @@ def run_individual_sim(rslr):
         simulation_time_yr=sim_duration,
         alongshore_domain_boundary_min=ymin,
         alongshore_domain_boundary_max=ymax,
+        crossshore_domain_boundary_min=xmin,
+        crossshore_domain_boundary_max=xmax,
         RSLR=rslr,
         MHW=MHW_init,
         init_filename=start,
@@ -186,7 +188,8 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
                 left_diag = np.fliplr(np.tril(temp, k=len(dune_crestline) - ls - 1))
                 spread = np.rot90(right_diag * left_diag, 1)
                 fronting_dune_gap[:, crest_loc:] = np.flipud(np.logical_or(fronting_dune_gap[:, crest_loc:], spread))
-                fronting_dune_gap[:, crest_loc - right_diag.shape[0]: crest_loc] = np.fliplr(fronting_dune_gap[:, crest_loc:])
+                trim = max(0, right_diag.shape[0] - crest_loc)
+                fronting_dune_gap[:, max(0, crest_loc - right_diag.shape[0]): crest_loc] = np.fliplr(fronting_dune_gap[:, crest_loc:])[:, trim:]
 
         # Find dune crest heights
         dune_crestheight = np.zeros(longshore)
@@ -323,8 +326,8 @@ def plot_most_probable_class(class_probabilities, class_cmap, num_classes, class
         Iteration to draw probabilities from.
     """
 
-    mmax_idx = np.argmax(class_probabilities[:, it, :, xmin: xmax], axis=0)  # Bin of most probable outcome
-    confidence = 1 - np.max(class_probabilities[:, it, :, xmin: xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
+    mmax_idx = np.argmax(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Bin of most probable outcome
+    confidence = 1 - np.max(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
 
     conf_cmap = colors.ListedColormap(['white'])
 
@@ -343,18 +346,18 @@ def plot_class_area_change_over_time(class_probabilities, num_classes):
 
     class_change_TS = np.zeros([num_classes, num_saves])  # Initialize
 
-    subaqueous_0 = np.sum(class_probabilities[0, 0, :, xmin: xmax])
-    beach_0 = np.sum(class_probabilities[1, 0, :, xmin: xmax])
-    dune_0 = np.sum(class_probabilities[2, 0, :, xmin: xmax])
-    washover_0 = np.sum(class_probabilities[3, 0, :, xmin: xmax])
-    interior_0 = np.sum(class_probabilities[4, 0, :, xmin: xmax])
+    subaqueous_0 = np.sum(class_probabilities[0, 0, :, plot_xmin: plot_xmax])
+    beach_0 = np.sum(class_probabilities[1, 0, :, plot_xmin: plot_xmax])
+    dune_0 = np.sum(class_probabilities[2, 0, :, plot_xmin: plot_xmax])
+    washover_0 = np.sum(class_probabilities[3, 0, :, plot_xmin: plot_xmax])
+    interior_0 = np.sum(class_probabilities[4, 0, :, plot_xmin: plot_xmax])
 
     for ts in range(1, num_saves):
-        delta_s = (np.sum(class_probabilities[0, ts, :, xmin: xmax]) - subaqueous_0)
-        delta_b = (np.sum(class_probabilities[1, ts, :, xmin: xmax]) - beach_0)
-        delta_d = (np.sum(class_probabilities[2, ts, :, xmin: xmax]) - dune_0)
-        delta_w = (np.sum(class_probabilities[3, ts, :, xmin: xmax]) - washover_0)
-        delta_i = (np.sum(class_probabilities[4, ts, :, xmin: xmax]) - interior_0)
+        delta_s = (np.sum(class_probabilities[0, ts, :, plot_xmin: plot_xmax]) - subaqueous_0)
+        delta_b = (np.sum(class_probabilities[1, ts, :, plot_xmin: plot_xmax]) - beach_0)
+        delta_d = (np.sum(class_probabilities[2, ts, :, plot_xmin: plot_xmax]) - dune_0)
+        delta_w = (np.sum(class_probabilities[3, ts, :, plot_xmin: plot_xmax]) - washover_0)
+        delta_i = (np.sum(class_probabilities[4, ts, :, plot_xmin: plot_xmax]) - interior_0)
 
         class_change_TS[0, ts] = delta_s
         class_change_TS[1, ts] = delta_b
@@ -598,7 +601,7 @@ def plot_most_likely_transition_maps(class_probabilities):
     s_to_ticks = ['', 'No Change', 'Beach', 'Dune', 'Washover', 'Interior']
     cmap1 = colors.ListedColormap(['white', 'black', 'gold', 'saddlebrown', 'red', 'green'])
     ax_1 = Fig.add_subplot(231)
-    cax_1 = ax_1.matshow(subaqueous_to[:, xmin: xmax], cmap=cmap1, vmin=0, vmax=len(s_to_ticks)-1)
+    cax_1 = ax_1.matshow(subaqueous_to[:, plot_xmin: plot_xmax], cmap=cmap1, vmin=0, vmax=len(s_to_ticks) - 1)
     tic = np.linspace(start=((len(s_to_ticks) - 1) / len(s_to_ticks)) / 2, stop=len(s_to_ticks) - 1 - ((len(s_to_ticks) - 1) / len(s_to_ticks)) / 2, num=len(s_to_ticks))
     mcbar = Fig.colorbar(cax_1, ticks=tic)
     mcbar.ax.set_yticklabels(s_to_ticks)
@@ -615,7 +618,7 @@ def plot_most_likely_transition_maps(class_probabilities):
     b_to_ticks = ['', 'No Change', 'Subaqueous', 'Dune', 'Washover', 'Interior']
     cmap2 = colors.ListedColormap(['white', 'black', 'blue', 'saddlebrown', 'red', 'green'])
     ax_2 = Fig.add_subplot(232)
-    cax_2 = ax_2.matshow(beach_to[:, xmin: xmax], cmap=cmap2, vmin=0, vmax=len(b_to_ticks)-1)
+    cax_2 = ax_2.matshow(beach_to[:, plot_xmin: plot_xmax], cmap=cmap2, vmin=0, vmax=len(b_to_ticks) - 1)
     tic = np.linspace(start=((len(b_to_ticks) - 1) / len(b_to_ticks)) / 2, stop=len(b_to_ticks) - 1 - ((len(b_to_ticks) - 1) / len(b_to_ticks)) / 2, num=len(b_to_ticks))
     mcbar = Fig.colorbar(cax_2, ticks=tic)
     mcbar.ax.set_yticklabels(b_to_ticks)
@@ -632,7 +635,7 @@ def plot_most_likely_transition_maps(class_probabilities):
     d_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach', 'Washover', 'Interior']
     cmap3 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'red', 'green'])
     ax_3 = Fig.add_subplot(233)
-    cax_3 = ax_3.matshow(dune_to[:, xmin: xmax], cmap=cmap3, vmin=0, vmax=len(d_to_ticks)-1)
+    cax_3 = ax_3.matshow(dune_to[:, plot_xmin: plot_xmax], cmap=cmap3, vmin=0, vmax=len(d_to_ticks) - 1)
     tic = np.linspace(start=((len(d_to_ticks) - 1) / len(d_to_ticks)) / 2, stop=len(d_to_ticks) - 1 - ((len(d_to_ticks) - 1) / len(d_to_ticks)) / 2, num=len(d_to_ticks))
     mcbar = Fig.colorbar(cax_3, ticks=tic)
     mcbar.ax.set_yticklabels(d_to_ticks)
@@ -649,7 +652,7 @@ def plot_most_likely_transition_maps(class_probabilities):
     w_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach', 'Dune', 'Interior']
     cmap4 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'saddlebrown', 'green'])
     ax_4 = Fig.add_subplot(234)
-    cax_4 = ax_4.matshow(washover_to[:, xmin: xmax], cmap=cmap4, vmin=0, vmax=len(w_to_ticks)-1)
+    cax_4 = ax_4.matshow(washover_to[:, plot_xmin: plot_xmax], cmap=cmap4, vmin=0, vmax=len(w_to_ticks) - 1)
     tic = np.linspace(start=((len(w_to_ticks) - 1) / len(w_to_ticks)) / 2, stop=len(w_to_ticks) - 1 - ((len(w_to_ticks) - 1) / len(w_to_ticks)) / 2, num=len(w_to_ticks))
     mcbar = Fig.colorbar(cax_4, ticks=tic)
     mcbar.ax.set_yticklabels(w_to_ticks)
@@ -666,7 +669,7 @@ def plot_most_likely_transition_maps(class_probabilities):
     i_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach', 'Dune', 'Washover']
     cmap5 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'saddlebrown', 'red'])
     ax_5 = Fig.add_subplot(235)
-    cax_5 = ax_5.matshow(interior_to[:, xmin: xmax], cmap=cmap5, vmin=0, vmax=len(i_to_ticks)-1)
+    cax_5 = ax_5.matshow(interior_to[:, plot_xmin: plot_xmax], cmap=cmap5, vmin=0, vmax=len(i_to_ticks) - 1)
     tic = np.linspace(start=((len(i_to_ticks) - 1) / len(i_to_ticks)) / 2, stop=len(i_to_ticks) - 1 - ((len(i_to_ticks) - 1) / len(i_to_ticks)) / 2, num=len(i_to_ticks))
     mcbar = Fig.colorbar(cax_5, ticks=tic)
     mcbar.ax.set_yticklabels(i_to_ticks)
@@ -689,23 +692,23 @@ def plot_class_maps(class_probabilities, class_labels, it):
     bFig = plt.figure(figsize=(14, 7.5))
     bFig.suptitle(name, fontsize=13)
     bax1 = bFig.add_subplot(231)
-    bcax1 = bax1.matshow(class_probabilities[0, it, :, xmin: xmax], vmin=0, vmax=1)
+    bcax1 = bax1.matshow(class_probabilities[0, it, :, plot_xmin: plot_xmax], vmin=0, vmax=1)
     plt.title(class_labels[0])
 
     bax2 = bFig.add_subplot(232)
-    bcax2 = bax2.matshow(class_probabilities[1, it, :, xmin: xmax], vmin=0, vmax=1)
+    bcax2 = bax2.matshow(class_probabilities[1, it, :, plot_xmin: plot_xmax], vmin=0, vmax=1)
     plt.title(class_labels[1])
 
     bax3 = bFig.add_subplot(233)
-    bcax3 = bax3.matshow(class_probabilities[2, it, :, xmin: xmax], vmin=0, vmax=1)
+    bcax3 = bax3.matshow(class_probabilities[2, it, :, plot_xmin: plot_xmax], vmin=0, vmax=1)
     plt.title(class_labels[2])
 
     bax4 = bFig.add_subplot(234)
-    bcax4 = bax4.matshow(class_probabilities[3, it, :, xmin: xmax], vmin=0, vmax=1)
+    bcax4 = bax4.matshow(class_probabilities[3, it, :, plot_xmin: plot_xmax], vmin=0, vmax=1)
     plt.title(class_labels[3])
 
     bax5 = bFig.add_subplot(235)
-    bcax5 = bax5.matshow(class_probabilities[4, it, :, xmin: xmax], vmin=0, vmax=1)
+    bcax5 = bax5.matshow(class_probabilities[4, it, :, plot_xmin: plot_xmax], vmin=0, vmax=1)
     plt.title(class_labels[4])
     # cbar = Fig.colorbar(bcax5)
     plt.tight_layout()
@@ -713,24 +716,24 @@ def plot_class_maps(class_probabilities, class_labels, it):
 
 def ani_frame_bins(timestep, class_probabilities, cax1, cax2, cax3, cax4, cax5, text1, text2, text3, text4, text5):
 
-    prob1 = class_probabilities[0, timestep, :, xmin: xmax]
+    prob1 = class_probabilities[0, timestep, :, plot_xmin: plot_xmax]
     cax1.set_data(prob1)
     yrstr = "Year " + str(timestep * save_frequency)
     text1.set_text(yrstr)
 
-    prob2 = class_probabilities[1, timestep, :, xmin: xmax]
+    prob2 = class_probabilities[1, timestep, :, plot_xmin: plot_xmax]
     cax2.set_data(prob2)
     text2.set_text(yrstr)
 
-    prob3 = class_probabilities[2, timestep, :, xmin: xmax]
+    prob3 = class_probabilities[2, timestep, :, plot_xmin: plot_xmax]
     cax3.set_data(prob3)
     text3.set_text(yrstr)
 
-    prob4 = class_probabilities[3, timestep, :, xmin: xmax]
+    prob4 = class_probabilities[3, timestep, :, plot_xmin: plot_xmax]
     cax4.set_data(prob4)
     text4.set_text(yrstr)
 
-    prob5 = class_probabilities[4, timestep, :, xmin: xmax]
+    prob5 = class_probabilities[4, timestep, :, plot_xmin: plot_xmax]
     cax5.set_data(prob5)
     text5.set_text(yrstr)
 
@@ -739,8 +742,8 @@ def ani_frame_bins(timestep, class_probabilities, cax1, cax2, cax3, cax4, cax5, 
 
 def ani_frame_most_probable_outcome(timestep, class_probabilities, cax1, cax2, text1):
 
-    Max_idx = np.argmax(class_probabilities[:, timestep, :, xmin: xmax], axis=0)
-    Conf = 1 - np.max(class_probabilities[:, timestep, :, xmin: xmax], axis=0)
+    Max_idx = np.argmax(class_probabilities[:, timestep, :, plot_xmin: plot_xmax], axis=0)
+    Conf = 1 - np.max(class_probabilities[:, timestep, :, plot_xmin: plot_xmax], axis=0)
     cax1.set_data(Max_idx)
     cax2.set_alpha(Conf)
     yrstr = "Year " + str(timestep * save_frequency)
@@ -754,28 +757,28 @@ def bins_animation(class_probabilities, class_labels):
     Fig = plt.figure(figsize=(14, 7.5))
     Fig.suptitle(name, fontsize=13)
     ax1 = Fig.add_subplot(231)
-    cax1 = ax1.matshow(class_probabilities[0, 0, :, xmin: xmax], vmin=0, vmax=1)
+    cax1 = ax1.matshow(class_probabilities[0, 0, :, plot_xmin: plot_xmax], vmin=0, vmax=1)
     plt.title(class_labels[0])
     timestr = "Year " + str(0)
     text1 = plt.text(2, longshore - 2, timestr, c='white')
 
     ax2 = Fig.add_subplot(232)
-    cax2 = ax2.matshow(class_probabilities[1, 0, :, xmin: xmax], vmin=0, vmax=1)
+    cax2 = ax2.matshow(class_probabilities[1, 0, :, plot_xmin: plot_xmax], vmin=0, vmax=1)
     plt.title(class_labels[1])
     text2 = plt.text(2, longshore - 2, timestr, c='white')
 
     ax3 = Fig.add_subplot(233)
-    cax3 = ax3.matshow(class_probabilities[2, 0, :, xmin: xmax], vmin=0, vmax=1)
+    cax3 = ax3.matshow(class_probabilities[2, 0, :, plot_xmin: plot_xmax], vmin=0, vmax=1)
     plt.title(class_labels[2])
     text3 = plt.text(2, longshore - 2, timestr, c='white')
 
     ax4 = Fig.add_subplot(234)
-    cax4 = ax4.matshow(class_probabilities[3, 0, :, xmin: xmax], vmin=0, vmax=1)
+    cax4 = ax4.matshow(class_probabilities[3, 0, :, plot_xmin: plot_xmax], vmin=0, vmax=1)
     plt.title(class_labels[3])
     text4 = plt.text(2, longshore - 2, timestr, c='white')
 
     ax5 = Fig.add_subplot(235)
-    cax5 = ax5.matshow(class_probabilities[4, 0, :, xmin: xmax], vmin=0, vmax=1)
+    cax5 = ax5.matshow(class_probabilities[4, 0, :, plot_xmin: plot_xmax], vmin=0, vmax=1)
     plt.title(class_labels[4])
     text5 = plt.text(2, longshore - 2, timestr, c='white')
     # cbar = Fig.colorbar(cax5)
@@ -795,8 +798,8 @@ def most_likely_animation(class_probabilities, class_cmap, num_classes, class_la
     Fig = plt.figure(figsize=(14, 7.5))
     ax1 = Fig.add_subplot(111)
     conf_cmap = colors.ListedColormap(['white'])
-    max_idx = np.argmax(class_probabilities[:, 0, :, xmin: xmax], axis=0)
-    conf = 1 - np.max(class_probabilities[:, 0, :, xmin: xmax], axis=0)
+    max_idx = np.argmax(class_probabilities[:, 0, :, plot_xmin: plot_xmax], axis=0)
+    conf = 1 - np.max(class_probabilities[:, 0, :, plot_xmin: plot_xmax], axis=0)
     cax1 = ax1.matshow(max_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
     cax2 = ax1.matshow(np.ones(conf.shape), cmap=conf_cmap, vmin=0, vmax=1, alpha=conf)
     ticks = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
@@ -855,8 +858,10 @@ core_num = min(duplicates, 12)  # Number of cores to use in the parallelization 
 # Define Horizontal and Vertical References of Domain
 ymin = 19000  # [m] Alongshore coordinate
 ymax = 19500  # [m] Alongshore coordinate
-xmin = 900  # [m] Cross-shore coordinate (for plotting)
-xmax = xmin + 600  # [m] Cross-shore coordinate (for plotting)
+xmin = 900  # [m] Cross-shore coordinate
+xmax = 1600  # [m] Cross-shore coordinate
+plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
+plot_xmax = plot_xmin + 600  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 
 name = '19000-19500, 24 duplicates, 2018-2050, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), 16Feb24'  # Name of simulation suite
@@ -869,7 +874,7 @@ name = '19000-19500, 24 duplicates, 2018-2050, Elevation and Ecogeomorphic State
 
 # Load Initial Domains
 Init = np.load("Input/" + start)
-topo_start = Init[0, ymin: ymax, :]
+topo_start = Init[0, ymin: ymax, xmin: xmax]
 
 longshore, crossshore = topo_start.shape
 
