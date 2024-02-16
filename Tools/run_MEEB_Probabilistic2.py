@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 12 February 2024
+IRBR 16 February 2024
 """
 
 import numpy as np
@@ -44,28 +44,28 @@ def run_individual_sim(rslr):
         jumplength=5,
         slabheight=0.02,
         p_dep_sand=0.42,  # Q = hs * L * n * pe/pd
-        p_dep_sand_VegMax=0.67,
-        p_ero_sand=0.15,
-        entrainment_veg_limit=0.07,
+        p_dep_sand_VegMax=0.79,
+        p_ero_sand=0.19,
+        entrainment_veg_limit=0.09,
         saltation_veg_limit=0.3,
         shadowangle=5,
         repose_bare=20,
         repose_veg=30,
-        wind_rose=(0.81, 0.06, 0.11, 0.02),  # (right, down, left, up)
+        wind_rose=(0.64, 0.11, 0.08, 0.17),  # (right, down, left, up)
         groundwater_depth=0.4,
         # --- Storms --- #
-        Rin_ru=138,
-        Cx=68,
-        MaxUpSlope=1,
-        K_ru=0.0000227,
+        Rin_ru=144,
+        Cx=40,
+        MaxUpSlope=1.3,
+        K_ru=0.0000382,
         mm=1.04,
         substep_ru=4,
         beach_equilibrium_slope=0.024,
         swash_transport_coefficient=0.00083,
         wave_period_storm=9.4,
         beach_substeps=20,
-        flow_reduction_max_spec1=0.2,
-        flow_reduction_max_spec2=0.3,
+        flow_reduction_max_spec1=0.02,
+        flow_reduction_max_spec2=0.05,
         # --- Shoreline --- #
         wave_asymetry=0.6,
         wave_high_angle_fraction=0.39,
@@ -74,6 +74,9 @@ def run_individual_sim(rslr):
         alongshore_section_length=25,
         estimate_shoreface_parameters=True,
         # --- Veg --- #
+        sp1_b=-0.05,
+        sp2_lateral_probability=0.1,
+        sp2_pioneer_probability=0.025,
     )
 
     # Loop through time
@@ -99,20 +102,22 @@ def run_individual_sim(rslr):
         topo_change_sim_TS[:, :, ts] = topo_change_ts
 
     # Create classified map
-    # elevation_classification = classify_topo_change(meeb.topo_TS.shape[2], topo_change_sim_TS)
+    elevation_classification = classify_topo_change(meeb.topo_TS.shape[2], topo_change_sim_TS)
     state_classification = classify_ecogeomorphic_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.veg_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.12)
 
-    return state_classification
+    classes = [elevation_classification, state_classification]
+
+    return classes
 
 
 def classify_topo_change(TS, topo_change_sim_TS):
     """Classify according to range of elevation change."""
 
-    topo_change_bin = np.zeros([num_classes, num_saves, longshore, crossshore])
+    topo_change_bin = np.zeros([elev_num_classes, num_saves, longshore, crossshore])
 
-    for b in range(len(class_edges) - 1):
-        lower = class_edges[b]
-        upper = class_edges[b + 1]
+    for b in range(len(elev_class_edges) - 1):
+        lower = elev_class_edges[b]
+        upper = elev_class_edges[b + 1]
 
         for ts in range(TS):
             bin_change = np.logical_and(lower < topo_change_sim_TS[:, :, ts], topo_change_sim_TS[:, :, ts] <= upper).astype(int)
@@ -124,7 +129,7 @@ def classify_topo_change(TS, topo_change_sim_TS):
 def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_threshold):
     """Classify by ecogeomorphic state using topography and vegetation."""
 
-    state_classes = np.zeros([num_classes, num_saves, longshore, crossshore])  # Initialize
+    state_classes = np.zeros([state_num_classes, num_saves, longshore, crossshore])  # Initialize
 
     # Run Categorization
     # Loop through saved timesteps
@@ -232,41 +237,53 @@ def internal_probability(rslr):
     """Runs duplicate simulations to find the classification probability from stochastic processes intrinsic to the system, particularly storm
     occurence & intensity, aeolian dynamics, and vegetation dynamics."""
 
-    # Create storage array
-    class_bins = np.zeros([num_classes, num_saves, longshore, crossshore])
+    # Initialize storage array
+    elev_class_bins = np.zeros([elev_num_classes, num_saves, longshore, crossshore])
+    state_class_bins = np.zeros([state_num_classes, num_saves, longshore, crossshore])
 
     with routine.tqdm_joblib(tqdm(desc="RSLR[" + str(rslr) + "]", total=duplicates)) as progress_bar:
         class_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(rslr) for i in range(duplicates))
 
     for ts in range(num_saves):
-        for b in range(num_classes):
+        for b in range(elev_num_classes):
             for n in range(duplicates):
-                class_bins[b, ts, :, :] += class_duplicates[n][b, ts, :, :]
+                elev_class_bins[b, ts, :, :] += class_duplicates[n][0][b, ts, :, :]
+                state_class_bins[b, ts, :, :] += class_duplicates[n][1][b, ts, :, :]
 
-    internal_prob = class_bins / duplicates
+    elev_internal_prob = elev_class_bins / duplicates
+    state_internal_prob = state_class_bins / duplicates
 
-    return internal_prob
+    return elev_internal_prob, state_internal_prob
 
 
 def joint_probability():
     """Runs a range of probabilistic scenarios to find the classification probability from stochastic processes external to the system, e.g. RSLR, atmospheric temperature."""
 
     # Create storage array
-    joint_prob = np.zeros([num_classes, num_saves, longshore, crossshore])
+    elev_joint_prob = np.zeros([elev_num_classes, num_saves, longshore, crossshore])
+    state_joint_prob = np.zeros([state_num_classes, num_saves, longshore, crossshore])
 
     for r in range(len(RSLR_prob)):
-        internal_prob = internal_probability(RSLR_bin[r])
-        external_prob = internal_prob * RSLR_prob[r]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
-        joint_prob += external_prob
+        elev_internal_prob, state_internal_prob = internal_probability(RSLR_bin[r])
+        elev_external_prob = elev_internal_prob * RSLR_prob[r]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
+        state_external_prob = state_internal_prob * RSLR_prob[r]
+        elev_joint_prob += elev_external_prob
+        state_joint_prob += state_external_prob
 
-    return joint_prob
+    return elev_joint_prob, state_joint_prob
 
 
-def plot_cell_prob_bar(it, l, c):
+def plot_cell_prob_bar(class_probabilities, class_labels, classification_label, it, l, c):
     """For a particular cell, makes bar plot of the probabilities of each class.
 
     Parameters
     ----------
+    class_probabilities : ndarray
+        Probabilities of each class over space and time.
+    class_labels : list
+        List of class names.
+    classification_label : str
+        String of classification scheme for axis label.
     it : int
         Iteration to draw probabilities from.
     l : int
@@ -288,12 +305,20 @@ def plot_cell_prob_bar(it, l, c):
     plt.title('Loc: (' + str(c) + ', ' + str(l) + '), Iteration: ' + str(it))
 
 
-def plot_most_probable_class(it):
+def plot_most_probable_class(class_probabilities, class_cmap, num_classes, class_labels, it):
     """Plots the most probable class across the domain at a particular time step. Note: this returns the first max occurance,
     i.e. if multiple bins are tied for the maximum probability of occuring, the first one will be plotted as the most likely.
 
     Parameters
     ----------
+    class_probabilities : ndarray
+        Probabilities of each class over space and time.
+    class_cmap
+        Discrete colormap for plotting classes.
+    num_classes : int
+        Numer of classes in classification scheme.
+    class_labels : list
+        List of class names.
     it : int
         Iteration to draw probabilities from.
     """
@@ -314,7 +339,7 @@ def plot_most_probable_class(it):
     plt.title('Iteration: ' + str(it))
 
 
-def plot_class_area_change_over_time():
+def plot_class_area_change_over_time(class_probabilities, num_classes):
 
     class_change_TS = np.zeros([num_classes, num_saves])  # Initialize
 
@@ -346,7 +371,7 @@ def plot_class_area_change_over_time():
     plt.xlabel('Forecast Year')
 
 
-def plot_most_likely_transitions_cumulative():
+def plot_most_likely_transitions_cumulative(class_probabilities):
 
     change_in_most_likely_class = np.zeros([num_saves, longshore, crossshore])
 
@@ -451,7 +476,7 @@ def plot_most_likely_transitions_cumulative():
     plt.title('Change in Area for Most Likely State Transitions, Cumulative Over Time')
 
 
-def plot_most_likely_transitions_beginning_to_end():
+def plot_most_likely_transitions_beginning_to_end(class_probabilities):
 
     change_in_most_likely_class = np.zeros([longshore, crossshore])
 
@@ -554,7 +579,7 @@ def plot_most_likely_transitions_beginning_to_end():
     plt.title('Change in Area for Most Likely State Transitions, Forecast Beginning to End')
 
 
-def plot_most_likely_transition_maps():
+def plot_most_likely_transition_maps(class_probabilities):
 
     most_likely_ts = np.argmax(class_probabilities[:, -1, :, :], axis=0)  # Bin of most probable outcome
     prev_most_likely = np.argmax(class_probabilities[:, 0, :, :], axis=0)  # Bin of most probable outcome
@@ -648,11 +673,15 @@ def plot_most_likely_transition_maps():
     plt.title('From Interior to...')
 
 
-def plot_class_maps(it):
+def plot_class_maps(class_probabilities, class_labels, it):
     """Plots probability of occurance across the domain for each class at a particular timestep.
 
     Parameters
     ----------
+    class_probabilities : ndarray
+        Probabilities of each class over space and time.
+    class_labels : list
+        List of class names.
     it : int
         Iteration to draw probabilities from.
     """
@@ -682,7 +711,7 @@ def plot_class_maps(it):
     plt.tight_layout()
 
 
-def ani_frame_bins(timestep):
+def ani_frame_bins(timestep, class_probabilities, cax1, cax2, cax3, cax4, cax5, text1, text2, text3, text4, text5):
 
     prob1 = class_probabilities[0, timestep, :, xmin: xmax]
     cax1.set_data(prob1)
@@ -708,7 +737,7 @@ def ani_frame_bins(timestep):
     return cax1, cax2, cax3, cax4, cax5, text1, text2, text3, text4, text5
 
 
-def ani_frame_most_probable_outcome(timestep):
+def ani_frame_most_probable_outcome(timestep, class_probabilities, cax1, cax2, text1):
 
     Max_idx = np.argmax(class_probabilities[:, timestep, :, xmin: xmax], axis=0)
     Conf = 1 - np.max(class_probabilities[:, timestep, :, xmin: xmax], axis=0)
@@ -718,6 +747,71 @@ def ani_frame_most_probable_outcome(timestep):
     text1.set_text(yrstr)
 
     return cax1, cax2, text1
+
+
+def bins_animation(class_probabilities, class_labels):
+    # Set animation base figure
+    Fig = plt.figure(figsize=(14, 7.5))
+    Fig.suptitle(name, fontsize=13)
+    ax1 = Fig.add_subplot(231)
+    cax1 = ax1.matshow(class_probabilities[0, 0, :, xmin: xmax], vmin=0, vmax=1)
+    plt.title(class_labels[0])
+    timestr = "Year " + str(0)
+    text1 = plt.text(2, longshore - 2, timestr, c='white')
+
+    ax2 = Fig.add_subplot(232)
+    cax2 = ax2.matshow(class_probabilities[1, 0, :, xmin: xmax], vmin=0, vmax=1)
+    plt.title(class_labels[1])
+    text2 = plt.text(2, longshore - 2, timestr, c='white')
+
+    ax3 = Fig.add_subplot(233)
+    cax3 = ax3.matshow(class_probabilities[2, 0, :, xmin: xmax], vmin=0, vmax=1)
+    plt.title(class_labels[2])
+    text3 = plt.text(2, longshore - 2, timestr, c='white')
+
+    ax4 = Fig.add_subplot(234)
+    cax4 = ax4.matshow(class_probabilities[3, 0, :, xmin: xmax], vmin=0, vmax=1)
+    plt.title(class_labels[3])
+    text4 = plt.text(2, longshore - 2, timestr, c='white')
+
+    ax5 = Fig.add_subplot(235)
+    cax5 = ax5.matshow(class_probabilities[4, 0, :, xmin: xmax], vmin=0, vmax=1)
+    plt.title(class_labels[4])
+    text5 = plt.text(2, longshore - 2, timestr, c='white')
+    # cbar = Fig.colorbar(cax5)
+    plt.tight_layout()
+
+    # Create and save animation
+    ani1 = animation.FuncAnimation(Fig, ani_frame_bins, frames=num_saves, fargs=(class_probabilities, cax1, cax2, cax3, cax4, cax5, text1, text2, text3, text4, text5,), interval=300, blit=True)
+    c = 1
+    while os.path.exists("Output/Animation/meeb_prob_bins_" + str(c) + ".gif"):
+        c += 1
+    ani1.save("Output/Animation/meeb_prob_bins_" + str(c) + ".gif", dpi=150, writer="imagemagick")
+
+
+def most_likely_animation(class_probabilities, class_cmap, num_classes, class_labels):
+
+    # Set animation base figure
+    Fig = plt.figure(figsize=(14, 7.5))
+    ax1 = Fig.add_subplot(111)
+    conf_cmap = colors.ListedColormap(['white'])
+    max_idx = np.argmax(class_probabilities[:, 0, :, xmin: xmax], axis=0)
+    conf = 1 - np.max(class_probabilities[:, 0, :, xmin: xmax], axis=0)
+    cax1 = ax1.matshow(max_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
+    cax2 = ax1.matshow(np.ones(conf.shape), cmap=conf_cmap, vmin=0, vmax=1, alpha=conf)
+    ticks = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
+    cbar = Fig.colorbar(cax1, ticks=ticks)
+    cbar.ax.set_yticklabels(class_labels)
+    plt.title(name)
+    timestr = "Year " + str(0)
+    text1 = plt.text(2, longshore - 2, timestr, c='white')
+
+    # Create and save animation
+    ani2 = animation.FuncAnimation(Fig, ani_frame_most_probable_outcome, frames=num_saves, fargs=(class_probabilities, cax1, cax2, text1), interval=300, blit=True)
+    c = 1
+    while os.path.exists("Output/Animation/meeb_most_likely_" + str(c) + ".gif"):
+        c += 1
+    ani2.save("Output/Animation/meeb_most_likely_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
 # __________________________________________________________________________________________________________________________________
@@ -739,15 +833,15 @@ RSLR_prob = [0.26, 0.55, 0.19]  # Probability of future RSLR bins (must sum to 1
 
 # _____________________
 # CLASSIFICATION SCHEME SPECIFICATIONS
-# classification_label = 'Elevation Change [m]'  # Axes labels on figures
-# class_edges = [-np.inf, -0.5, -0.1, 0.1, 0.5, np.inf]  # [m] Elevation change
-# class_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
-# class_cmap = colors.ListedColormap(['red', 'gold', 'black', 'aquamarine', 'mediumblue'])
+elev_classification_label = 'Elevation Change [m]'  # Axes labels on figures
+elev_class_edges = [-np.inf, -0.5, -0.1, 0.1, 0.5, np.inf]  # [m] Elevation change
+elev_class_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
+elev_class_cmap = colors.ListedColormap(['red', 'gold', 'black', 'aquamarine', 'mediumblue'])
 
-classification_label = 'Ecogeomorphic State'  # Axes labels on figures
-class_edges = [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5]  # [m] Elevation change
-class_labels = ['Subaqueous', 'Beach', 'Dune', 'Washover', 'Interior']
-class_cmap = colors.ListedColormap(['blue', 'gold', 'saddlebrown', 'red', 'green'])
+state_classification_label = 'Ecogeomorphic State'  # Axes labels on figures
+state_class_edges = [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5]  # [m] State change
+state_class_labels = ['Subaqueous', 'Beach', 'Dune', 'Washover', 'Interior']
+state_class_cmap = colors.ListedColormap(['blue', 'gold', 'saddlebrown', 'red', 'green'])
 
 # _____________________
 # INITIAL PARAMETERS
@@ -759,13 +853,13 @@ duplicates = 24  # To account for internal stochasticity (e.g., storms, aeolian)
 core_num = min(duplicates, 12)  # Number of cores to use in the parallelization (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
-ymin = 21000  # [m] Alongshore coordinate
-ymax = 21500  # [m] Alongshore coordinate
+ymin = 19000  # [m] Alongshore coordinate
+ymax = 19500  # [m] Alongshore coordinate
 xmin = 900  # [m] Cross-shore coordinate (for plotting)
 xmax = xmin + 600  # [m] Cross-shore coordinate (for plotting)
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 
-name = '21000-21 500, 24 duplicates, 2018-2050, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19)'  # Name of simulation suite
+name = '19000-19500, 24 duplicates, 2018-2050, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), 16Feb24'  # Name of simulation suite
 
 # 21000
 
@@ -779,7 +873,8 @@ topo_start = Init[0, ymin: ymax, :]
 
 longshore, crossshore = topo_start.shape
 
-num_classes = len(class_edges) - 1
+elev_num_classes = len(elev_class_edges) - 1
+state_num_classes = len(state_class_edges) - 1
 num_saves = int(np.floor(sim_duration/save_frequency)) + 1
 
 
@@ -793,7 +888,7 @@ print()
 start_time = time.time()  # Record time at start of simulation
 
 # Determine classification probabilities cross space and time for joint intrinsic-external stochastic elements
-class_probabilities = joint_probability()
+elev_class_probabilities, state_class_probabilities = joint_probability()
 
 # Print elapsed time of simulation
 print()
@@ -805,77 +900,15 @@ print("Elapsed Time: ", SimDuration, "sec")
 # __________________________________________________________________________________________________________________________________
 # PLOT RESULTS
 
-plot_class_maps(it=-1)
-plot_most_probable_class(it=-1)
-plot_class_area_change_over_time()
-plot_most_likely_transitions_beginning_to_end()
-plot_most_likely_transition_maps()
-
-# -----------------
-# Animation 1
-
-# Set animation base figure
-Fig = plt.figure(figsize=(14, 7.5))
-Fig.suptitle(name, fontsize=13)
-ax1 = Fig.add_subplot(231)
-cax1 = ax1.matshow(class_probabilities[0, 0, :, xmin: xmax], vmin=0, vmax=1)
-plt.title(class_labels[0])
-timestr = "Year " + str(0)
-text1 = plt.text(2, longshore - 2, timestr, c='white')
-
-ax2 = Fig.add_subplot(232)
-cax2 = ax2.matshow(class_probabilities[1, 0, :, xmin: xmax], vmin=0, vmax=1)
-plt.title(class_labels[1])
-text2 = plt.text(2, longshore - 2, timestr, c='white')
-
-ax3 = Fig.add_subplot(233)
-cax3 = ax3.matshow(class_probabilities[2, 0, :, xmin: xmax], vmin=0, vmax=1)
-plt.title(class_labels[2])
-text3 = plt.text(2, longshore - 2, timestr, c='white')
-
-ax4 = Fig.add_subplot(234)
-cax4 = ax4.matshow(class_probabilities[3, 0, :, xmin: xmax], vmin=0, vmax=1)
-plt.title(class_labels[3])
-text4 = plt.text(2, longshore - 2, timestr, c='white')
-
-ax5 = Fig.add_subplot(235)
-cax5 = ax5.matshow(class_probabilities[4, 0, :, xmin: xmax], vmin=0, vmax=1)
-plt.title(class_labels[4])
-text5 = plt.text(2, longshore - 2, timestr, c='white')
-# cbar = Fig.colorbar(cax5)
-plt.tight_layout()
-
-# Create and save animation
-ani1 = animation.FuncAnimation(Fig, ani_frame_bins, frames=num_saves, interval=300, blit=True)
-c = 1
-while os.path.exists("Output/Animation/meeb_prob_bins_" + str(c) + ".gif"):
-    c += 1
-ani1.save("Output/Animation/meeb_prob_bins_" + str(c) + ".gif", dpi=150, writer="imagemagick")
-
-
-# -----------------
-# Animation 2
-
-# Set animation base figure
-Fig = plt.figure(figsize=(14, 7.5))
-ax1 = Fig.add_subplot(111)
-conf_cmap = colors.ListedColormap(['white'])
-max_idx = np.argmax(class_probabilities[:, 0, :, xmin: xmax], axis=0)
-conf = 1 - np.max(class_probabilities[:, 0, :, xmin: xmax], axis=0)
-cax1 = ax1.matshow(max_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
-cax2 = ax1.matshow(np.ones(conf.shape), cmap=conf_cmap, vmin=0, vmax=1, alpha=conf)
-ticks = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
-cbar = Fig.colorbar(cax1, ticks=ticks)
-cbar.ax.set_yticklabels(class_labels)
-plt.title(name)
-timestr = "Year " + str(0)
-text1 = plt.text(2, longshore - 2, timestr, c='white')
-
-# Create and save animation
-ani2 = animation.FuncAnimation(Fig, ani_frame_most_probable_outcome, frames=num_saves, interval=300, blit=True)
-c = 1
-while os.path.exists("Output/Animation/meeb_most_likely_" + str(c) + ".gif"):
-    c += 1
-ani2.save("Output/Animation/meeb_most_likely_" + str(c) + ".gif", dpi=150, writer="imagemagick")
-
+plot_class_maps(elev_class_probabilities, elev_class_labels, it=-1)
+plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
+plot_most_probable_class(elev_class_probabilities, elev_class_cmap, elev_num_classes, elev_class_labels, it=-1)
+plot_most_probable_class(state_class_probabilities, state_class_cmap, state_num_classes, state_class_labels, it=-1)
+plot_class_area_change_over_time(state_class_probabilities, state_num_classes)
+plot_most_likely_transitions_beginning_to_end(state_class_probabilities)
+plot_most_likely_transition_maps(state_class_probabilities)
+bins_animation(elev_class_probabilities, elev_class_labels)
+bins_animation(state_class_probabilities, state_class_labels)
+most_likely_animation(elev_class_probabilities, elev_class_cmap, elev_num_classes, elev_class_labels)
+most_likely_animation(state_class_probabilities, state_class_cmap, state_num_classes, state_class_labels)
 plt.show()
