@@ -719,9 +719,23 @@ def backbarrier_shoreline(topof, MHW):
         Cross-shore location of the back-barrier shoreline for each row alongshore.
     """
 
-    BBshoreline = topof.shape[1] - np.argmax(np.flip(topof) >= MHW, axis=1) - 1
+    BBshoreline = topof.shape[1] - np.argmax(np.fliplr(topof) >= MHW, axis=1) - 1
 
     return BBshoreline
+
+
+@njit
+def maintain_equilibrium_backbarrier_depth(topo, eq_depth, MHW):
+    """Adjusts all back-barrier bay cells below equilubrium depth to equilibrium depth and returns updated elevation domain."""
+
+    # Back-barrier shoreline
+    bb_shoreline = backbarrier_shoreline(topo, MHW)
+
+    # Adjust all bay cells at or below eq depth to eq depth
+    for y in range(topo.shape[0]):
+        topo[y, bb_shoreline[y]:][topo[y, bb_shoreline[y]:] < MHW - eq_depth] = MHW - eq_depth
+
+    return topo
 
 
 def foredune_crest(topo, MHW):

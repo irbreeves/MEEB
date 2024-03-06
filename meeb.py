@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 17 February 2024
+Last update: 5 March 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -50,33 +50,34 @@ class MEEB:
 
             # AEOLIAN
             slabheight=0.02,  # Height of slabs for aeolian transport, proportion of cell dimension (0.02, Teixeira et al. 2023)
+            jumplength=5,  # [cell lengths] Hop length for slabs (5, Teixeira et al. 2023)
             groundwater_depth=0.4,  # Proportion of the smoothed topography used to set groundwater profile
-            wind_rose=(0.7, 0.1, 0.1, 0.1),  # Proportion of wind TOWARDS (right, down, left, up)
-            p_dep_sand=0.33,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
-            p_dep_sand_VegMax=0.56,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover. Must be greater than or equal to p_dep_sand/p_dep_base.
+            wind_rose=(0.83, 0.02, 0.12, 0.03),  # Proportion of wind TOWARDS (right, down, left, up)
+            p_dep_sand=0.36,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
+            p_dep_sand_VegMax=0.60,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover. Must be greater than or equal to p_dep_sand/p_dep_base.
             p_dep_base=0.1,  # [0-1] Probability of deposition of base cells
-            p_ero_sand=0.17,  # [0-1] Probability of erosion of bare/sandy cells
-            entrainment_veg_limit=0.1,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible.
-            saltation_veg_limit=0.3,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
-            shadowangle=9,  # [deg]
+            p_ero_sand=0.13,  # [0-1] Probability of erosion of bare/sandy cells
+            entrainment_veg_limit=0.37,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible.
+            saltation_veg_limit=0.37,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
+            shadowangle=5,  # [deg]
             repose_bare=20,  # [deg]
             repose_veg=30,  # [deg]
-            repose_threshold=0.3,  # [0-1] Vegetation threshold for applying repose_veg
-            jumplength=5,  # [cell lengths] Hop length for slabs (5, Teixeira et al. 2023)
+            repose_threshold=0.37,  # [0-1] Vegetation threshold for applying repose_veg
+            eq_backbarrier_depth=1.5,  # [m] Equilibrium depth of back-barrier bay/lagoon
 
             # SHOREFACE, BEACH, & SHORELINE
-            beach_equilibrium_slope=0.03,  # Equilibrium slope of the beach
+            beach_equilibrium_slope=0.027,  # Equilibrium slope of the beach
             swash_transport_coefficient=0.001,  # Non-dimensional swash transport coefficient (Larson, Kubota, et al., 2004) expected to depend on several factors (particularly grain size); typically 0.001 - 0.003 and can be calibrated
             beach_substeps=20,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
             shoreface_flux_rate=5000,  # [m3/m/yr] Shoreface flux rate coefficient
             shoreface_equilibrium_slope=0.02,  # Equilibrium slope of the shoreface
             shoreface_depth=10,  # [m] Depth to shoreface toe (i.e. depth of ‘closure’)
             shoreface_length_init=500,  # [m] Initial length of shoreface
-            wave_asymetry=0.5,  # [0-1] Fraction of waves approaching from the left (when looking offshore)
-            wave_high_angle_fraction=0,  # Fraction of waves approaching at angles higher than 45 degrees from shore normal
-            mean_wave_height=1.0,  # [m] Mean offshore significant wave height
-            mean_wave_period=10,  # [s] Mean wave period
-            wave_period_storm=10,  # [s] Representative wave period for storm conditions
+            wave_asymetry=0.6,  # [0-1] Fraction of waves approaching from the left (when looking offshore)
+            wave_high_angle_fraction=0.39,  # Fraction of waves approaching at angles higher than 45 degrees from shore normal
+            mean_wave_height=0.98,  # [m] Mean offshore significant wave height
+            mean_wave_period=6.6,  # [s] Mean wave period
+            wave_period_storm=9.4,  # [s] Representative wave period for storm conditions
             alongshore_section_length=25,  # [m] Distance alongshore between shoreline positions used in the shoreline diffusion calculations
             average_dune_toe_height=1.39,  # [m] Time- and space-averaged dune toe height above MHW
             estimate_shoreface_parameters=True,  # [bool] Turn on to estimate shoreface parameters as function of specific wave and sediment characteristics
@@ -87,7 +88,7 @@ class MEEB:
 
             # VEGETATION
             sp1_a=-1.5,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
-            sp1_b=0.01,  # Vertice b, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_b=-0.05,  # Vertice b, spec1. vegetation growth based on Nield and Baas (2008)
             sp1_c=0.5,  # Vertice c, spec1. vegetation growth based on Nield and Baas (2008)
             sp1_d=1.5,  # Vertice d, spec1. vegetation growth based on Nield and Baas (2008)
             sp1_e=2.2,  # Vertice e, spec1. vegetation growth based on Nield and Baas (2008)
@@ -115,20 +116,20 @@ class MEEB:
             storm_timeseries_filename="StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
             threshold_in=0.25,  # [%] Threshold percentage of overtopped dune cells exceeded by Rlow needed to be in inundation overwash regime
             Rin_in=5,  # [m^3/hr] Flow infiltration and drag parameter, inundation overwash regime
-            Rin_ru=165,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
-            Cx=45,  # Constant for representing flow momentum for sediment transport in overwash
+            Rin_ru=213,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
+            Cx=36,  # Constant for representing flow momentum for sediment transport in overwash
             nn=0.5,  # Flow routing constant
-            MaxUpSlope=1.25,  # Maximum slope water can flow uphill
+            MaxUpSlope=1.57,  # Maximum slope water can flow uphill
             fluxLimit=1,  # [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
             Qs_min=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
-            K_ru=4.7e-05,  # Sediment transport coefficient for run-up overwash regime
+            K_ru=5.01e-05,  # Sediment transport coefficient for run-up overwash regime
             K_in=5e-04,  # Sediment transport coefficient for inundation overwash regime
-            mm=1.0,  # Inundation overwash constant
+            mm=1.02,  # Inundation overwash constant
             Cbb_in=0.85,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, inundation regime
             Cbb_ru=0.7,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
             Qs_bb_min=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
             substep_in=5,  # Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
-            substep_ru=5,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+            substep_ru=4,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
 
     ):
         """MEEB: Mesoscale Explicit Ecogeomorphic Barrier model.
@@ -199,6 +200,7 @@ class MEEB:
         self._wave_period_storm = wave_period_storm
         self._alongshore_section_length = alongshore_section_length
         self._average_dune_toe_height = average_dune_toe_height
+        self._eq_backbarrier_depth = eq_backbarrier_depth
         self._sp1_a = sp1_a
         self._sp1_b = sp1_b
         self._sp1_c = sp1_c
@@ -245,8 +247,10 @@ class MEEB:
         # SEEDED RANDOM NUMBER GENERATOR
         if seeded_random_numbers:
             self._RNG = np.random.default_rng(seed=13)  # Seeded random numbers for reproducibility (e.g., model development/testing)
+            self._RNG_storm = np.random.default_rng(seed=14)  # Separate seeded RNG for storms so that the storm sequence can always stay the same despite any parameterization changes
         else:
             self._RNG = np.random.default_rng()  # Non-seeded random numbers (e.g., model simulations)
+            self._RNG_storm = np.random.default_rng()
 
         # TIME
         self._iterations_per_cycle = self._aeolian_iterations_per_year  # [iterations/year] Number of iterations in 1 model year
@@ -325,7 +329,7 @@ class MEEB:
         self._vegcount = 0
         self._shoreline_change_aggregate = np.zeros([self._longshore])
         self._OWflux = np.zeros([self._longshore])  # [m^3]
-        self._StormRecord = np.empty([5])  # Record of each storm that occurs in model: Year, iteration, Rhigh, Rlow, duration
+        self._StormRecord = np.zeros([5])  # Record of each storm that occurs in model: Year, iteration, Rhigh, Rlow, duration
 
         # __________________________________________________________________________________________________________________________________
         # MODEL OUPUT CONFIGURATION
@@ -384,7 +388,7 @@ class MEEB:
         self._topo += aeolian_elevation_change * self._slabheight  # [m NAVD88] Changes applied to the topography; convert aeolian_elevation_change from slabs to meters
         self._topo, aval = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._RNG)  # Enforce angles of repose: avalanching
         self._sedimentation_balance = self._sedimentation_balance + (self._topo - topo_iteration_start)  # [m] Update the sedimentation balance map
-        balance_init = self._sedimentation_balance + (self._topo - topo_iteration_start)
+        balance_init = self._sedimentation_balance.copy()
         self._topographic_change = self._topographic_change + abs(self._topo - topo_iteration_start)  # [m]
         stability_init = self._topographic_change + abs(self._topo - topo_iteration_start)
 
@@ -402,7 +406,7 @@ class MEEB:
             if self._hindcast:  # Empirical storm time series
                 storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._MHW, self._simulation_start_iteration)  # [m NAVD88]
             else:  # Stochastic storm model
-                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, beach_slopes, self._longshore, self._MHW, self._RNG)  # [m initial MSL]
+                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, beach_slopes, self._longshore, self._MHW, self._RNG_storm)  # [m initial MSL]
                 # Account for change in mean sea-level on synthetic storm elevations by adding aggregate RSLR since simulation start (i.e., convert from initial MSL to m NAVD88)
                 Rhigh += (self._MHW - self._MHW_init)  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
                 Rlow += (self._MHW - self._MHW_init)  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
@@ -516,6 +520,9 @@ class MEEB:
             # Store shoreline and shoreface toe locations
             self._x_s_TS = np.vstack((self._x_s_TS, self._x_s))  # Store
             self._x_t_TS = np.vstack((self._x_t_TS, self._x_t))  # Store
+
+            # Maintain equilibrium back-barrier depth
+            self._topo = routine.maintain_equilibrium_backbarrier_depth(self._topo, self._eq_backbarrier_depth, self._MHW)
 
         # --------------------------------------
         # VEGETATION
