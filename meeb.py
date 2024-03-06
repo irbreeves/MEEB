@@ -62,7 +62,7 @@ class MEEB:
             shadowangle=5,  # [deg]
             repose_bare=20,  # [deg]
             repose_veg=30,  # [deg]
-            repose_threshold=0.37,  # [0-1] Vegetation threshold for applying repose_veg
+            repose_threshold=0.3,  # [0-1] Vegetation threshold for applying repose_veg
             eq_backbarrier_depth=1.5,  # [m] Equilibrium depth of back-barrier bay/lagoon
 
             # SHOREFACE, BEACH, & SHORELINE
@@ -373,9 +373,7 @@ class MEEB:
         self._topo += aeolian_elevation_change * self._slabheight  # [m NAVD88] Changes applied to the topography; convert aeolian_elevation_change from slabs to meters
         self._topo, aval = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._RNG)  # Enforce angles of repose: avalanching
         self._sedimentation_balance = self._sedimentation_balance + (self._topo - topo_iteration_start)  # [m] Update the sedimentation balance map
-        balance_init = self._sedimentation_balance.copy()
         self._topographic_change = self._topographic_change + abs(self._topo - topo_iteration_start)  # [m]
-        stability_init = self._topographic_change + abs(self._topo - topo_iteration_start)
 
         # --------------------------------------
         # STORMS
