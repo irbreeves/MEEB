@@ -114,22 +114,17 @@ class MEEB:
             # STORM OVERWASH AND DUNE EROSION
             storm_list_filename="SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy",
             storm_timeseries_filename="StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
-            threshold_in=0.25,  # [%] Threshold percentage of overtopped dune cells exceeded by Rlow needed to be in inundation overwash regime
-            Rin_in=5,  # [m^3/hr] Flow infiltration and drag parameter, inundation overwash regime
-            Rin_ru=213,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
+            Rin=213,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
             Cx=36,  # Constant for representing flow momentum for sediment transport in overwash
             nn=0.5,  # Flow routing constant
             MaxUpSlope=1.57,  # Maximum slope water can flow uphill
-            fluxLimit=1,  # [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
-            Qs_min=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
-            K_ru=5.01e-05,  # Sediment transport coefficient for run-up overwash regime
-            K_in=5e-04,  # Sediment transport coefficient for inundation overwash regime
+            overwash_flux_limit=1,  # [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
+            overwash_min_discharge=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
+            Kow=5.01e-05,  # Sediment transport coefficient for run-up overwash regime
             mm=1.02,  # Inundation overwash constant
-            Cbb_in=0.85,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, inundation regime
-            Cbb_ru=0.7,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
-            Qs_bb_min=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
-            substep_in=5,  # Number of substeps to run for each hour in inundation overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
-            substep_ru=4,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+            Cbb=0.7,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
+            overwash_min_subaqueous_discharge=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
+            overwash_substeps=4,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
 
     ):
         """MEEB: Mesoscale Explicit Ecogeomorphic Barrier model.
@@ -224,22 +219,17 @@ class MEEB:
         self._flow_reduction_max_spec1 = flow_reduction_max_spec1
         self._flow_reduction_max_spec2 = flow_reduction_max_spec2
         self._effective_veg_sigma = effective_veg_sigma
-        self._threshold_in = threshold_in
-        self._Rin_in = Rin_in
-        self._Rin_ru = Rin_ru
+        self._Rin = Rin
         self._Cx = Cx
         self._nn = nn
         self._MaxUpSlope = MaxUpSlope
-        self._fluxLimit = fluxLimit
-        self._Qs_min = Qs_min
-        self._K_ru = K_ru
-        self._K_in = K_in
+        self._overwash_flux_limit = overwash_flux_limit
+        self._overwash_min_discharge = overwash_min_discharge
+        self._Kow = Kow
         self._mm = mm
-        self._Cbb_in = Cbb_in
-        self._Cbb_ru = Cbb_ru
-        self._Qs_bb_min = Qs_bb_min
-        self._substep_in = substep_in
-        self._substep_ru = substep_ru
+        self._Cbb = Cbb
+        self._overwash_min_subaqueous_discharge = overwash_min_subaqueous_discharge
+        self._overwash_substeps = overwash_substeps
 
         # __________________________________________________________________________________________________________________________________
         # SET INITIAL CONDITIONS
@@ -344,11 +334,6 @@ class MEEB:
         self._veg_TS[:, :, 0] = self._veg
         self._erosmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all erosion probability maps
         self._deposmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all deposition probability maps
-        self._sedimentation_balance_sumA = np.zeros([self._longshore, self._crossshore])  # Sum of all balancea maps
-        self._sedimentation_balance_sumB = np.zeros([self._longshore, self._crossshore])  # Sum of all balanceb maps
-        self._topographic_change_sumA = np.zeros([self._longshore, self._crossshore])  # Sum of all stabilitya maps over the simulation period
-        self._topographic_change_sumB = np.zeros([self._longshore, self._crossshore])  # Sum of all stabilityb maps over the simulation period
-        self._avalanched_cells = np.zeros([self._iterations])  # Initialize; number of avalanched cells for each iteration
 
     # __________________________________________________________________________________________________________________________________
     # MAIN ITERATION LOOP
@@ -415,29 +400,24 @@ class MEEB:
 
                 # Storm Processes: Beach/duneface change, overwash
                 self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, np.max(Rhigh), np.max(Rlow), dur]))
-                self._topo, topo_change, self._OWflux, netDischarge, inundated, Qbe = routine.storm_processes_2(
+                self._topo, topo_change, self._OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
                     topof=self._topo,
                     Rhigh=Rhigh,
                     Rlow=Rlow,
                     dur=dur,
-                    threshold_in=self._threshold_in,
-                    Rin_i=self._Rin_in,
-                    Rin_r=self._Rin_ru,
+                    Rin=self._Rin,
                     Cx=self._Cx,
                     AvgSlope=2 / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
                     nn=self._nn,
                     MaxUpSlope=self._MaxUpSlope,
-                    fluxLimit=self._fluxLimit,
-                    Qs_min=self._Qs_min,
-                    Kr=self._K_ru,
-                    Ki=self._K_in,
+                    fluxLimit=self._overwash_flux_limit,
+                    Qs_min=self._overwash_min_discharge,
+                    Kow=self._Kow,
                     mm=self._mm,
                     MHW=self._MHW,
-                    Cbb_i=self._Cbb_in,
-                    Cbb_r=self._Cbb_ru,
-                    Qs_bb_min=self._Qs_bb_min,
-                    substep_i=self._substep_in,
-                    substep_r=self._substep_ru,
+                    Cbb=self._Cbb,
+                    Qs_bb_min=self._overwash_min_subaqueous_discharge,
+                    substep=self._overwash_substeps,
                     beach_equilibrium_slope=self._beach_equilibrium_slope,
                     swash_transport_coefficient=self._swash_transport_coefficient,
                     wave_period_storm=self._wave_period_storm,
@@ -485,24 +465,14 @@ class MEEB:
                 self._storm_iterations_per_year,
             )
 
-            # Update Shoreline Position from Alongshore Sediment Transport (i.e., alongshore wave diffusion)
-            # self._x_s = routine.shoreline_change_from_AST(self._x_s,
-            #                                               self._wave_asymetry,
-            #                                               self._wave_high_angle_fraction,  # Note: High-angle waves seem to create problems if the alongshore domain length is very small (< 200m or so)
-            #                                               self._mean_wave_height,
-            #                                               self._mean_wave_period,
-            #                                               self._alongshore_section_length,
-            #                                               self._storm_update_frequency / self._iterations_per_cycle
-            #                                               )
-
-            self._x_s = routine.shoreline_change_from_AST_2(self._x_s,
-                                                            self._coast_diffusivity,
-                                                            self._di,
-                                                            self._dj,
-                                                            self._alongshore_section_length,
-                                                            self._storm_update_frequency / self._iterations_per_cycle,
-                                                            self._ny,
-                                                            )
+            self._x_s = routine.shoreline_change_from_AST(self._x_s,
+                                                          self._coast_diffusivity,
+                                                          self._di,
+                                                          self._dj,
+                                                          self._alongshore_section_length,
+                                                          self._storm_update_frequency / self._iterations_per_cycle,
+                                                          self._ny,
+                                                          )
 
             prev_shoreline = self._x_s_TS[-1]  # Shoreline positions from previous time step
 
@@ -596,11 +566,6 @@ class MEEB:
 
         self._erosmap_sum = self._erosmap_sum + aeolian_erosion_prob
         self._deposmap_sum = self._deposmap_sum + aeolian_deposition_prob
-        self._sedimentation_balance_sumA = self._sedimentation_balance_sumA + balance_init
-        self._sedimentation_balance_sumB = self._sedimentation_balance_sumB + self._sedimentation_balance
-        self._topographic_change_sumA = self._topographic_change_sumA + stability_init
-        self._topographic_change_sumB = self._topographic_change_sumB + self._topographic_change
-        self._avalanched_cells[it] = aval
 
         # --------------------------------------
         # RESET DOMAINS

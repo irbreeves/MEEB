@@ -98,12 +98,12 @@ def veg_fitness(solution):
         wind_rose=(0.81, 0.06, 0.11, 0.02),  # (right, down, left, up)
         groundwater_depth=0.4,
         # --- Storms --- #
-        Rin_ru=138,
+        Rin=138,
         Cx=68,
         MaxUpSlope=1,
-        K_ru=0.0000227,
+        Kow=0.0000227,
         mm=1.04,
-        substep_ru=4,
+        overwash_substeps=4,
         beach_equilibrium_slope=0.024,
         swash_transport_coefficient=0.00083,
         wave_period_storm=9.4,
@@ -130,8 +130,8 @@ def veg_fitness(solution):
         sp2_e=2.1,
         sp1_peak=solution[6],
         sp2_peak=solution[7],
-        lateral_probability=solution[8],
-        pioneer_probability=solution[9],
+        sp1_lateral_probability=solution[8],
+        sp1_pioneer_probability=solution[9],
     )
 
     # Loop through time

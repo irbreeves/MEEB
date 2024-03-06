@@ -70,36 +70,31 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
     """Run a storm with this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
     # Find Dune Crest, Shoreline Positions
-    dune_crest = routine.foredune_crest(topo_start_obs, MHW)
+    dune_crest, not_gap = routine.foredune_crest(topo_start_obs, MHW)
     x_s = routine.ocean_shoreline(topo_start_obs, MHW)
 
     # Run Model
     topo_start_copy = copy.deepcopy(topo_start_obs)
     veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
 
-    sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes_2(
+    sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
         topo_start_copy,
         Rhigh,
         Rlow,
         dur,
-        threshold_in=0.25,
-        Rin_i=5,
-        Rin_r=int(round(solution[0])),
+        Rin=int(round(solution[0])),
         Cx=int(round(solution[1])),
         AvgSlope=2 / 200,
         nn=0.5,
         MaxUpSlope=solution[6],
         fluxLimit=1,
         Qs_min=1,
-        Kr=solution[2],
-        Ki=5e-06,
+        Kow=solution[2],
         mm=round(solution[5], 2),
         MHW=MHW,
-        Cbb_i=0.85,
-        Cbb_r=0.7,
+        Cbb=0.7,
         Qs_bb_min=1,
-        substep_i=6,
-        substep_r=4,
+        substep=4,
         beach_equilibrium_slope=solution[3],
         swash_transport_coefficient=solution[4],
         wave_period_storm=9.4,
@@ -108,8 +103,8 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
         cellsize=1,
         spec1=spec1,
         spec2=spec2,
-        flow_reduction_max_spec1=0.2,  # Grass
-        flow_reduction_max_spec2=0.3,  # Shrub
+        flow_reduction_max_spec1=0.02,  # Grass
+        flow_reduction_max_spec2=0.05,  # Shrub
     )
 
     topo_end_sim = routine.enforceslopes(sim_topo_final, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, RNG=RNG)[0]
@@ -214,7 +209,7 @@ MHW = 0.39  # [m NAVD88]
 
 # Observed Overwash Mask
 Florence_Overwash_Mask = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")  # Load observed overwash mask
-name = 'Multi-Location Storm (Florence), NON-Weighted BSS PSO, Nswarm 18, Iterations 50, 24Jan24'
+name = 'Multi-Location Storm (Florence), NON-Weighted BSS PSO, Nswarm 18, Iterations 50, Smaller veg flow reduction and denser veg, 28Feb24'
 
 BestScore = -1e10
 BestScores = []
@@ -230,7 +225,7 @@ BestScores = []
 # storm_dur = [49, 83]
 
 storm_name = ['Florence']
-storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
+storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_Denser.npy"]
 storm_stop = ["Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"]
 storm_Rhigh = [3.32]
 storm_Rlow = [1.90]
