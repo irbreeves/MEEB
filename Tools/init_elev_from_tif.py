@@ -1,8 +1,8 @@
-""" This script converts a .tif elevation raster file to a numpy array initial elevation file suitable for
+""" Converts .tif elevation, vegetation type, and vegetation density raster files into a numpy array initial conditions file for
     use in MEEB (Mesoscale Explicit Ecogeomorphic Barrier model).
 
     IRB Reeves
-    Last update: 29 September 2023
+    Last update: 5 March 2024
 """
 
 import matplotlib.pyplot as plt
@@ -131,6 +131,7 @@ def logistic_curve(x, r, u, maximum):
 
 
 def densityVeg(veggie, den):
+    """Assigns initial veg density based on negligible, low, medium, and high classification, with random noise perturbations."""
 
     s1 = np.zeros(veggie.shape)  # Species 1 (grass)
     s2 = np.zeros(veggie.shape)  # Species 2 (shrub)
@@ -139,15 +140,25 @@ def densityVeg(veggie, den):
     s2[veggie == 2] = 1
 
     # Apply density
-    s1[den <= 0] *= 0.2
-    s1[den == 1] *= 0.4
-    s1[den == 2] *= 0.6
-    s1[den == 3] *= 0.8
+    s1[den <= 0] *= 0.4
+    s1[den == 1] *= 0.6
+    s1[den == 2] *= 0.8
+    s1[den == 3] *= 1.0
 
-    s2[den <= 0] *= 0.2
-    s2[den == 1] *= 0.4
-    s2[den == 2] *= 0.6
-    s2[den == 3] *= 0.8
+    s2[den <= 0] *= 0.4
+    s2[den == 1] *= 0.6
+    s2[den == 2] *= 0.8
+    s2[den == 3] *= 1.0
+
+    # Add +/- 10% density random noise to vegetated cells
+    randNoise = np.random.uniform(-0.1, 0.1, s1.shape) * (s1 > 0)
+    s1 += randNoise
+    s1[s1 > 1] = 1
+    s1[s1 < 0] = 0
+    randNoise = np.random.uniform(-0.1, 0.1, s2.shape) * (s2 > 0)
+    s2 += randNoise
+    s2[s2 > 1] = 1
+    s2[s2 < 0] = 0
 
     if Thin:
         randThin = np.random.rand(s1.shape[0], s1.shape[1])
@@ -161,10 +172,10 @@ def densityVeg(veggie, den):
 # SPECIFICATIONS
 
 # Elevation (NAVD88)
-tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/PostFlorence_20181007_USGS_FullNCB.tif"
+tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/NCFMP_PostSandy_20140406.tif"
 MHW = 0.39  # [m initial datum] Mean high water, for finding ocean shoreline
 BB_thresh = 0.08  # [m initial datum] Threshold elevation for finding back-barrier marsh shoreline
-BB_depth = 1.5  # [m] Back-barrier bay depth
+BB_depth = 1.5 - MHW  # [m MHW] Back-barrier bay depth
 BB_slope_length = 30  # [m] Length of slope from back-barrier shoreline into bay
 SF_slope = 0.0082  # Equilibrium shoreface slope
 buffer = 3000  #
@@ -180,15 +191,15 @@ bay = 0  # [m] Additional width of bay to add to domain
 
 # Vegetation
 Veggie = True  # [bool] Whether or not to load & convert a contemporaneous init veg raster
-VeggiePop = False  # [bool] Whether or not to use stoachstic population of vegetation for init veg raster
+VeggiePop = False  # [bool] Whether or not to use stoachstic population of vegetation or init veg density raster
 Thin = True  # [bool] Whether to artificiallly and randomly thin out vegetation cover
-veg_tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/VegCover_Plover_NAIP_2018.tif"
-vegden_tif_file = "/Volumes/IRBR256/USGS/NCB_Data/NCB_Full/VegDensity_Plover_NAIP_2018.tif"
+veg_tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/VegCover_Plover_NOAA_2014.tif"
+vegden_tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/Veg_20140421_NDVI_NOAA_PostSandy.tif"
 veg_min = 0.5  # [m] Minimum elevation for vegetation
 
 # Save
-save = False  # [bool] Whether or not to save finished arrays
-savename = "NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover"
+save = True  # [bool] Whether or not to save finished arrays
+savename = "NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover-5Mar24"
 
 
 # ================================================================================================================
