@@ -3,7 +3,7 @@ Script for testing MEEB hindcast simulations.
 
 Runs a hindcast simulation and calculates fitess scores for morphologic and ecologic change between simulated and observed.
 
-IRBR 8 February 2024
+IRBR 8 March 2024
 """
 
 import numpy as np
@@ -218,23 +218,26 @@ hindcast_duration = 3.44
 # _____________________
 # INPUT
 
-# Define Alongshore Coordinates of Domain
-xmin = 4000  # 22400 8400 4000 20500
-xmax = 4500  # 22900 8900 4500 21000
+# Define Coordinates of Domain
+ymin = 20500  # 22400 8400 4000 20500
+ymax = 21000  # 22900 8900 4500 21000
+xmin = 900
+xmax = xmin + 800
 
 # Define Cross-Shore Limits for Plotting
-ymin = 600
-ymax = ymin + 900
+plot_xmin = 0
+plot_xmax = plot_xmin + 900
 
 # Define Cross-Shore Limits for Skill Score Mask
-mask_ymin = 720  # 1070  # 930  # 720  # 1070
-mask_ymax = 790  # 1150  # 990  # 790  # 1120
+mask_xmin = 1070 - xmin  # 1070  # 930  # 720  # 1070
+mask_xmax = 1120 - xmin  # 1150  # 990  # 790  # 1120
 
+rslr = 0.004  # [m/yr]
 MHW = 0.39  # [m NAVD88]
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
 
-name = '4000-4500, 2014-2017, RSLR = 4'
+name = '20500-21000, 2014-2017'
 
 # _____________________
 # LOAD INITIAL DOMAINS
@@ -245,22 +248,22 @@ Init = np.load("Input/" + start)
 End = np.load("Input/" + stop)
 
 # Transform Initial Observed Topo
-topo_i = Init[0, xmin: xmax, :]  # [m]
+topo_i = Init[0, ymin: ymax, xmin: xmax]  # [m]
 topo_start = copy.deepcopy(topo_i)  # [m] Initialise the topography
 
 # Transform Final Observed Topo
-topo_e = End[0, xmin: xmax, :]  # [m]
+topo_e = End[0, ymin: ymax, xmin: xmax]  # [m]
 topo_end_obs = copy.deepcopy(topo_e)  # [m] Initialise the topography
 
 # Set Veg Domain
-spec1_i = Init[1, xmin: xmax, :]
-spec2_i = Init[2, xmin: xmax, :]
+spec1_i = Init[1, ymin: ymax, xmin: xmax]
+spec2_i = Init[2, ymin: ymax, xmin: xmax]
 veg_start = spec1_i + spec2_i  # Determine the initial cumulative vegetation effectiveness
 veg_start[veg_start > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or larger than one
 veg_start[veg_start < 0] = 0
 
-spec1_e = End[1, xmin: xmax, :]
-spec2_e = End[2, xmin: xmax, :]
+spec1_e = End[1, ymin: ymax, xmin: xmax]
+spec2_e = End[2, ymin: ymax, xmin: xmax]
 veg_end = spec1_e + spec2_e  # Determine the initial cumulative vegetation effectiveness
 veg_end[veg_end > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or larger than one
 veg_end[veg_end < 0] = 0
@@ -273,9 +276,11 @@ veg_end[veg_end < 0] = 0
 meeb = MEEB(
     name=name,
     simulation_time_yr=hindcast_duration,
-    alongshore_domain_boundary_min=xmin,
-    alongshore_domain_boundary_max=xmax,
-    RSLR=0.0004,
+    alongshore_domain_boundary_min=ymin,
+    alongshore_domain_boundary_max=ymax,
+    crossshore_domain_boundary_min=xmin,
+    crossshore_domain_boundary_max=xmax,
+    RSLR=rslr,
     MHW=MHW,
     init_filename=start,
     hindcast=True,
@@ -283,29 +288,29 @@ meeb = MEEB(
     simulation_start_date=startdate,
     storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
     # --- Aeolian --- #
-    p_dep_sand=0.42,  # Q = hs * L * n * pe/pd
-    p_dep_sand_VegMax=0.67,
-    p_ero_sand=0.15,
-    entrainment_veg_limit=0.07,
-    saltation_veg_limit=0.3,
+    p_dep_sand=0.36,  # Q = hs * L * n * pe/pd
+    p_dep_sand_VegMax=0.60,
+    p_ero_sand=0.13,
+    entrainment_veg_limit=0.37,
+    saltation_veg_limit=0.37,
     shadowangle=5,
     repose_bare=20,
     repose_veg=30,
-    wind_rose=(0.81, 0.06, 0.11, 0.02),  # (right, down, left, up)
+    wind_rose=(0.83, 0.02, 0.12, 0.03),  # (right, down, left, up)
     groundwater_depth=0.4,
     # --- Storms --- #
-    Rin_ru=138,
-    Cx=68,
-    MaxUpSlope=1,
-    K_ru=0.0000227,
-    mm=1.04,
-    substep_ru=4,
-    beach_equilibrium_slope=0.024,
-    swash_transport_coefficient=0.00083,
+    Rin=213,
+    Cx=36,
+    MaxUpSlope=1.57,
+    Kow=0.0000501,
+    mm=1.02,
+    overwash_substeps=4,
+    beach_equilibrium_slope=0.027,
+    swash_transport_coefficient=0.001,
     wave_period_storm=9.4,
     beach_substeps=20,
-    flow_reduction_max_spec1=0.2,
-    flow_reduction_max_spec2=0.3,
+    flow_reduction_max_spec1=0.02,
+    flow_reduction_max_spec2=0.05,
     # --- Shoreline --- #
     wave_asymetry=0.6,
     wave_high_angle_fraction=0.39,
@@ -314,6 +319,7 @@ meeb = MEEB(
     alongshore_section_length=25,
     estimate_shoreface_parameters=True,
     # --- Veg --- #
+    sp1_b=-0.05,
 )
 
 print(meeb.name)
@@ -351,16 +357,16 @@ veg_present_obs = veg_end > 0.05  # [bool]
 subaerial_mask = np.logical_and(topo_end_sim > mhw_end_sim, topo_end_obs > mhw_end_sim)  # [bool] Mask for every cell above water
 
 # Beach mask
-dune_crest = routine.foredune_crest(topo_start, mhw_end_sim)
+dune_crest, not_gap = routine.foredune_crest(topo_start, mhw_end_sim)
 beach_duneface_mask = np.zeros(topo_end_sim.shape)
 for l in range(topo_start.shape[0]):
     beach_duneface_mask[l, :dune_crest[l]] = True
 beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
 
 # Dune crest locations and heights
-crest_loc_obs_start = routine.foredune_crest(topo_start, mhw_end_sim)
-crest_loc_obs = routine.foredune_crest(topo_end_obs, mhw_end_sim)
-crest_loc_sim = routine.foredune_crest(topo_end_sim, mhw_end_sim)
+crest_loc_obs_start, not_gap_obs_start = routine.foredune_crest(topo_start, mhw_end_sim)
+crest_loc_obs, not_gap_obs = routine.foredune_crest(topo_end_obs, mhw_end_sim)
+crest_loc_sim, not_gap_sim = routine.foredune_crest(topo_end_sim, mhw_end_sim)
 crest_loc_change_obs = crest_loc_obs - crest_loc_obs_start
 crest_loc_change_sim = crest_loc_sim - crest_loc_obs_start
 
@@ -373,13 +379,14 @@ crest_height_change_sim = crest_height_sim - crest_height_obs_start
 # Limit interior in analysis by elevation
 elev_mask = topo_end_sim > 2.0  # [bool] Mask for every cell above water
 
-# Choose masks
-mask = subaerial_mask.copy()
-veg_mask = mask.copy()
+# Limit interior in analysis to dunefield (pre-defined cross-shore range)
+dunefield_mask = subaerial_mask.copy()
+dunefield_mask[:, :mask_xmin] = False
+dunefield_mask[:, mask_xmax:] = False
 
-# Temp limit interior in analysis to dunes
-mask[:, :mask_ymin] = False
-mask[:, mask_ymax:] = False
+# Choose masks
+mask = dunefield_mask.copy()
+veg_mask = mask.copy()
 
 # Optional: Reduce Resolutions
 if ResReduc:
@@ -423,13 +430,48 @@ print(tabulate({
 # PLOT RESULTS
 
 # -----------------
+# Prepare For Plotting
+
+if ResReduc:
+    # Reduced Resolutions
+    ymin_reduc = int(plot_xmin / reduc)
+    ymax_reduc = int(plot_xmax / reduc)
+    tco = topo_change_obs[:, ymin_reduc: ymax_reduc] * subaerial_mask[:, ymin_reduc: ymax_reduc]
+    tcs = topo_change_sim[:, ymin_reduc: ymax_reduc] * subaerial_mask[:, ymin_reduc: ymax_reduc]
+    to = topo_end_obs[:, plot_xmin: plot_xmax]
+    ts = topo_end_sim[:, plot_xmin: plot_xmax]
+    vco = veg_change_obs[:, ymin_reduc: ymax_reduc] * subaerial_mask[:, ymin_reduc: ymax_reduc]
+    vcs = veg_change_sim[:, ymin_reduc: ymax_reduc] * subaerial_mask[:, ymin_reduc: ymax_reduc]
+    vo = veg_end[:, plot_xmin: plot_xmax]
+    vs = veg_end_sim[:, plot_xmin: plot_xmax]
+    cat_vc = cat_vc[:, ymin_reduc: ymax_reduc]
+    cat_vp = cat_vp[:, ymin_reduc: ymax_reduc]
+else:
+    tco = topo_change_obs[:, plot_xmin: plot_xmax] * subaerial_mask[:, plot_xmin: plot_xmax]
+    tcs = topo_change_sim[:, plot_xmin: plot_xmax] * subaerial_mask[:, plot_xmin: plot_xmax]
+    to = topo_end_obs[:, plot_xmin: plot_xmax] * subaerial_mask[:, plot_xmin: plot_xmax]
+    ts = topo_end_sim[:, plot_xmin: plot_xmax] * subaerial_mask[:, plot_xmin: plot_xmax]
+    vco = veg_change_obs[:, plot_xmin: plot_xmax] * subaerial_mask[:, plot_xmin: plot_xmax]
+    vcs = veg_change_sim[:, plot_xmin: plot_xmax] * subaerial_mask[:, plot_xmin: plot_xmax]
+    vo = veg_end[:, plot_xmin: plot_xmax] * subaerial_mask[:, plot_xmin: plot_xmax]
+    vs = veg_end_sim[:, plot_xmin: plot_xmax] * subaerial_mask[:, plot_xmin: plot_xmax]
+    cat_vc = cat_vc[:, plot_xmin: plot_xmax]
+    cat_vp = cat_vp[:, plot_xmin: plot_xmax]
+
+# Set topo change colormap limits
+max_change_obs = max(abs(np.min(tco)), abs(np.max(tco)))  # [m]
+max_change_sim = max(abs(np.min(tcs)), abs(np.max(tcs)))  # [m]
+cmap_lim = 1.5  # max(max_change_obs, max_change_sim)
+
+# Set topo colormap
 cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 
+# -----------------
 # Final Elevation & Vegetation
 Fig = plt.figure(figsize=(14, 7.5))
 Fig.suptitle(meeb.name, fontsize=13)
-topo = meeb.topo[:, ymin: ymax]
+topo = meeb.topo[:, plot_xmin: plot_xmax]
 topo = np.ma.masked_where(topo <= mhw_end_sim, topo)  # Mask cells below MHW
 if topo.shape[0] > topo.shape[1]:
     ax1 = Fig.add_subplot(121)
@@ -440,7 +482,7 @@ else:
 cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=6.0)
 cbar = Fig.colorbar(cax1)
 cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
-veg = meeb.veg[:, ymin: ymax]
+veg = meeb.veg[:, plot_xmin: plot_xmax]
 veg = np.ma.masked_where(topo <= mhw_end_sim, veg)  # Mask cells below MHW
 cmap2 = copy.copy(plt.colormaps["YlGn"])
 cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
@@ -448,38 +490,6 @@ cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
 cbar = Fig.colorbar(cax2)
 cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
 plt.tight_layout()
-
-# -----------------
-# Prepare For Plotting
-if ResReduc:
-    # Reduced Resolutions
-    ymin_reduc = int(ymin / reduc)
-    ymax_reduc = int(ymax / reduc)
-    tco = topo_change_obs[:, ymin_reduc: ymax_reduc] * subaerial_mask[:, ymin_reduc: ymax_reduc]
-    tcs = topo_change_sim[:, ymin_reduc: ymax_reduc] * subaerial_mask[:, ymin_reduc: ymax_reduc]
-    to = topo_end_obs[:, ymin: ymax]
-    ts = topo_end_sim[:, ymin: ymax]
-    vco = veg_change_obs[:, ymin_reduc: ymax_reduc] * subaerial_mask[:, ymin_reduc: ymax_reduc]
-    vcs = veg_change_sim[:, ymin_reduc: ymax_reduc] * subaerial_mask[:, ymin_reduc: ymax_reduc]
-    vo = veg_end[:, ymin: ymax]
-    vs = veg_end_sim[:, ymin: ymax]
-    cat_vc = cat_vc[:, ymin_reduc: ymax_reduc]
-    cat_vp = cat_vp[:, ymin_reduc: ymax_reduc]
-else:
-    tco = topo_change_obs[:, ymin: ymax] * subaerial_mask[:, ymin: ymax]
-    tcs = topo_change_sim[:, ymin: ymax] * subaerial_mask[:, ymin: ymax]
-    to = topo_end_obs[:, ymin: ymax] * subaerial_mask[:, ymin: ymax]
-    ts = topo_end_sim[:, ymin: ymax] * subaerial_mask[:, ymin: ymax]
-    vco = veg_change_obs[:, ymin: ymax] * subaerial_mask[:, ymin: ymax]
-    vcs = veg_change_sim[:, ymin: ymax] * subaerial_mask[:, ymin: ymax]
-    vo = veg_end[:, ymin: ymax] * subaerial_mask[:, ymin: ymax]
-    vs = veg_end_sim[:, ymin: ymax] * subaerial_mask[:, ymin: ymax]
-    cat_vc = cat_vc[:, ymin: ymax]
-    cat_vp = cat_vp[:, ymin: ymax]
-
-maxx = max(abs(np.min(tco)), abs(np.max(tco)))
-maxxx = max(abs(np.min(tcs)), abs(np.max(tcs)))
-maxxxx = 1.5  # max(maxx, maxxx)
 
 # -----------------
 # Topo Change, Observed vs Simulated
@@ -496,14 +506,14 @@ cax2 = ax2.matshow(ts, cmap=cmap1, vmin=0, vmax=6)
 plt.title("Simulated")
 
 ax3 = Fig.add_subplot(223)
-cax3 = ax3.matshow(tco, cmap='bwr_r', vmin=-maxxxx, vmax=maxxxx)
+cax3 = ax3.matshow(tco, cmap='bwr_r', vmin=-cmap_lim, vmax=cmap_lim)
 # if not ResReduc:
 #     plt.plot(crest_loc_obs - ymin, np.arange(len(dune_crest)), 'black')
 #     plt.plot(crest_loc_sim - ymin, np.arange(len(dune_crest)), 'green')
 #     plt.legend(["Observed", "Simulated"])
 
 ax4 = Fig.add_subplot(224)
-cax4 = ax4.matshow(tcs, cmap='bwr_r', vmin=-maxxxx, vmax=maxxxx)
+cax4 = ax4.matshow(tcs, cmap='bwr_r', vmin=-cmap_lim, vmax=cmap_lim)
 plt.tight_layout()
 
 # -----------------
@@ -545,14 +555,14 @@ cbar1.set_ticklabels(['Hit', 'False Alarm', 'Correct Reject', 'Miss'])
 Fig = plt.figure(figsize=(14, 7.5))
 ax1 = Fig.add_subplot(211)
 profile_x = 10
-plt.plot(topo_start[profile_x, ymin: ymax], 'k--')
-plt.plot(topo_end_obs[profile_x, ymin: ymax], 'k')
-plt.plot(topo_end_sim[profile_x, ymin: ymax], 'r')
+plt.plot(topo_start[profile_x, plot_xmin: plot_xmax], 'k--')
+plt.plot(topo_end_obs[profile_x, plot_xmin: plot_xmax], 'k')
+plt.plot(topo_end_sim[profile_x, plot_xmin: plot_xmax], 'r')
 plt.title("Profile " + str(profile_x))
 ax2 = Fig.add_subplot(212)
-plt.plot(np.mean(topo_start[:, ymin: ymax], axis=0), 'k--')
-plt.plot(np.mean(topo_end_obs[:, ymin: ymax], axis=0), 'k')
-plt.plot(np.mean(topo_end_sim[:, ymin: ymax], axis=0), 'r')
+plt.plot(np.mean(topo_start[:, plot_xmin: plot_xmax], axis=0), 'k--')
+plt.plot(np.mean(topo_end_obs[:, plot_xmin: plot_xmax], axis=0), 'k')
+plt.plot(np.mean(topo_end_sim[:, plot_xmin: plot_xmax], axis=0), 'r')
 plt.legend(['Start', 'Observed', 'Simulated'])
 plt.title("Average Profile")
 
@@ -573,23 +583,22 @@ ax.invert_yaxis()
 def ani_frame(timestep):
     mhw = meeb.RSLR * timestep + MHW
 
-    elev = meeb.topo_TS[:, ymin: ymax, timestep]  # [m]
+    elev = meeb.topo_TS[:, plot_xmin: plot_xmax, timestep]  # [m]
     elev = np.ma.masked_where(elev <= mhw, elev)  # Mask cells below MHW
     cax1.set_data(elev)
     yrstr = "Year " + str(timestep * meeb.save_frequency)
     text1.set_text(yrstr)
 
-    veggie = meeb.veg_TS[:, ymin: ymax, timestep]
+    veggie = meeb.veg_TS[:, plot_xmin: plot_xmax, timestep]
     veggie = np.ma.masked_where(elev <= mhw, veggie)  # Mask cells below MHW
     cax2.set_data(veggie)
     text2.set_text(yrstr)
 
     return cax1, cax2, text1, text2
 
-
 # Set animation base figure
 Fig = plt.figure(figsize=(14, 8))
-topo = meeb.topo_TS[:, ymin: ymax, 0]  # [m]
+topo = meeb.topo_TS[:, plot_xmin: plot_xmax, 0]  # [m]
 topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
 cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps["terrain"]), 0.5, 0.9)  # Truncate colormap
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
@@ -605,7 +614,7 @@ cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
 timestr = "Year " + str(0 * meeb.save_frequency)
 text1 = plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
 
-veg = meeb.veg_TS[:, ymin: ymax, 0]
+veg = meeb.veg_TS[:, plot_xmin: plot_xmax, 0]
 veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
 cmap2 = copy.copy(plt.colormaps["YlGn"])
 cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
