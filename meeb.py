@@ -300,12 +300,10 @@ class MEEB:
         # STORMS
         self._StormList = np.load(inputloc + storm_list_filename)
         self._storm_timeseries = np.load(inputloc + storm_timeseries_filename)
-        # self._pstorm = [0.380952380952381, 0.428571428571429, 0.238095238095238, 0.357142857142857, 0.476190476190476, 0.380952380952381, 0.333333333333333, 0.357142857142857, 0.285714285714286, 0, 0.119047619047619,
-        #                 0.0238095238095238, 0.0476190476190476, 0.0476190476190476, 0.0476190476190476, 0.0714285714285714, 0.380952380952381, 0.333333333333333, 0.261904761904762, 0.190476190476190, 0.190476190476190,
-        #                 0.285714285714286, 0.214285714285714, 0.357142857142857, 0.285714285714286]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 USGS NCB storm record (1.78 m NAVD88 Berm El.)
-        self._pstorm = [0.976190476190476, 1.02380952380952, 0.809523809523810, 1.07142857142857, 1.14285714285714, 0.952380952380952, 1.02380952380952, 1, 0.571428571428571, 0.166666666666667, 0.261904761904762,
-                        0.0952380952380952, 0.238095238095238, 0.166666666666667, 0.119047619047619, 0.119047619047619, 0.476190476190476, 0.619047619047619, 0.380952380952381, 0.500000000000000, 0.595238095238095,
-                        0.714285714285714, 0.976190476190476, 0.761904761904762, 0.857142857142857]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 USGS NCB storm record (1.56 m NAVD88 Berm El.)
+        self._pstorm = [0.333, 0.333, 0.167, 0.310, 0.381, 0.310, 0.310, 0.310, 0.286, 0, 0.119, 0.024, 0.048, 0.048, 0.048, 0.071, 0.333, 0.286, 0.214,
+                        0.190, 0.190, 0.262, 0.214, 0.262, 0.238]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 NCB storm record (1.78 m NAVD88 Berm Elev.)
+        # self._pstorm = [0.738, 0.667, 0.571, 0.786, 0.833, 0.643, 0.643, 0.762, 0.476, 0.167, 0.238, 0.095, 0.214, 0.167, 0.119, 0.119, 0.357, 0.476, 0.357,
+        #                 0.405, 0.524, 0.524, 0.738, 0.548, 0.619]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 NCB storm record (1.56 m NAVD88 Berm Elev.)
 
         if self._hindcast and self._iterations > (self._storm_timeseries[-1, 0] - self._simulation_start_iteration):
             raise ValueError("Simulation length is greater than hindcast timeSeries length.")
