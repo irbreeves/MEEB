@@ -3,7 +3,7 @@ Script for running sensitivity analyses of MEEB storm parameters using SALib.
 
 Model output used in sensitivity analysis is the Brier Skill Score for elevation.
 
-IRBR 8 February 2024
+IRBR 14 March 2024
 """
 
 import numpy as np
@@ -73,7 +73,7 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
     """Run a storm with this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
     # Find Dune Crest, Shoreline Positions
-    dune_crest = routine.foredune_crest(topo_start_obs, MHW)
+    dune_crest, not_gap = routine.foredune_crest(topo_start_obs, MHW)
     x_s = routine.ocean_shoreline(topo_start_obs, MHW)
 
     veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
@@ -126,15 +126,12 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
     beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
 
     OW_Mask = np.logical_and(OW_Mask, subaerial_mask)
-    mask_overwash_all = np.logical_and(np.logical_or(OW_Mask, inundated), ~beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell involved in observed or simulated overwash (landward of dune crest)
 
     mask_all = np.logical_or(OW_Mask, inundated, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in simulation or observation or both
     mask_obs = np.logical_or(OW_Mask, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in observation
     topo_change_obs[~mask_obs] = 0
 
     nse, rmse, nmae, mass, bss = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask_all)
-    nse_ow, rmse_ow, nmae_ow, mass_ow, bss_ow = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask_overwash_all)  # Skill scores for just overwash
-    nse_bd, rmse_bd, nmae_bd, mass_bd, bss_bd = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), beach_duneface_mask)  # Skill scores for just beach/dune
 
     score = bss  # This is the skill score used in particle swarms optimization
 
@@ -175,7 +172,6 @@ def multi_fitness(solution):
             dur = storm_dur[s]
 
             score = storm_fitness(solution, topo_start, topo_final, Rhigh, Rlow, dur, OW_Mask, spec1, spec2)
-            # print("  > score:", score)
             score_list.append(score)
 
     # Take mean of scores from all locations
@@ -192,7 +188,7 @@ def run_model(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
     with routine.tqdm_joblib(tqdm(desc="Progress", total=X.shape[0])) as progress_bar:
-        solutions = Parallel(n_jobs=15)(delayed(multi_fitness)(X[q, :]) for q in range(X.shape[0]))
+        solutions = Parallel(n_jobs=n_cores)(delayed(multi_fitness)(X[q, :]) for q in range(X.shape[0]))
 
     return np.array(solutions)
 
@@ -208,6 +204,9 @@ RNG = np.random.default_rng(seed=13)  # Seeded random numbers for reproducibilit
 test_sobol = False
 test_morris = True
 
+# Choose number of cores to run parallel simulations on
+n_cores = 15
+
 # _____________________________________________
 # Define Variables
 MHW = 0.39  # [m NAVD88]
@@ -219,7 +218,7 @@ BestScore = -1e10
 BestScores = []
 
 # _____________________________________________
-# Define Multiple Events
+# Define Event(s)
 
 storm_name = ['Florence']
 storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
@@ -230,13 +229,13 @@ storm_dur = [83]
 
 
 # _____________________________________________
-# Define Multiple Locations
+# Define Location(s)
 
 x_min = [18950, 19825, 20375, 20525, 6300]
 x_max = [19250, 20275, 20525, 20725, 6600]
 # small flat, large flat, small gap, large gap, tall ridge
 
-name = 'Multi-loc, NON-weighted BSS, Morris'
+name = 'Multi-loc, BSS, Morris N=400'
 
 
 # ___________________________________________________________________________________________________________________________________
@@ -248,7 +247,7 @@ name = 'Multi-loc, NON-weighted BSS, Morris'
 
 inputs = {
     'num_vars': 9,
-    'names': ['Rin', 'Cx', 'MaxUpSlope', 'Kr', 'beq', 'Kc', 'frms1', 'frms2', 'mm'],
+    'names': ['Rin', 'Cx', 'MaxUpSlope', 'Kr', 'beq', 'Kc', 'FlowReduc_sp1', 'FlowReduc_s2', 'mm'],
     'bounds': [[100, 320],
                [10, 80],
                [0.5, 2.0],
@@ -283,8 +282,8 @@ if test_sobol:
         "Kr": [Si_sobol['S1'][3], Si_sobol['ST'][3]],
         "Beq": [Si_sobol['S1'][4], Si_sobol['ST'][4]],
         "Kc": [Si_sobol['S1'][5], Si_sobol['ST'][5]],
-        "Qreduc_s1": [Si_sobol['S1'][6], Si_sobol['ST'][6]],
-        "Qreduc_s2": [Si_sobol['S1'][7], Si_sobol['ST'][7]],
+        "FlowReduc_s1": [Si_sobol['S1'][6], Si_sobol['ST'][6]],
+        "FlowReduc_s2": [Si_sobol['S1'][7], Si_sobol['ST'][7]],
         "mm": [Si_sobol['S1'][8], Si_sobol['ST'][8]],
     }, headers="keys", floatfmt=(None, ".4f", ".4f", ".4f", ".4f", ".4f", ".4f", ".4f", ".4f", ".4f"))
     )
@@ -318,8 +317,8 @@ if test_morris:
         "Kr": [Si_morris['mu_star'][3], Si_morris['sigma'][3]],
         "Beq": [Si_morris['mu_star'][4], Si_morris['sigma'][4]],
         "Kc": [Si_morris['mu_star'][5], Si_morris['sigma'][5]],
-        "Qreduc_s1": [Si_morris['mu_star'][6], Si_morris['sigma'][6]],
-        "Qreduc_s2": [Si_morris['mu_star'][7], Si_morris['sigma'][7]],
+        "FlowReduc_s1": [Si_morris['mu_star'][6], Si_morris['sigma'][6]],
+        "FlowReduc_s2": [Si_morris['mu_star'][7], Si_morris['sigma'][7]],
         "mm": [Si_morris['mu_star'][8], Si_morris['sigma'][8]],
     }, headers="keys", floatfmt=(None, ".4f", ".4f", ".4f", ".4f", ".4f", ".4f", ".4f", ".4f", ".4f"))
     )

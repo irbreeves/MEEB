@@ -3,7 +3,7 @@ Script for running sensitivity analyses of MEEB aeolian parameters using SALib, 
 
 Model output used in sensitivity analysis is the Brier Skill Score for elevation.
 
-IRBR 8 February 2024
+IRBR 14 March 2024
 """
 
 import numpy as np
@@ -139,19 +139,20 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, xmin, xmax, y
         repose_veg=int(round(solution[6] + solution[7])),
         wind_rose=rose,
         # --- Storms --- #
-        Rin_ru=144,
-        Cx=40,
-        MaxUpSlope=1.3,
-        K_ru=0.0000382,
-        mm=1.04,
-        substep_ru=4,
-        beach_equilibrium_slope=0.024,
-        swash_transport_coefficient=0.00083,
+        Rin=213,
+        Cx=36,
+        MaxUpSlope=1.57,
+        Kow=0.0000501,
+        mm=1.02,
+        overwash_substeps=4,
+        beach_equilibrium_slope=0.027,
+        swash_transport_coefficient=0.001,
         wave_period_storm=9.4,
         beach_substeps=20,
-        flow_reduction_max_spec1=0.2,
-        flow_reduction_max_spec2=0.3,
+        flow_reduction_max_spec1=0.02,
+        flow_reduction_max_spec2=0.05,
         # --- Veg --- #
+        sp1_b=-0.05,
     )
 
     # Loop through time
@@ -170,36 +171,23 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, xmin, xmax, y
     # Subaerial mask
     subaerial_mask = np.logical_and(topo_end_sim > mhw_end_sim, topo_end_obs > mhw_end_sim)  # [bool] Mask for every cell above water
 
-    # Beach mask
-    dune_crest = routine.foredune_crest(topo_start, mhw_end_sim)
-    beach_duneface_mask = np.zeros(topo_end_sim.shape)
-    for l in range(topo_start.shape[0]):
-        beach_duneface_mask[l, :dune_crest[l]] = True
-    beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
-
     # Cross-shore range mask
     range_mask = np.ones(topo_end_sim.shape)  # [bool] Mask for every cell between two cross-shore locations
     range_mask[:, :y_min] = False
     range_mask[:, y_max:] = False
 
-    # Elevation mask
-    elev_mask = topo_end_sim > 2.0  # [bool] Mask for every cell above water
-
     # Choose masks to use
     mask = np.logical_and(range_mask, subaerial_mask)  # [bool] Combined mask used for analysis
 
     # Dune crest locations and heights
-    crest_loc_obs_start = routine.foredune_crest(topo_start, mhw_end_sim)
-    crest_loc_obs = routine.foredune_crest(topo_end_obs, mhw_end_sim)
-    crest_loc_sim = routine.foredune_crest(topo_end_sim, mhw_end_sim)
-    crest_loc_change_obs = crest_loc_obs - crest_loc_obs_start
-    crest_loc_change_sim = crest_loc_sim - crest_loc_obs_start
+    crest_loc_obs_start, not_gap_obs_start = routine.foredune_crest(topo_start, mhw_end_sim)
+    crest_loc_obs, not_gap_obs = routine.foredune_crest(topo_end_obs, mhw_end_sim)
+    crest_loc_sim, not_gap_sim = routine.foredune_crest(topo_end_sim, mhw_end_sim)
 
     crest_height_obs_start = topo_start[np.arange(topo_start.shape[0]), crest_loc_obs_start]
     crest_height_obs = topo_end_obs[np.arange(topo_end_obs.shape[0]), crest_loc_obs]
     crest_height_sim = topo_end_sim[np.arange(topo_end_obs.shape[0]), crest_loc_sim]
     crest_height_change_obs = crest_height_obs - crest_height_obs_start
-    crest_height_change_sim = crest_height_sim - crest_height_obs_start
 
     # Optional: Reduce Resolutions
     if ResReduc:
@@ -209,7 +197,6 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, xmin, xmax, y
 
     # Model Skill
     nse, rmse, nmae, mass, bss, pc, hss = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask)  # All cells (excluding masked areas)
-    nse_dl, rmse_dl, nmae_dl, mass_dl, bss_dl, pc_dl, hss_dl = model_skill(crest_loc_obs.astype('float32'), crest_loc_sim.astype('float32'), crest_loc_obs_start.astype('float32'), np.full(crest_loc_obs.shape, True))  # Foredune location
     nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh, pc_dh, hss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, np.full(crest_height_change_obs.shape, True))  # Foredune elevation
 
     # Combine Skill Scores (Multi-Objective Optimization)
@@ -264,7 +251,7 @@ def run_model(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
     with routine.tqdm_joblib(tqdm(desc="Progress", total=X.shape[0])) as progress_bar:
-        solutions = Parallel(n_jobs=16)(delayed(multi_fitness)(X[q, :]) for q in range(X.shape[0]))
+        solutions = Parallel(n_jobs=n_cores)(delayed(multi_fitness)(X[q, :]) for q in range(X.shape[0]))
 
     return np.array(solutions)
 
@@ -274,6 +261,8 @@ def run_model(X):
 # SET UP
 
 start_time = time.time()  # Record time at start of calibration
+
+n_cores = 16  # Number of cores to run parallel simulations on
 
 # Choose sensitivity test(s) to run
 test_sobol = False
@@ -290,20 +279,21 @@ reduc = 5  # Raster resolution reduction factor
 
 sim_start = ["Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"]
 sim_stop = ["Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
-sim_startdate = ['20140406']
+sim_startdate = ['20140406']  # [yyyymmdd]
 sim_dur = [3.44]  # [yr]
 
 # _____________________________________________
 # Define Location(s)
 
-x_min = [6300, 21000, 19000]
-x_max = [6500, 21200, 19200]
+x_min = [6300, 21000, 19030]
+x_max = [6500, 21200, 19230]
 # tall ridge 1, tall ridge 2, overwash fan, overwash gap
 
-y_range_min = [835, 1065, 1120]
-y_range_max = [890, 1120, 1200]
+# Cross-shore range of foredune system for skill assessment
+y_range_min = [838, 1068, 1135]
+y_range_max = [880, 1100, 1185]
 
-name = '3 Locations, 2014-2017, Multi-Objective BSS, Method of Morris, N = 65, 27Jan24'
+name = '2014-2017, 3 Locations, Multi-Objective BSS, Method of Morris, N = 75, 1Mar24'
 
 print()
 print(name)
@@ -332,8 +322,8 @@ inputs = {
                [0, 1],  # Proportion of alongshore winds towards down
                ]
 }
-N_sobol = 65  # Number of trajectories = N * (2 * num_vars + 2)
-N_morris = 65  # Number of trajectories = N * (num_vars + 1)
+N_sobol = 75  # Number of trajectories = N * (2 * num_vars + 2)
+N_morris = 75  # Number of trajectories = N * (num_vars + 1)
 
 # _____________________________________________
 if test_sobol:

@@ -4,7 +4,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 Calibrates based on fitess score for all beach/dune/overwash morphologic change, and incorporates multiple
 storm events and/or locations into each fitness score.
 
-IRBR 8 February 2024
+IRBR 14 March 2024
 """
 
 import numpy as np
@@ -123,15 +123,12 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
     beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
 
     OW_Mask = np.logical_and(OW_Mask, subaerial_mask)
-    mask_overwash_all = np.logical_and(np.logical_or(OW_Mask, inundated), ~beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell involved in observed or simulated overwash (landward of dune crest)
 
     mask_all = np.logical_or(OW_Mask, inundated, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in simulation or observation or both
     mask_obs = np.logical_or(OW_Mask, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in observation
     topo_change_obs[~mask_obs] = 0
 
     nse, rmse, nmae, mass, bss = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask_all)
-    nse_ow, rmse_ow, nmae_ow, mass_ow, bss_ow = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask_overwash_all)  # Skill scores for just overwash
-    nse_bd, rmse_bd, nmae_bd, mass_bd, bss_bd = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), beach_duneface_mask)  # Skill scores for just beach/dune
 
     score = bss  # This is the skill score used in particle swarms optimization
 
@@ -172,7 +169,6 @@ def multi_fitness(solution):
             dur = storm_dur[s]
 
             score = storm_fitness(solution, topo_start, topo_final, Rhigh, Rlow, dur, OW_Mask, spec1, spec2)
-            # print("  > score:", score)
             score_list.append(score)
 
     # Take mean of scores from all locations
@@ -189,11 +185,11 @@ def opt_func(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
     with routine.tqdm_joblib(tqdm(desc="Iteration Progress", total=swarm_size)) as progress_bar:
-        solutions = Parallel(n_jobs=6)(delayed(multi_fitness)(X[i, :]) for i in range(swarm_size))
+        solutions = Parallel(n_jobs=n_cores)(delayed(multi_fitness)(X[i, :]) for i in range(swarm_size))
 
     print("  >>> solutions:", solutions)
 
-    return np.array(solutions) * -1
+    return np.array(solutions) * -1  # Return negative because optimization algorithm tries to find minimum score, whereas better BSS are larger
 
 
 # ___________________________________________________________________________________________________________________________________
@@ -202,6 +198,9 @@ def opt_func(X):
 
 start_time = time.time()  # Record time at start of calibration
 RNG = np.random.default_rng(seed=13)  # Seeded random numbers for reproducibility
+
+# Choose number of cores to run parallel simulations on
+n_cores = 6
 
 # _____________________________________________
 # Define Variables
@@ -215,17 +214,10 @@ BestScore = -1e10
 BestScores = []
 
 # _____________________________________________
-# Define Multiple Events
-
-# storm_name = ['Sandy', 'Florence']
-# storm_start = ["Init_NCB-NewDrum-Ocracoke_2011_PostIrene.npy", "Input/Init_NorthernNCB_2017_PreFlorence.npy"]
-# storm_stop = ["Init_NCB-NewDrum-Ocracoke_2012_PostSandyUSGS_MinimalThin.npy", "Input/Init_NorthernNCB_2018_PostFlorence.npy"]
-# storm_Rhigh = [2.06, 3.32]
-# storm_Rlow = [1.12, 1.90]
-# storm_dur = [49, 83]
+# Define Event(s)
 
 storm_name = ['Florence']
-storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_Denser.npy"]
+storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
 storm_stop = ["Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"]
 storm_Rhigh = [3.32]
 storm_Rlow = [1.90]
@@ -233,11 +225,11 @@ storm_dur = [83]
 
 
 # _____________________________________________
-# Define Multiple Locations
+# Define Location(s)
 
-x_min = [18950, 19825, 20375, 20525, 6300]  # 20975
-x_max = [19250, 20275, 20525, 20725, 6600]  # 21125
-# small flat, large flat, small gap, large gap, tall ridge  # tall ridge
+x_min = [18950, 19825, 20375, 20525, 6300]
+x_max = [19250, 20275, 20525, 20725, 6600]
+# small flat, large flat, small gap, large gap, tall ridge
 
 
 # ___________________________________________________________________________________________________________________________________

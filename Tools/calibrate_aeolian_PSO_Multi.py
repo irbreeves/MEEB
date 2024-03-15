@@ -1,10 +1,10 @@
 """
 Script for calibrating MEEB aeolian parameters using Particle Swarms Optimization.
 
-Calibrates based on fitess score for morphologic and ecologic change between two timesteps, and incorporates multiple
+Calibrates based on fitess score for morphologic change between two observation, and incorporates multiple
 timeframes and/or locations into each fitness score.
 
-IRBR 8 February 2024
+IRBR 14 March 2024
 """
 
 import numpy as np
@@ -106,10 +106,10 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, xmin, xmax, y
     """Run a hindcast this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
     # Construct wind rose
-    wind_axis_ratio = solution[5]  # Proportion of cross-shore winds (right/left, i.e. onshore/offshore) versus alongshore winds (up/down)
-    wind_dir_1 = max(0, solution[6] * wind_axis_ratio)  # Onshore (proportion towards right)
-    wind_dir_2 = max(0, (1 - solution[6]) * wind_axis_ratio)  # Offshore (proportion towards left)
-    wind_dir_3 = max(0, solution[7] * (1 - wind_axis_ratio))  # Alongshore (proportion towards down)
+    wind_axis_ratio = solution[6]  # Proportion of cross-shore winds (right/left, i.e. onshore/offshore) versus alongshore winds (up/down)
+    wind_dir_1 = max(0, solution[7] * wind_axis_ratio)  # Onshore (proportion towards right)
+    wind_dir_2 = max(0, (1 - solution[7]) * wind_axis_ratio)  # Offshore (proportion towards left)
+    wind_dir_3 = max(0, solution[8] * (1 - wind_axis_ratio))  # Alongshore (proportion towards down)
     wind_dir_4 = max(0, 1 - (wind_dir_1 + wind_dir_2 + wind_dir_3))  # Alongshore (proportion towards up)
     rose = (wind_dir_1, wind_dir_2, wind_dir_3, wind_dir_4)  # Tuple that sums to 1.0
 
@@ -131,25 +131,26 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, xmin, xmax, y
         p_dep_sand_VegMax=solution[0] + solution[1],
         p_ero_sand=solution[2],
         entrainment_veg_limit=solution[3],
-        saltation_veg_limit=0.3,
-        shadowangle=int(round(solution[4])),
+        saltation_veg_limit=solution[4],
+        shadowangle=int(round(solution[5])),
         repose_bare=20,
         repose_veg=30,
         wind_rose=rose,
         # --- Storms --- #
-        Rin_ru=144,
-        Cx=40,
-        MaxUpSlope=1.3,
-        K_ru=0.0000382,
-        mm=1.04,
-        substep_ru=4,
-        beach_equilibrium_slope=0.024,
-        swash_transport_coefficient=0.00083,
+        Rin=213,
+        Cx=36,
+        MaxUpSlope=1.57,
+        Kow=0.0000501,
+        mm=1.02,
+        overwash_substeps=4,
+        beach_equilibrium_slope=0.027,
+        swash_transport_coefficient=0.001,
         wave_period_storm=9.4,
         beach_substeps=20,
-        flow_reduction_max_spec1=0.2,
-        flow_reduction_max_spec2=0.3,
+        flow_reduction_max_spec1=0.02,
+        flow_reduction_max_spec2=0.05,
         # --- Veg --- #
+        sp1_b=-0.05,
     )
 
     # Loop through time
@@ -168,36 +169,23 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, xmin, xmax, y
     # Subaerial mask
     subaerial_mask = np.logical_and(topo_end_sim > mhw_end_sim, topo_end_obs > mhw_end_sim)  # [bool] Mask for every cell above water
 
-    # Beach mask
-    dune_crest = routine.foredune_crest(topo_start, mhw_end_sim)
-    beach_duneface_mask = np.zeros(topo_end_sim.shape)
-    for l in range(topo_start.shape[0]):
-        beach_duneface_mask[l, :dune_crest[l]] = True
-    beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
-
     # Cross-shore range mask
     range_mask = np.ones(topo_end_sim.shape)  # [bool] Mask for every cell between two cross-shore locations
     range_mask[:, :y_min] = False
     range_mask[:, y_max:] = False
 
-    # Elevation mask
-    elev_mask = topo_end_sim > 2.0  # [bool] Mask for every cell above water
-
     # Choose masks to use
     mask = np.logical_and(range_mask, subaerial_mask)  # [bool] Combined mask used for analysis
 
     # Dune crest locations and heights
-    crest_loc_obs_start = routine.foredune_crest(topo_start, mhw_end_sim)
-    crest_loc_obs = routine.foredune_crest(topo_end_obs, mhw_end_sim)
-    crest_loc_sim = routine.foredune_crest(topo_end_sim, mhw_end_sim)
-    crest_loc_change_obs = crest_loc_obs - crest_loc_obs_start
-    crest_loc_change_sim = crest_loc_sim - crest_loc_obs_start
+    crest_loc_obs_start, not_gap_obs_start = routine.foredune_crest(topo_start, mhw_end_sim)
+    crest_loc_obs, not_gap_obs = routine.foredune_crest(topo_end_obs, mhw_end_sim)
+    crest_loc_sim, not_gap_sim = routine.foredune_crest(topo_end_sim, mhw_end_sim)
 
     crest_height_obs_start = topo_start[np.arange(topo_start.shape[0]), crest_loc_obs_start]
     crest_height_obs = topo_end_obs[np.arange(topo_end_obs.shape[0]), crest_loc_obs]
     crest_height_sim = topo_end_sim[np.arange(topo_end_obs.shape[0]), crest_loc_sim]
     crest_height_change_obs = crest_height_obs - crest_height_obs_start
-    crest_height_change_sim = crest_height_sim - crest_height_obs_start
 
     # Optional: Reduce Resolutions
     if ResReduc:
@@ -207,7 +195,6 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, xmin, xmax, y
 
     # Model Skill
     nse, rmse, nmae, mass, bss, pc, hss = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask)  # All cells (excluding masked areas)
-    nse_dl, rmse_dl, nmae_dl, mass_dl, bss_dl, pc_dl, hss_dl = model_skill(crest_loc_obs.astype('float32'), crest_loc_sim.astype('float32'), crest_loc_obs_start.astype('float32'), np.full(crest_loc_obs.shape, True))  # Foredune location
     nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh, pc_dh, hss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, np.full(crest_height_change_obs.shape, True))  # Foredune elevation
 
     # Combine Skill Scores (Multi-Objective Optimization)
@@ -262,7 +249,7 @@ def opt_func(X):
     """Runs a parallelized batch of hindcast simulations and returns a fitness result for each"""
 
     with routine.tqdm_joblib(tqdm(desc="Iteration Progress", total=swarm_size)) as progress_bar:
-        solutions = Parallel(n_jobs=16)(delayed(multi_fitness)(X[i, :]) for i in range(swarm_size))
+        solutions = Parallel(n_jobs=n_cores)(delayed(multi_fitness)(X[i, :]) for i in range(swarm_size))
 
     return np.array(solutions) * -1
 
@@ -273,6 +260,8 @@ def opt_func(X):
 
 start_time = time.time()  # Record time at start of calibration
 
+n_cores = 16  # Number of cores to run parallel simulations on
+
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
 
@@ -281,19 +270,20 @@ start_time = time.time()  # Record time at start of calibration
 
 sim_start = ["Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"]
 sim_stop = ["Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
-sim_startdate = ['20140406']
+sim_startdate = ['20140406']  # [yyyymmdd]
 sim_dur = [3.44]  # [yr]
 
 
 # _____________________________________________
 # Define Multiple Locations
 
-x_min = [6300, 21000, 19000]
-x_max = [6500, 21200, 19200]
+x_min = [6300, 21000, 19030]
+x_max = [6500, 21200, 19230]
 # tall ridge 1, tall ridge 2, overwash fan, overwash gap
 
-y_range_min = [835, 1065, 1120]
-y_range_max = [890, 1120, 1200]
+# Cross-shore range of foredune system for skill assessment
+y_range_min = [838, 1068, 1135]
+y_range_max = [880, 1100, 1185]
 
 
 # ____________________________________
@@ -301,7 +291,7 @@ y_range_max = [890, 1120, 1200]
 MHW = 0.39  # [m NAVD88] Initial
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
-name = '3 Locations, 2014-2017, Multi-Objective BSS, 30it, 25Jan24'
+name = '2014-2017, 3 Locations, Multi-Objective BSS, 3Mar24'
 
 
 # ___________________________________________________________________________________________________________________________________
@@ -311,9 +301,9 @@ name = '3 Locations, 2014-2017, Multi-Objective BSS, 30it, 25Jan24'
 # _____________________________________________
 # Prepare Particle Swarm Parameters
 
-iterations = 30
+iterations = 50
 swarm_size = 16
-dimensions = 8  # Number of free paramters
+dimensions = 9  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
 w: Inertia weight constant. [0-1] Determines how much the particle keeps on with its previous velocity (i.e., speed and direction of the search). 
@@ -327,15 +317,17 @@ bounds = (
               0.05,  # p_dep_sand_VegMax
               0.02,  # p_ero_sand
               0.05,  # entrainment_veg_limit
+              0.05,  # saltveglimit
               5,     # shadowangle
-              0.5,     # Proportion of cross-shore winds versus alongshore
-              0.5,     # Proportion of cross-shore winds towards right (onshore)
+              0.5,   # Proportion of cross-shore winds versus alongshore
+              0.5,   # Proportion of cross-shore winds towards right (onshore)
               0]),   # Proportion of alongshore winds towards down
     # Maximum
     np.array([0.5,
               0.5,
               0.5,
               0.55,
+              0.4,
               15,
               1,
               1,
@@ -364,10 +356,10 @@ print("Elapsed Time: ", SimDuration, "sec")
 print()
 print("Complete.")
 
-best_wind_axis_ratio = best_solution[5]  # Proportion of cross-shore winds (right/left, i.e. onshore/offshore) versus alongshore winds (up/down)
-best_wind_dir_1 = best_solution[6] * best_wind_axis_ratio  # Onshore (proportion towards right)
-best_wind_dir_2 = (1 - best_solution[6]) * best_wind_axis_ratio  # Offshore (proportion towards left)
-best_wind_dir_3 = best_solution[7] * (1 - best_wind_axis_ratio)  # Alongshore (proportion towards down)
+best_wind_axis_ratio = best_solution[6]  # Proportion of cross-shore winds (right/left, i.e. onshore/offshore) versus alongshore winds (up/down)
+best_wind_dir_1 = best_solution[7] * best_wind_axis_ratio  # Onshore (proportion towards right)
+best_wind_dir_2 = (1 - best_solution[7]) * best_wind_axis_ratio  # Offshore (proportion towards left)
+best_wind_dir_3 = best_solution[8] * (1 - best_wind_axis_ratio)  # Alongshore (proportion towards down)
 best_wind_dir_4 = 1 - (best_wind_dir_1 + best_wind_dir_2 + best_wind_dir_3)  # Alongshore (proportion towards up)
 
 print()
@@ -377,13 +369,14 @@ print(tabulate({
     "p_dep_sand_VegMax": [best_solution[0] + best_solution[1]],
     "p_ero_sand": [best_solution[2]],
     "entrainment_veg_limit": [best_solution[3]],
-    "shadowangle": [best_solution[4]],
+    "salt_veg_limit": [best_solution[4]],
+    "shadowangle": [best_solution[5]],
     "direction1": [best_wind_dir_1],
     "direction2": [best_wind_dir_2],
     "direction3": [best_wind_dir_3],
     "direction4": [best_wind_dir_4],
     "Score": [solution_fitness]
-    }, headers="keys", floatfmt=(None, ".2f", ".2f", ".2f", ".2f", ".0f", ".3f", ".3f", ".3f", ".4f"))
+    }, headers="keys", floatfmt=(None, ".2f", ".2f", ".2f", ".2f", ".2f", ".0f", ".3f", ".3f", ".3f", ".4f"))
 )
 
 # _____________________________________________

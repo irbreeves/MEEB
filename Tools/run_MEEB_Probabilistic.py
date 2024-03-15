@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 17 February 2024
+IRBR 14 March 2024
 """
 
 import numpy as np
@@ -43,27 +43,25 @@ def run_individual_sim(rslr):
         storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',
         save_frequency=save_frequency,
         # --- Aeolian --- #
-        jumplength=5,
-        slabheight=0.02,
-        p_dep_sand=0.42,  # Q = hs * L * n * pe/pd
-        p_dep_sand_VegMax=0.79,
-        p_ero_sand=0.19,
-        entrainment_veg_limit=0.09,
-        saltation_veg_limit=0.3,
+        p_dep_sand=0.36,
+        p_dep_sand_VegMax=0.60,
+        p_ero_sand=0.13,
+        entrainment_veg_limit=0.37,
+        saltation_veg_limit=0.37,
         shadowangle=5,
         repose_bare=20,
         repose_veg=30,
-        wind_rose=(0.64, 0.11, 0.08, 0.17),  # (right, down, left, up)
+        wind_rose=(0.83, 0.02, 0.12, 0.03),  # (right, down, left, up)
         groundwater_depth=0.4,
         # --- Storms --- #
-        Rin_ru=144,
-        Cx=40,
-        MaxUpSlope=1.3,
-        K_ru=0.0000382,
-        mm=1.04,
-        substep_ru=4,
-        beach_equilibrium_slope=0.024,
-        swash_transport_coefficient=0.00083,
+        Rin=213,
+        Cx=36,
+        MaxUpSlope=1.57,
+        Kow=0.0000501,
+        mm=1.02,
+        overwash_substeps=4,
+        beach_equilibrium_slope=0.027,
+        swash_transport_coefficient=0.001,
         wave_period_storm=9.4,
         beach_substeps=20,
         flow_reduction_max_spec1=0.02,
@@ -77,8 +75,6 @@ def run_individual_sim(rslr):
         estimate_shoreface_parameters=True,
         # --- Veg --- #
         sp1_b=-0.05,
-        sp2_lateral_probability=0.1,
-        sp2_pioneer_probability=0.025,
     )
 
     # Loop through time
@@ -89,11 +85,6 @@ def run_individual_sim(rslr):
     # Topo change
     topo_start_sim = meeb.topo_TS[:, :, 0]  # [m NAVDD88]
     topo_end_sim = meeb.topo_TS[:, :, -1]  # [m NAVDD88]
-    mhw_end_sim = meeb.MHW  # [m NAVD88]
-
-    # Veg change
-    veg_start_sim = meeb.veg_TS[:, :, 0]
-    veg_end_sim = meeb.veg_TS[:, :, -1]
 
     # Subaerial mask
     subaerial_mask = topo_end_sim > MHW_init  # [bool] Mask for every cell above initial MHW; Note: this should be changed if modeling sea-level fall
@@ -237,7 +228,7 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
 
 
 def internal_probability(rslr):
-    """Runs duplicate simulations to find the classification probability from stochastic processes intrinsic to the system, particularly storm
+    """Runs a batch of duplicate simulations to find the classification probability from stochastic processes intrinsic to the system, particularly storm
     occurence & intensity, aeolian dynamics, and vegetation dynamics."""
 
     # Initialize storage array
@@ -260,7 +251,7 @@ def internal_probability(rslr):
 
 
 def joint_probability():
-    """Runs a range of probabilistic scenarios to find the classification probability from stochastic processes external to the system, e.g. RSLR, atmospheric temperature."""
+    """Runs a range of probabilistic scenarios to find the classification probability from stochastic processes external to the system (e.g., RSLR, atmospheric temperature)."""
 
     # Create storage array
     elev_joint_prob = np.zeros([elev_num_classes, num_saves, longshore, crossshore])
@@ -374,212 +365,32 @@ def plot_class_area_change_over_time(class_probabilities, num_classes):
     plt.xlabel('Forecast Year')
 
 
-def plot_most_likely_transitions_cumulative(class_probabilities):
+def plot_transitions_area_matrix(class_probabilities, num_classes, class_labels):
 
-    change_in_most_likely_class = np.zeros([num_saves, longshore, crossshore])
+    transition_matrix = np.zeros([num_classes, num_classes])
 
-    sum_change_class = np.zeros([num_saves, 18])
-    sum_change_class_beginning_to_end = np.zeros([18])
+    start_class = np.argmax(class_probabilities[:, 0, :, :], axis=0)  # Bin of most probable outcome
+    end_class = np.argmax(class_probabilities[:, -1, :, :], axis=0)  # Bin of most probable outcome
 
-    for ts in range(1, num_saves):
-        most_likely_ts = np.argmax(class_probabilities[:, ts, :, :], axis=0)  # Bin of most probable outcome
-        prev_most_likely = np.argmax(class_probabilities[:, ts - 1, :, :], axis=0)  # Bin of most probable outcome
+    for class_from in range(num_classes):
+        for class_to in range(num_classes):
+            if class_from == class_to:
+                transition_matrix[class_from, class_to] = 0
+            else:
+                transition_matrix[class_from, class_to] = np.sum(np.logical_and(start_class == class_from, end_class == class_to))
 
-        # Subaqueous to beach
-        s_to_b = np.logical_and(most_likely_ts == 1, prev_most_likely == 0)
-        change_in_most_likely_class[ts, :, :][s_to_b] = 1
-        sum_change_class[ts, 1] = np.sum(s_to_b)
+    sum_all_transition = np.sum(transition_matrix)
 
-        # Subaqueous to washover
-        s_to_w = np.logical_and(most_likely_ts == 3, prev_most_likely == 0)
-        change_in_most_likely_class[ts, :, :][s_to_w] = 2
-        sum_change_class[ts, 2] = np.sum(s_to_w)
+    transition_matrix = transition_matrix / sum_all_transition
 
-        # Beach to subaqueous
-        b_to_s = np.logical_and(most_likely_ts == 0, prev_most_likely == 1)
-        change_in_most_likely_class[ts, :, :][b_to_s] = 3
-        sum_change_class[ts, 3] = np.sum(b_to_s)
-
-        # Beach to dune
-        b_to_d = np.logical_and(most_likely_ts == 2, prev_most_likely == 1)
-        change_in_most_likely_class[ts, :, :][b_to_d] = 4
-        sum_change_class[ts, 4] = np.sum(b_to_d)
-
-        # Beach to washover
-        b_to_w = np.logical_and(most_likely_ts == 3, prev_most_likely == 1)
-        change_in_most_likely_class[ts, :, :][b_to_w] = 5
-        sum_change_class[ts, 5] = np.sum(b_to_w)
-
-        # Beach to interior
-        b_to_i = np.logical_and(most_likely_ts == 4, prev_most_likely == 1)
-        change_in_most_likely_class[ts, :, :][b_to_i] = 6
-        sum_change_class[ts, 6] = np.sum(b_to_i)
-
-        # Dune to beach
-        d_to_b = np.logical_and(most_likely_ts == 1, prev_most_likely == 2)
-        change_in_most_likely_class[ts, :, :][d_to_b] = 7
-        sum_change_class[ts, 7] = np.sum(d_to_b)
-
-        # Dune to washover
-        d_to_w = np.logical_and(most_likely_ts == 3, prev_most_likely == 2)
-        change_in_most_likely_class[ts, :, :][d_to_w] = 8
-        sum_change_class[ts, 8] = np.sum(d_to_w)
-
-        # Dune to interior
-        d_to_i = np.logical_and(most_likely_ts == 4, prev_most_likely == 2)
-        change_in_most_likely_class[ts, :, :][d_to_i] = 9
-        sum_change_class[ts, 9] = np.sum(d_to_i)
-
-        # Washover to subaqueous
-        w_to_s = np.logical_and(most_likely_ts == 0, prev_most_likely == 3)
-        change_in_most_likely_class[ts, :, :][w_to_s] = 10
-        sum_change_class[ts, 10] = np.sum(w_to_s)
-
-        # Washover to beach
-        w_to_b = np.logical_and(most_likely_ts == 1, prev_most_likely == 3)
-        change_in_most_likely_class[ts, :, :][w_to_b] = 11
-        sum_change_class[ts, 11] = np.sum(w_to_b)
-
-        # Washover to dune
-        w_to_d = np.logical_and(most_likely_ts == 2, prev_most_likely == 3)
-        change_in_most_likely_class[ts, :, :][w_to_d] = 12
-        sum_change_class[ts, 12] = np.sum(w_to_d)
-
-        # Washover to interior
-        w_to_i = np.logical_and(most_likely_ts == 4, prev_most_likely == 3)
-        change_in_most_likely_class[ts, :, :][w_to_i] = 13
-        sum_change_class[ts, 13] = np.sum(w_to_i)
-
-        # Interior to subaqueous
-        i_to_s = np.logical_and(most_likely_ts == 0, prev_most_likely == 4)
-        change_in_most_likely_class[ts, :, :][i_to_s] = 14
-        sum_change_class[ts, 14] = np.sum(i_to_s)
-
-        # Interior to beach
-        i_to_b = np.logical_and(most_likely_ts == 1, prev_most_likely == 4)
-        change_in_most_likely_class[ts, :, :][i_to_b] = 15
-        sum_change_class[ts, 15] = np.sum(i_to_b)
-
-        # Interior to dune
-        i_to_d = np.logical_and(most_likely_ts == 2, prev_most_likely == 4)
-        change_in_most_likely_class[ts, :, :][i_to_d] = 16
-        sum_change_class[ts, 16] = np.sum(i_to_d)
-
-        # Interior to washover
-        i_to_w = np.logical_and(most_likely_ts == 3, prev_most_likely == 4)
-        change_in_most_likely_class[ts, :, :][i_to_w] = 17
-        sum_change_class[ts, 17] = np.sum(i_to_w)
-
-    state_change_ticks = ['S to B', 'S to W', 'B to S', 'B to D', 'B to W', 'B to I', 'D to B', 'D to W', 'D to I', 'W to S', 'W to B', 'W to D', 'W to I', 'I to S', 'I to B', 'I to D', 'I to W']
-
-    plt.figure()
-    plt.bar(np.sum(sum_change_class[1:], axis=0))
-    plt.xticks(range(len(state_change_ticks)), state_change_ticks, rotation=90)
-    plt.ylabel('Change in Area (m^2)')
-    plt.title('Change in Area for Most Likely State Transitions, Cumulative Over Time')
-
-
-def plot_most_likely_transitions_beginning_to_end(class_probabilities):
-
-    change_in_most_likely_class = np.zeros([longshore, crossshore])
-
-    sum_change_class = np.zeros([18])
-
-    most_likely_ts = np.argmax(class_probabilities[:, -1, :, :], axis=0)  # Bin of most probable outcome
-    prev_most_likely = np.argmax(class_probabilities[:, 0, :, :], axis=0)  # Bin of most probable outcome
-
-    # Subaqueous to beach
-    s_to_b = np.logical_and(most_likely_ts == 1, prev_most_likely == 0)
-    change_in_most_likely_class[:, :][s_to_b] = 1
-    sum_change_class[1] = np.sum(s_to_b)
-
-    # Subaqueous to washover
-    s_to_w = np.logical_and(most_likely_ts == 3, prev_most_likely == 0)
-    change_in_most_likely_class[:, :][s_to_w] = 2
-    sum_change_class[2] = np.sum(s_to_w)
-
-    # Beach to subaqueous
-    b_to_s = np.logical_and(most_likely_ts == 0, prev_most_likely == 1)
-    change_in_most_likely_class[:, :][b_to_s] = 3
-    sum_change_class[3] = np.sum(b_to_s)
-
-    # Beach to dune
-    b_to_d = np.logical_and(most_likely_ts == 2, prev_most_likely == 1)
-    change_in_most_likely_class[:, :][b_to_d] = 4
-    sum_change_class[4] = np.sum(b_to_d)
-
-    # Beach to washover
-    b_to_w = np.logical_and(most_likely_ts == 3, prev_most_likely == 1)
-    change_in_most_likely_class[:, :][b_to_w] = 5
-    sum_change_class[5] = np.sum(b_to_w)
-
-    # Beach to interior
-    b_to_i = np.logical_and(most_likely_ts == 4, prev_most_likely == 1)
-    change_in_most_likely_class[:, :][b_to_i] = 6
-    sum_change_class[6] = np.sum(b_to_i)
-
-    # Dune to beach
-    d_to_b = np.logical_and(most_likely_ts == 1, prev_most_likely == 2)
-    change_in_most_likely_class[:, :][d_to_b] = 7
-    sum_change_class[7] = np.sum(d_to_b)
-
-    # Dune to washover
-    d_to_w = np.logical_and(most_likely_ts == 3, prev_most_likely == 2)
-    change_in_most_likely_class[:, :][d_to_w] = 8
-    sum_change_class[8] = np.sum(d_to_w)
-
-    # Dune to interior
-    d_to_i = np.logical_and(most_likely_ts == 4, prev_most_likely == 2)
-    change_in_most_likely_class[:, :][d_to_i] = 9
-    sum_change_class[9] = np.sum(d_to_i)
-
-    # Washover to subaqueous
-    w_to_s = np.logical_and(most_likely_ts == 0, prev_most_likely == 3)
-    change_in_most_likely_class[:, :][w_to_s] = 10
-    sum_change_class[10] = np.sum(w_to_s)
-
-    # Washover to beach
-    w_to_b = np.logical_and(most_likely_ts == 1, prev_most_likely == 3)
-    change_in_most_likely_class[:, :][w_to_b] = 11
-    sum_change_class[11] = np.sum(w_to_b)
-
-    # Washover to dune
-    w_to_d = np.logical_and(most_likely_ts == 2, prev_most_likely == 3)
-    change_in_most_likely_class[:, :][w_to_d] = 12
-    sum_change_class[12] = np.sum(w_to_d)
-
-    # Washover to interior
-    w_to_i = np.logical_and(most_likely_ts == 4, prev_most_likely == 3)
-    change_in_most_likely_class[:, :][w_to_i] = 13
-    sum_change_class[13] = np.sum(w_to_i)
-
-    # Interior to subaqueous
-    i_to_s = np.logical_and(most_likely_ts == 0, prev_most_likely == 4)
-    change_in_most_likely_class[:, :][i_to_s] = 14
-    sum_change_class[14] = np.sum(i_to_s)
-
-    # Interior to beach
-    i_to_b = np.logical_and(most_likely_ts == 1, prev_most_likely == 4)
-    change_in_most_likely_class[:, :][i_to_b] = 15
-    sum_change_class[15] = np.sum(i_to_b)
-
-    # Interior to dune
-    i_to_d = np.logical_and(most_likely_ts == 2, prev_most_likely == 4)
-    change_in_most_likely_class[:, :][i_to_d] = 16
-    sum_change_class[16] = np.sum(i_to_d)
-
-    # Interior to washover
-    i_to_w = np.logical_and(most_likely_ts == 3, prev_most_likely == 4)
-    change_in_most_likely_class[:, :][i_to_w] = 17
-    sum_change_class[17] = np.sum(i_to_w)
-
-    state_change_ticks = ['S to B', 'S to W', 'B to S', 'B to D', 'B to W', 'B to I', 'D to B', 'D to W', 'D to I', 'W to S', 'W to B', 'W to D', 'W to I', 'I to S', 'I to B', 'I to D', 'I to W']
-
-    plt.figure()
-    plt.bar(range(len(state_change_ticks)), sum_change_class[1:])
-    plt.xticks(range(len(state_change_ticks)), state_change_ticks, rotation=90)
-    plt.ylabel('Change in Area (m^2)')
-    plt.title('Change in Area for Most Likely State Transitions, Forecast Beginning to End')
+    fig, ax = plt.subplots()
+    cax = ax.matshow(transition_matrix, cmap='YlOrBr', vmin=0, vmax=1)
+    tic_locs = np.arange(len(class_labels))
+    plt.xticks(tic_locs, class_labels)
+    plt.yticks(tic_locs, class_labels)
+    plt.ylabel('From Class')
+    plt.xlabel('To Class')
+    fig.colorbar(cax, label='Net Change in Area From Ecogeomorphic State Transition (m^2)')
 
 
 def plot_most_likely_transition_maps(class_probabilities):
@@ -856,17 +667,15 @@ duplicates = 24  # To account for internal stochasticity (e.g., storms, aeolian)
 core_num = min(duplicates, 12)  # Number of cores to use in the parallelization (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
-ymin = 19000  # [m] Alongshore coordinate
-ymax = 19500  # [m] Alongshore coordinate
+ymin = 17500  # [m] Alongshore coordinate
+ymax = 18000  # [m] Alongshore coordinate
 xmin = 900  # [m] Cross-shore coordinate
 xmax = 1600  # [m] Cross-shore coordinate
 plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 plot_xmax = plot_xmin + 600  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 
-name = '19000-19500, 24 duplicates, 2018-2050, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), 16Feb24'  # Name of simulation suite
-
-# 21000
+name = '17500-18000, 2018-2050, 24 duplicates, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), 5Mar24'  # Name of simulation suite
 
 
 # _____________________
@@ -910,8 +719,8 @@ plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
 plot_most_probable_class(elev_class_probabilities, elev_class_cmap, elev_num_classes, elev_class_labels, it=-1)
 plot_most_probable_class(state_class_probabilities, state_class_cmap, state_num_classes, state_class_labels, it=-1)
 plot_class_area_change_over_time(state_class_probabilities, state_num_classes)
-plot_most_likely_transitions_beginning_to_end(state_class_probabilities)
 plot_most_likely_transition_maps(state_class_probabilities)
+plot_transitions_area_matrix(state_class_probabilities, state_num_classes, state_class_labels)
 bins_animation(elev_class_probabilities, elev_class_labels)
 bins_animation(state_class_probabilities, state_class_labels)
 most_likely_animation(elev_class_probabilities, elev_class_cmap, elev_num_classes, elev_class_labels)

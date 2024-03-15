@@ -751,6 +751,8 @@ def foredune_crest(topo, MHW):
     ----------
     crestline : ndarray
         Cross-shore location of the dune crest for each row alongshore.
+    not_gap : ndarry
+        Boolean array of alongshore length where True represents cross-shore profiles where a dune crest is present, and False where no dune crest is present (i.e., dune gap)
     """
 
     x_s_min = np.min(ocean_shoreline(topo, MHW))
