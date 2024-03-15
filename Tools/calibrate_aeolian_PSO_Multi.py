@@ -102,7 +102,7 @@ def model_skill(obs, sim, t0, mask):
     return NSE, RMSE, NMAE, MASS, BSS, PC, HSS
 
 
-def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, xmin, xmax, y_min, y_max, startdate, dur):
+def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, xmin, xmax, dune_x_min, dune_x_max, startdate, dur):
     """Run a hindcast this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
     # Construct wind rose
@@ -117,8 +117,10 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, xmin, xmax, y
     meeb = MEEB(
         name=name,
         simulation_time_yr=dur,
-        alongshore_domain_boundary_min=xmin,
-        alongshore_domain_boundary_max=xmax,
+        alongshore_domain_boundary_min=ymin,
+        alongshore_domain_boundary_max=ymax,
+        crossshore_domain_boundary_min=xmin,
+        crossshore_domain_boundary_max=xmax,
         RSLR=0.004,
         MHW=MHW,
         seeded_random_numbers=True,
@@ -171,8 +173,8 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, xmin, xmax, y
 
     # Cross-shore range mask
     range_mask = np.ones(topo_end_sim.shape)  # [bool] Mask for every cell between two cross-shore locations
-    range_mask[:, :y_min] = False
-    range_mask[:, y_max:] = False
+    range_mask[:, :dune_x_min - xmin] = False
+    range_mask[:, dune_x_max - xmin:] = False
 
     # Choose masks to use
     mask = np.logical_and(range_mask, subaerial_mask)  # [bool] Combined mask used for analysis
@@ -209,34 +211,34 @@ def multi_fitness(solution):
     score_list = []
 
     for s in range(len(sim_start)):
-        for x in range(len(x_min)):
+        for x in range(len(y_min)):
             # Initial Observed Topo
             Init = np.load("Input/" + sim_start[s])
             # Final Observed
             End = np.load("Input/" + sim_stop[s])
 
             # Transform Initial Observed Topo
-            topo_i = Init[0, x_min[x]: x_max[x], :]  # [m]
+            topo_i = Init[0, y_min[x]: y_max[x], x_min[x]: x_max[x]]  # [m]
             topo_start_x = copy.deepcopy(topo_i)  # [m] INITIAL TOPOGRPAHY
 
             # Transform Final Observed Topo
-            topo_e = End[0, x_min[x]: x_max[x], :]  # [m]
+            topo_e = End[0, y_min[x]: y_max[x], x_min[x]: x_max[x]]  # [m]
             topo_end_obs_x = copy.deepcopy(topo_e)  # [m] FINAL OBSERVED TOPOGRAPHY
 
             # Set Veg Domain
-            spec1_i = Init[1, x_min[x]: x_max[x], :]
-            spec2_i = Init[2, x_min[x]: x_max[x], :]
+            spec1_i = Init[1, y_min[x]: y_max[x], x_min[x]: x_max[x]]
+            spec2_i = Init[2, y_min[x]: y_max[x], x_min[x]: x_max[x]]
             veg_start = spec1_i + spec2_i  # INITIAL VEGETATION COVER
             veg_start[veg_start > 1] = 1
             veg_start[veg_start < 0] = 0
 
-            spec1_e = End[1, x_min[x]: x_max[x], :]
-            spec2_e = End[2, x_min[x]: x_max[x], :]
+            spec1_e = End[1, y_min[x]: y_max[x], x_min[x]: x_max[x]]
+            spec2_e = End[2, y_min[x]: y_max[x], x_min[x]: x_max[x]]
             veg_end = spec1_e + spec2_e  # FINAL OBSERVED VEGETATION COVER
             veg_end[veg_end > 1] = 1
             veg_end[veg_end < 0] = 0
 
-            score = aeolian_fitness(solution, sim_start[s], topo_start_x, topo_end_obs_x, x_min[x], x_max[x], y_range_min[x], y_range_max[x], sim_startdate[s], sim_dur[s])
+            score = aeolian_fitness(solution, sim_start[s], topo_start_x, topo_end_obs_x, y_min[x], y_max[x], x_min[x], x_max[x], x_range_min[x], x_range_max[x], sim_startdate[s], sim_dur[s])
             score_list.append(score)
 
     # Take mean of scores from all locations
@@ -277,13 +279,15 @@ sim_dur = [3.44]  # [yr]
 # _____________________________________________
 # Define Multiple Locations
 
-x_min = [6300, 21000, 19030]
-x_max = [6500, 21200, 19230]
 # tall ridge 1, tall ridge 2, overwash fan, overwash gap
+y_min = [6300, 21000, 19030]
+y_max = [6500, 21200, 19230]
+x_min = [700, 900, 900]
+x_max = [1400, 1600, 1600]
 
 # Cross-shore range of foredune system for skill assessment
-y_range_min = [838, 1068, 1135]
-y_range_max = [880, 1100, 1185]
+x_range_min = [838, 1068, 1135]
+x_range_max = [880, 1100, 1185]
 
 
 # ____________________________________
