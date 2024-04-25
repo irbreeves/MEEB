@@ -34,7 +34,7 @@ startdate = '20181007'
 
 sim_duration = 32
 MHW = 0.39  # [m NAVD88]
-name = '19000-19500, 2018-2050'  # Name of simulation
+name = '19250-19500, 2018-2050'  # Name of simulation
 
 # _____________________
 # Define Coordinates of Model Domain
@@ -73,19 +73,21 @@ meeb = MEEB(
     p_ero_sand=0.13,
     entrainment_veg_limit=0.37,
     saltation_veg_limit=0.37,
-    shadowangle=5,
+    shadowangle=10,
     repose_bare=20,
     repose_veg=30,
     wind_rose=(0.83, 0.02, 0.12, 0.03),  # (right, down, left, up)
     # --- Storms --- #
-    Rin=213,
-    Cx=36,
-    MaxUpSlope=1.57,
-    Kow=0.0000501,
-    mm=1.02,
+    Rin=200,
+    Cs=0.067,
+    MaxUpSlope=1.5,
+    Kow=0.0001227,
+    mm=1.04,
+    overwash_substeps=22,
     beach_equilibrium_slope=0.027,
-    swash_transport_coefficient=0.001,
+    swash_erosive_timescale=1.29,
     wave_period_storm=9.4,
+    beach_substeps=8,
     flow_reduction_max_spec1=0.02,
     flow_reduction_max_spec2=0.05,
     # --- Shoreline --- #
@@ -96,6 +98,10 @@ meeb = MEEB(
     alongshore_section_length=25,
     estimate_shoreface_parameters=True,
     # --- Veg --- #
+    sp1_lateral_probability=0.1,
+    sp2_lateral_probability=0.1,
+    sp1_pioneer_probability=0.025,
+    sp2_pioneer_probability=0.025,
 )
 
 print(meeb.name, end='\n' * 2)
@@ -198,7 +204,7 @@ ax2.matshow(vcs, cmap=cmap3, vmin=-1, vmax=1)
 # Profiles
 Fig = plt.figure(figsize=(14, 7.5))
 ax1 = Fig.add_subplot(211)
-profile_x = 10
+profile_x = 140
 plt.plot(topo_start_sim[profile_x, plot_xmin: plot_xmax], 'k--')
 plt.plot(topo_end_sim[profile_x, plot_xmin: plot_xmax], 'r')
 plt.title("Profile " + str(profile_x))
@@ -207,6 +213,16 @@ plt.plot(np.mean(topo_start_sim[:, plot_xmin: plot_xmax], axis=0), 'k--')
 plt.plot(np.mean(topo_end_sim[:, plot_xmin: plot_xmax], axis=0), 'r')
 plt.legend(['Start', 'Simulated'])
 plt.title("Average Profile")
+
+profx = 140
+proffig2 = plt.figure(figsize=(11, 7.5))
+for t in range(0, int(meeb.simulation_time_yr / meeb.save_frequency), 2):
+    prof = meeb.topo_TS[profx, :, t]
+    plt.plot(prof)
+dune_crest_end, not_gap = routine.foredune_crest(topo_start_sim, mhw_end_sim)
+crest_loc_elev = prof[dune_crest_end[profx]]
+plt.scatter(dune_crest_end[profx], crest_loc_elev)
+plt.title(name + ", x =" + str(profx))
 
 # -----------------
 # Shoreline Position Over Time

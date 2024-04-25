@@ -114,28 +114,26 @@ RNG = np.random.default_rng(seed=13)
 # Overwash, Beach, & Dune Change
 topo_prestorm = copy.deepcopy(topo)  # [m NAVD88]
 
-sim_topo_post_storm, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
+sim_topo_post_storm, topo_change_overwash, OWflux, inundated, Qbe = routine.storm_processes(
     topo,
     Rhigh,
     Rlow,
     dur,
-    Rin=213,
-    Cx=36,
-    AvgSlope=2/200,
+    Rin=200,
+    Cs=0.067,
     nn=0.5,
-    MaxUpSlope=1.57,
+    MaxUpSlope=1.5,
     fluxLimit=1,
     Qs_min=1,
-    Kow=0.0000501,
-    mm=1.02,
+    Kow=0.0001227,
+    mm=1.04,
     MHW=MHW,
     Cbb=0.7,
     Qs_bb_min=1,
-    substep=4,
+    substep=22,
     beach_equilibrium_slope=0.027,
-    swash_transport_coefficient=0.001,
-    wave_period_storm=9.4,
-    beach_substeps=20,
+    swash_erosive_timescale=1.29,
+    beach_substeps=8,
     x_s=x_s,
     cellsize=1,
     spec1=spec1,
@@ -311,8 +309,8 @@ topo2 = sim_topo_final[:, plot_xmin: plot_xmax]  # [m]
 topo2 = np.ma.masked_where(topo2 < MHW, topo2)  # Mask cells below MHW
 cax2 = ax2.matshow(topo2, cmap=cmap1, vmin=0, vmax=6.0)
 plt.title('Simulated')
-cbar = Fig.colorbar(cax2)
-cbar.set_label('Elevation [m MHW]', rotation=270, labelpad=20)
+# cbar = Fig.colorbar(cax2)
+# cbar.set_label('Elevation [m MHW]', rotation=270, labelpad=20)
 
 # Simulated Topo Change
 ax3 = Fig.add_subplot(224)
@@ -327,8 +325,8 @@ obs_change_masked = obs_change_m.copy()
 obs_change_masked[~mask_obs] = 0
 cax4 = ax4.matshow(obs_change_masked[:, plot_xmin: plot_xmax], cmap='bwr_r', vmin=-cmap_lim, vmax=cmap_lim)
 # ax4.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
-cbar = Fig.colorbar(cax4)
-cbar.set_label('Elevation Change [m]', rotation=270, labelpad=20)
+# cbar = Fig.colorbar(cax4)
+# cbar.set_label('Elevation Change [m]', rotation=270, labelpad=20)
 plt.tight_layout()
 
 # ----------
@@ -344,11 +342,11 @@ plt.tight_layout()
 
 # ----------
 # Profile Change
-profx = 118
+profx = 94
 proffig2 = plt.figure(figsize=(11, 7.5))
-plt.plot(topo_prestorm[profx, plot_xmin + 115: plot_xmin + 415], c='black')
-plt.plot(obs_topo_final[profx, plot_xmin + 115: plot_xmax + 415], c='green')
-plt.plot(sim_topo_final[profx, plot_xmin + 115: plot_xmin + 415], c='red')
+plt.plot(topo_prestorm[profx, plot_xmin: plot_xmin + 415], c='black')
+plt.plot(obs_topo_final[profx, plot_xmin: plot_xmin + 415], c='green')
+plt.plot(sim_topo_final[profx, plot_xmin: plot_xmin + 415], c='red')
 plt.legend(["Pre", "Post Obs", "Post Sim"])
 plt.title(name + ", x =" + str(profx))
 

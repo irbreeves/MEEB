@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 5 March 2024
+Last update: 25 April 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -59,16 +59,13 @@ class MEEB:
             p_ero_sand=0.13,  # [0-1] Probability of erosion of bare/sandy cells
             entrainment_veg_limit=0.37,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible.
             saltation_veg_limit=0.37,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
-            shadowangle=5,  # [deg]
+            shadowangle=10,  # [deg]
             repose_bare=20,  # [deg]
             repose_veg=30,  # [deg]
             repose_threshold=0.3,  # [0-1] Vegetation threshold for applying repose_veg
             eq_backbarrier_depth=1.5,  # [m] Equilibrium depth of back-barrier bay/lagoon
 
-            # SHOREFACE, BEACH, & SHORELINE
-            beach_equilibrium_slope=0.027,  # Equilibrium slope of the beach
-            swash_transport_coefficient=0.001,  # Non-dimensional swash transport coefficient (Larson, Kubota, et al., 2004) expected to depend on several factors (particularly grain size); typically 0.001 - 0.003 and can be calibrated
-            beach_substeps=20,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
+            # SHOREFACE & SHORELINE
             shoreface_flux_rate=5000,  # [m3/m/yr] Shoreface flux rate coefficient
             shoreface_equilibrium_slope=0.02,  # Equilibrium slope of the shoreface
             shoreface_depth=10,  # [m] Depth to shoreface toe (i.e. depth of ‘closure’)
@@ -100,10 +97,10 @@ class MEEB:
             sp1_peak=0.2,  # Growth peak, spec1
             sp2_peak=0.05,  # Growth peak, spec2
             VGR=0,  # [%] Growth reduction by end of period
-            sp1_lateral_probability=0.2,  # [0-1] Probability of lateral expansion of existing vegetation
-            sp2_lateral_probability=0.2,  # [0-1] Probability of lateral expansion of existing vegetation
-            sp1_pioneer_probability=0.05,  # [0-1] Probability of occurrence of new pioneering vegetation
-            sp2_pioneer_probability=0.05,  # [0-1] Probability of occurrence of new pioneering vegetation
+            sp1_lateral_probability=0.1,  # [0-1] Probability of lateral expansion of existing vegetation
+            sp2_lateral_probability=0.1,  # [0-1] Probability of lateral expansion of existing vegetation
+            sp1_pioneer_probability=0.025,  # [0-1] Probability of occurrence of new pioneering vegetation
+            sp2_pioneer_probability=0.025,  # [0-1] Probability of occurrence of new pioneering vegetation
             maxvegeff=1.0,  # [0-1] Value of maximum vegetation effectiveness allowed
             Spec1_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 1 (1 m MHW for A. brevigulata from Young et al., 2011)
             Spec2_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 2
@@ -111,21 +108,23 @@ class MEEB:
             flow_reduction_max_spec2=0.05,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 2 at full density
             effective_veg_sigma=3,  # Standard deviation for Gaussian filter of vegetation cover
 
-            # STORM OVERWASH AND DUNE EROSION
+            # STORM OVERWASH AND BEACH-DUNE CHANGE
             storm_list_filename="SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy",
             storm_timeseries_filename="StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
-            Rin=213,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
-            Cx=36,  # Constant for representing flow momentum for sediment transport in overwash
+            Rin=200,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
+            Cs=0.06,  # Constant for representing flow momentum for sediment transport in overwash
             nn=0.5,  # Flow routing constant
-            MaxUpSlope=1.57,  # Maximum slope water can flow uphill
-            overwash_flux_limit=1,  # [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
+            MaxUpSlope=1.5,  # Maximum slope water can flow uphill
+            marine_flux_limit=1,  # [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
             overwash_min_discharge=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
-            Kow=5.01e-05,  # Sediment transport coefficient for run-up overwash regime
-            mm=1.02,  # Inundation overwash constant
+            Kow=1.2e-04,  # Sediment transport coefficient for run-up overwash regime
+            mm=1.04,  # Inundation overwash constant
             Cbb=0.7,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
             overwash_min_subaqueous_discharge=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
-            overwash_substeps=4,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
-
+            overwash_substeps=22,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+            beach_equilibrium_slope=0.027,  # Equilibrium slope of the beach
+            swash_erosive_timescale=1.29,  # Non-dimensional erosive timescale coefficient for beach/duneface sediment transport (Duran Vinent & Moore, 2015)
+            beach_substeps=8,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
     ):
         """MEEB: Mesoscale Explicit Ecogeomorphic Barrier model.
 
@@ -182,7 +181,7 @@ class MEEB:
         self._saltation_veg_limit = saltation_veg_limit
         self._jumplength = jumplength
         self._beach_equilibrium_slope = beach_equilibrium_slope
-        self._swash_transport_coefficient = swash_transport_coefficient
+        self._swash_erosive_timescale = swash_erosive_timescale
         self._beach_substeps = beach_substeps
         self._k_sf = shoreface_flux_rate
         self._s_sf_eq = shoreface_equilibrium_slope
@@ -220,10 +219,10 @@ class MEEB:
         self._flow_reduction_max_spec2 = flow_reduction_max_spec2
         self._effective_veg_sigma = effective_veg_sigma
         self._Rin = Rin
-        self._Cx = Cx
+        self._Cs = Cs
         self._nn = nn
         self._MaxUpSlope = MaxUpSlope
-        self._overwash_flux_limit = overwash_flux_limit
+        self._marine_flux_limit = marine_flux_limit
         self._overwash_min_discharge = overwash_min_discharge
         self._Kow = Kow
         self._mm = mm
@@ -259,11 +258,10 @@ class MEEB:
         self._iteration_dates = [self._simulation_start_date + timedelta(minutes=10512 * x) for x in range(self._iterations)]  # List of dates corresponding to each model iteration
 
         # TOPOGRAPHY
-        Init = np.load(inputloc + init_filename)
+        Init = np.float32(np.load(inputloc + init_filename))
         self._alongshore_domain_boundary_max = min(self._alongshore_domain_boundary_max, Init[0, :, :].shape[0])
         self._crossshore_domain_boundary_max = min(self._crossshore_domain_boundary_max, Init[0, :, :].shape[1])
-        self._topo_initial = Init[0, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [m NAVD88] 2D array of initial topography
-        self._topo = self._topo_initial.copy()  # [m NAVD88] Initialise the topography
+        self._topo = Init[0, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [m NAVD88] 2D array of initial topography
         self._longshore, self._crossshore = self._topo.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
         self._groundwater_elevation = np.zeros(self._topo.shape)  # [m NAVD88] Initialize
 
@@ -298,7 +296,7 @@ class MEEB:
         self._growth_reduction_timeseries = np.linspace(0, self._VGR / 100, int(np.ceil(self._simulation_time_yr)))
 
         # STORMS
-        self._StormList = np.load(inputloc + storm_list_filename)
+        self._StormList = np.float32(np.load(inputloc + storm_list_filename))
         self._storm_timeseries = np.load(inputloc + storm_timeseries_filename)
         self._pstorm = [0.333, 0.333, 0.167, 0.310, 0.381, 0.310, 0.310, 0.310, 0.286, 0, 0.119, 0.024, 0.048, 0.048, 0.048, 0.071, 0.333, 0.286, 0.214,
                         0.190, 0.190, 0.262, 0.214, 0.262, 0.238]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 NCB storm record (1.78 m NAVD88 Berm Elev.)
@@ -312,7 +310,7 @@ class MEEB:
         self._MHW_init = copy.deepcopy(self._MHW)
         self._wind_direction = np.zeros([self._iterations], dtype=int)
         self._slabheight = round(self._slabheight, 2)  # Round slabheight to 2 decimals
-        self._sedimentation_balance = self._topo * 0  # [m] Initialize map of the sedimentation balance: difference between erosion and deposition for 1 model year; (+) = net deposition, (-) = net erosion
+        self._sedimentation_balance = np.zeros(self._topo.shape, dtype=np.float32)  # [m] Initialize map of the sedimentation balance: difference between erosion and deposition for 1 model year; (+) = net deposition, (-) = net erosion
         self._topographic_change = self._topo * 0  # [m] Map of the absolute value of topographic change over 1 model year (i.e., a measure of if the topography is changing or stable)
         self._x_s_TS = [self._x_s]  # Initialize storage array for shoreline position
         self._x_t_TS = [self._x_t]  # Initialize storage array for shoreface toe position
@@ -326,16 +324,16 @@ class MEEB:
         # __________________________________________________________________________________________________________________________________
         # MODEL OUPUT CONFIGURATION
 
-        self._topo_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1])  # Array for saving each topo map at specified frequency
+        self._topo_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each topo map at specified frequency
         self._topo_TS[:, :, 0] = self._topo
-        self._spec1_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1])  # Array for saving each spec1 map at specified frequency
+        self._spec1_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each spec1 map at specified frequency
         self._spec1_TS[:, :, 0] = self._spec1
-        self._spec2_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1])  # Array for saving each spec2 map at specified frequency
+        self._spec2_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each spec2 map at specified frequency
         self._spec2_TS[:, :, 0] = self._spec2
-        self._veg_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1])  # Array for saving each veg map at specified frequency
+        self._veg_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each veg map at specified frequency
         self._veg_TS[:, :, 0] = self._veg
-        self._erosmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all erosion probability maps
-        self._deposmap_sum = np.zeros([self._longshore, self._crossshore])  # Sum of all deposition probability maps
+
+        del Init
 
     # __________________________________________________________________________________________________________________________________
     # MAIN ITERATION LOOP
@@ -400,17 +398,16 @@ class MEEB:
 
                 # Storm Processes: Beach/duneface change, overwash
                 self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, np.max(Rhigh), np.max(Rlow), dur]))
-                self._topo, topo_change, self._OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
+                self._topo, topo_change, self._OWflux, inundated, Qbe = routine.storm_processes(
                     topof=self._topo,
                     Rhigh=Rhigh,
                     Rlow=Rlow,
                     dur=dur,
                     Rin=self._Rin,
-                    Cx=self._Cx,
-                    AvgSlope=2 / 200,  # Representative average slope of interior (made static - representative of 200-m-wide barrier interior)
+                    Cs=self._Cs,
                     nn=self._nn,
                     MaxUpSlope=self._MaxUpSlope,
-                    fluxLimit=self._overwash_flux_limit,
+                    fluxLimit=self._marine_flux_limit,
                     Qs_min=self._overwash_min_discharge,
                     Kow=self._Kow,
                     mm=self._mm,
@@ -419,8 +416,7 @@ class MEEB:
                     Qs_bb_min=self._overwash_min_subaqueous_discharge,
                     substep=self._overwash_substeps,
                     beach_equilibrium_slope=self._beach_equilibrium_slope,
-                    swash_transport_coefficient=self._swash_transport_coefficient,
-                    wave_period_storm=self._wave_period_storm,
+                    swash_erosive_timescale=self._swash_erosive_timescale,
                     beach_substeps=self._beach_substeps,
                     x_s=self._x_s,
                     cellsize=self._cellsize,
@@ -563,9 +559,6 @@ class MEEB:
             self._spec1_TS[:, :, moment] = self._spec1
             self._spec2_TS[:, :, moment] = self._spec2
             self._veg_TS[:, :, moment] = self._veg
-
-        self._erosmap_sum = self._erosmap_sum + aeolian_erosion_prob
-        self._deposmap_sum = self._deposmap_sum + aeolian_deposition_prob
 
         # --------------------------------------
         # RESET DOMAINS
