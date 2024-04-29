@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 25 April 2024
+Last update: 29 April 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -1617,6 +1617,7 @@ def storm_processes(
     Elevation = np.zeros([iterations, longshore, domain_width])
     domain_topo_start = topof[:, domain_width_start:].copy()  # [m NAVD88]
     Elevation[0, :, :] = domain_topo_start.copy()  # [m NAVD88]
+    dune_crest_loc, not_gap = foredune_crest(Elevation[0, :, :], MHW)  # Cross-shore location of pre-storm dune crest
 
     # Initialize Memory Storage Arrays
     Discharge = np.zeros([iterations, longshore, domain_width])
@@ -1641,11 +1642,9 @@ def storm_processes(
         if TS > 0:
             Elevation[TS, :, :] = Elevation[TS - 1, :, :]
 
-        # Find TWL for this timestep
-        Rhigh_TS = Rhigh.copy()  # This line prescribes a static TWL over course of storm
-
         # Find dune crest locations and heights for this storm iteration
-        dune_crest_loc, not_gap = foredune_crest(Elevation[TS, :, :], MHW)  # Cross-shore location of pre-storm dune crest
+        if TS % substep == 0:  # Update every storm hour (not every substep) for speed
+            dune_crest_loc, not_gap = foredune_crest(Elevation[TS, :, :], MHW)  # Cross-shore location of pre-storm dune crest
 
         Elevation, Discharge, SedFluxIn, SedFluxOut = route_overwash(
             TS,
@@ -1658,7 +1657,7 @@ def storm_processes(
             domain_width,
             domain_width_start,
             longshore,
-            Rhigh_TS,
+            Rhigh,
             Rin,
             Cs,
             nn,
@@ -1691,7 +1690,7 @@ def storm_processes(
             dune_crest_loc,
             x_s,
             MHW,
-            Rhigh_TS,
+            Rhigh,
             beach_equilibrium_slope,
             swash_erosive_timescale,
             beach_substeps,

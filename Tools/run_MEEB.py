@@ -32,13 +32,13 @@ startdate = '20181007'
 
 # _____________________
 
-sim_duration = 32
+sim_duration = 5
 MHW = 0.39  # [m NAVD88]
-name = '19250-19500, 2018-2050'  # Name of simulation
+name = '19250-19500, 2018-2023'  # Name of simulation
 
 # _____________________
 # Define Coordinates of Model Domain
-ymin = 19000  # Alongshore
+ymin = 19250  # Alongshore
 ymax = 19500  # Alongshore
 xmin = 900  # Cross-shore
 xmax = xmin + 900  # Cross-shore
