@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 25 April 2024
+Last update: 29 April 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -371,7 +371,6 @@ class MEEB:
 
         # Apply changes, make calculations
         self._topo += aeolian_elevation_change * self._slabheight  # [m NAVD88] Changes applied to the topography; convert aeolian_elevation_change from slabs to meters
-        self._topo, aval = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._RNG)  # Enforce angles of repose: avalanching
         self._sedimentation_balance = self._sedimentation_balance + (self._topo - topo_iteration_start)  # [m] Update the sedimentation balance map
         self._topographic_change = self._topographic_change + abs(self._topo - topo_iteration_start)  # [m]
 
@@ -426,9 +425,6 @@ class MEEB:
                     flow_reduction_max_spec2=self._flow_reduction_max_spec2,
                 )
 
-                # Enforce angles of repose again after storm
-                self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._RNG)[0]  # [m NAVD88]
-
                 # Update vegetation from storm effects
                 self._spec1[inundated] = 0  # Remove species where beach is inundated
                 self._spec2[inundated] = 0  # Remove species where beach is inundated
@@ -439,8 +435,8 @@ class MEEB:
                 topo_change = np.zeros(self._topo.shape)  # [m NAVD88]
                 Qbe = np.zeros([self._longshore])  # [m^3] No overwash if no storm
 
-            self._sedimentation_balance = self._sedimentation_balance + topo_change  # [m]
-            self._topographic_change = self._topographic_change + abs(topo_change)  # [m]
+            self._sedimentation_balance += topo_change  # [m]
+            self._topographic_change += abs(topo_change)  # [m]
 
             # --------------------------------------
             # SHORELINE CHANGE
@@ -473,6 +469,7 @@ class MEEB:
             prev_shoreline = self._x_s_TS[-1]  # Shoreline positions from previous time step
 
             # Adjust topography domain to according to shoreline change
+            topo_pre_shoreline_change = self._topo.copy()
             self._topo = routine.adjust_ocean_shoreline(
                 self._topo,
                 self._x_s,
@@ -482,6 +479,15 @@ class MEEB:
                 self._RSLR,
                 self._storm_iterations_per_year,
             )
+
+            # Enforce angles of repose
+            """IR 25Apr24: Ideally, angles of repose would be enforced after avery aeolian iteration and every storm. However, to significantly increase model speed, I now enforce AOR only at the end of each
+            shoreline iteration (i.e., every 2 aeolian iterations). The morphodynamic effects of this are apparently negligible, while run time is much quicker."""
+            self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._RNG)[0]  # [m NAVD88]
+
+            # Update sedimentation balance after adjusting the shoreline and enforcing AOR
+            self._sedimentation_balance += self._topo - topo_pre_shoreline_change  # [m] Update the sedimentation balance map
+            self._topographic_change += abs(self._topo - topo_pre_shoreline_change)
 
             # Store shoreline and shoreface toe locations
             self._x_s_TS = np.vstack((self._x_s_TS, self._x_s))  # Store
