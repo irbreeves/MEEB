@@ -1282,13 +1282,13 @@ def storm_processes(
         OWloss = OWloss + np.sum(ElevationChangeLandward, axis=1)  # [m^3] For each cell alongshore
 
         # Record cells inundated from overwash
-        overwash_inundated = np.hstack((np.zeros([longshore, domain_width_start]), Discharge)) > 0
-        inundated = np.logical_or(inundated, overwash_inundated)  # Update inundated map with cells landward of dune crest
+        overwash_inundated = Discharge > 0
+        inundated[domain_width_start:, :] = np.logical_or(inundated[domain_width_start:, :], overwash_inundated)  # Update inundated map with cells landward of dune crest
 
         # ---------------------
         # Seaward of Dune Crest
 
-        # Baech-Dune Change
+        # Beach-Dune Change
         ElevationChangeSeaward, dV, beach_inundated = calc_beach_dune_change(
             Elevation.copy(),
             cellsize,
@@ -1372,7 +1372,6 @@ def calc_beach_dune_change(topo,
         """
 
     Q = Te / substeps  # Erosive timescale flux multiplier
-    fluxLimit /= substeps
 
     # Initialize
     longshore, crossshore = topo.shape  # Domain dimensions
@@ -1433,8 +1432,6 @@ def calc_beach_dune_change(topo,
 
             divq = gradient(flux, dx)  # [m/s] Flux divergence
             dzdt = divq * Q  # [m/substep] Change in elevation for this timestep
-            dzdt[dzdt < -fluxLimit] = -fluxLimit  # Apply maximum accretion limit to prevent potential instabilities
-            dzdt[dzdt > fluxLimit] = fluxLimit  # Apply maximum erosion limit to prevent potential instabilities
             topo[y, xStart: xFinish] -= dzdt  # [m/substep] Update elevation for this substep with the flux multiplier
 
     # Determine topographic change for storm iteration
