@@ -73,13 +73,13 @@ def storm_fitness(solution):
 
     # Run Model
     topo_start_copy = copy.deepcopy(topo_start)
-    topo_end_sim, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
+    topo_end_sim, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes_OLD(
         topo_start_copy,
         Rhigh,
         Rlow,
         dur,
         Rin=int(round(solution[0])),
-        Cx=int(round(solution[1])),
+        Cs=int(round(solution[1])),
         AvgSlope=2 / 200,
         nn=0.5,
         MaxUpSlope=solution[2],

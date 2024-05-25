@@ -93,7 +93,7 @@ def storm_fitness(solution, solution_idx):
 
     topof = copy.deepcopy(topo_prestorm)
 
-    topof, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
+    topof, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes_OLD(
         topof,
         Rhigh,
         Rlow,
@@ -102,7 +102,7 @@ def storm_fitness(solution, solution_idx):
         threshold_in=0.25,
         Rin_i=5,
         Rin_r=solution[0],
-        Cx=solution[1],
+        Cs=solution[1],
         AvgSlope=2 / 200,
         nn=0.5,
         MaxUpSlope=solution[2],

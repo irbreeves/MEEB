@@ -72,7 +72,7 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
 
     # Run Model
     topo_start_copy = copy.deepcopy(topo_start_obs)
-    topo_end_sim, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
+    topo_end_sim, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes_OLD(
         topo_start_copy,
         Rhigh,
         Rlow,
@@ -81,7 +81,7 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
         threshold_in=0.25,
         Rin_i=5,
         Rin_r=solution[0],
-        Cx=solution[1],
+        Cs=solution[1],
         AvgSlope=2 / 200,
         nn=0.5,
         MaxUpSlope=solution[2],

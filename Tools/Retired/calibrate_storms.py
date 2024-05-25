@@ -102,7 +102,7 @@ def SkillSuite10(topo_pre, obs_topo_final, v1, v2, v3, v4, v5, v6, v7, v8, v9, v
 
                                             topof = copy.deepcopy(topo_pre)
 
-                                            topof, topo_change_overwash, OWflux, netDischarge, inundated = routine.storm_processes(
+                                            topof, topo_change_overwash, OWflux, netDischarge, inundated = routine.storm_processes_OLD(
                                                 topof,
                                                 vegf,
                                                 Rh,
@@ -112,7 +112,7 @@ def SkillSuite10(topo_pre, obs_topo_final, v1, v2, v3, v4, v5, v6, v7, v8, v9, v
                                                 threshold_in=0.25,
                                                 Rin_i=5,
                                                 Rin_r=v4[r],
-                                                Cx=v9[c],
+                                                Cs=v9[c],
                                                 AvgSlope=2 / 200,
                                                 nn=0.5,
                                                 MaxUpSlope=v7[u],

@@ -143,7 +143,7 @@ def aeolian_fitness(solution):
         mm=1.04,
         overwash_substeps=4,
         beach_equilibrium_slope=0.024,
-        swash_transport_coefficient=0.00083,
+        swash_erosive_timescale=0.00083,
         wave_period_storm=9.4,
         beach_substeps=20,
         flow_reduction_max_spec1=0.2,

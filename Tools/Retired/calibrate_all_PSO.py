@@ -142,7 +142,7 @@ def meeb_fitness(solution):
         Kow=solution[10],
         overwash_substeps=int(round(solution[11])),
         beach_equilibrium_slope=0.02,
-        swash_transport_coefficient=0.001,
+        swash_erosive_timescale=0.001,
         wave_period_storm=9.4,
         beach_substeps=22,
         # --- Shoreline --- #
