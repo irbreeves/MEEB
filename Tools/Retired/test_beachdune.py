@@ -53,8 +53,10 @@ veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or la
 veg[veg < 0] = 0
 
 # Find Dune Crest, Shoreline Positions
-dune_crest = routine.foredune_crest(topo, MHW)
+dune_crest, not_gap = routine.foredune_crest(topo, MHW)
 x_s = routine.ocean_shoreline(topo, MHW)
+
+crestflux = np.ones(len(dune_crest)) * -2.548136316998706e-06
 
 # Transform water levels to vectors
 Rhigh = Rhigh * np.ones(obs_topo_final.shape[0])
@@ -69,22 +71,35 @@ print(name)
 # Overwash, Beach, & Dune Change
 topo_prestorm = copy.deepcopy(topo)  # [m NAVD88]
 for ts in range(dur):
-    topoChange, dV, inundated = routine.calc_beach_dune_change(topo=topo,
-                                                               dx=1,
-                                                               crestline=dune_crest,
-                                                               x_s=x_s,
-                                                               MHW=MHW,
-                                                               Rhigh=Rhigh,
-                                                               Beq=0.039,
-                                                               Kc=1e-3,
-                                                               Tp=9.4,
-                                                               substeps=10,
-                                                               )
+    topoChange, dV, inundated = routine.calc_beach_dune_change_OLD(topo=topo,
+                                                                   dx=1,
+                                                                   crestline=dune_crest,
+                                                                   crestflux=crestflux,
+                                                                   x_s=x_s,
+                                                                   MHW=MHW,
+                                                                   Rhigh=Rhigh,
+                                                                   Beq=0.027,
+                                                                   Kc=1e-3,
+                                                                   Tp=9.4,
+                                                                   substeps=20,
+                                                                   )
+
+    # topo,
+    #                            dx,
+    #                            crestline,
+    #                            crestflux,
+    #                            x_s,
+    #                            MHW,
+    #                            Rhigh,
+    #                            Beq,
+    #                            Kc,
+    #                            Tp,
+    #                            substeps,
     topoChange_smooth = scipy.ndimage.gaussian_filter(topoChange, sigma=3, mode='constant', axes=[0])  # Smooth beach/dune topo change in alongshore direction (diffuse transects alongshore)
     topo = topo + topoChange_smooth  # Update topography
 
-# sim_topo_final = topo.copy()
-sim_topo_final = routine.enforceslopes(topo.copy(), veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, RNG=RNG)[0]
+sim_topo_final = topo.copy()
+# sim_topo_final = routine.enforceslopes(topo.copy(), veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, RNG=RNG)[0]
 
 SimDuration = time.time() - start_time
 print()
