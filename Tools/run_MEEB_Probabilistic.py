@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 14 March 2024
+IRBR 24 May 2024
 """
 
 import numpy as np
@@ -48,22 +48,22 @@ def run_individual_sim(rslr):
         p_ero_sand=0.13,
         entrainment_veg_limit=0.37,
         saltation_veg_limit=0.37,
-        shadowangle=5,
+        shadowangle=10,
         repose_bare=20,
         repose_veg=30,
         wind_rose=(0.83, 0.02, 0.12, 0.03),  # (right, down, left, up)
         groundwater_depth=0.4,
         # --- Storms --- #
-        Rin=213,
-        Cx=36,
-        MaxUpSlope=1.57,
-        Kow=0.0000501,
-        mm=1.02,
-        overwash_substeps=4,
-        beach_equilibrium_slope=0.027,
-        swash_transport_coefficient=0.001,
-        wave_period_storm=9.4,
-        beach_substeps=20,
+        Rin=271,
+        Cs=0.0233,
+        MaxUpSlope=1.5,
+        marine_flux_limit=1,
+        Kow=0.0001268,
+        mm=1.05,
+        overwash_substeps=50,
+        beach_equilibrium_slope=0.026,
+        swash_erosive_timescale=1.44,
+        beach_substeps=25,
         flow_reduction_max_spec1=0.02,
         flow_reduction_max_spec2=0.05,
         # --- Shoreline --- #
@@ -74,7 +74,10 @@ def run_individual_sim(rslr):
         alongshore_section_length=25,
         estimate_shoreface_parameters=True,
         # --- Veg --- #
-        sp1_b=-0.05,
+        sp1_lateral_probability=0.1,
+        sp2_lateral_probability=0.1,
+        sp1_pioneer_probability=0.025,
+        sp2_pioneer_probability=0.025,
     )
 
     # Loop through time
@@ -333,6 +336,46 @@ def plot_most_probable_class(class_probabilities, class_cmap, num_classes, class
     plt.title('Iteration: ' + str(it))
 
 
+def plot_most_probable_class_2(class_probabilities, class_cmap, num_classes, class_labels, it):
+    """Plots the most probable class across the domain at a particular time step, with separate panel indicating confidence in most likely class prediction.
+    Note: this returns the first max occurance, i.e. if multiple bins are tied for the maximum probability of occuring, the first one will be plotted as the most likely.
+
+    Parameters
+    ----------
+    class_probabilities : ndarray
+        Probabilities of each class over space and time.
+    class_cmap
+        Discrete colormap for plotting classes.
+    num_classes : int
+        Numer of classes in classification scheme.
+    class_labels : list
+        List of class names.
+    it : int
+        Iteration to draw probabilities from.
+    """
+
+    mmax_idx = np.argmax(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Bin of most probable outcome
+    confidence = np.max(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
+    min_confidence = 1 / num_classes
+
+    Fig = plt.figure(figsize=(10, 11))
+    ax1 = Fig.add_subplot(211)
+    cax1 = ax1.matshow(mmax_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
+    tic = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
+    mcbar = Fig.colorbar(cax1, ticks=tic)
+    mcbar.ax.set_yticklabels(class_labels)
+    plt.xlabel('Alongshore Distance [m]')
+    plt.ylabel('Cross-Shore Distance [m]')
+
+    ax2 = Fig.add_subplot(212)
+    cax2 = ax2.matshow(confidence, cmap='BuPu', vmin=min_confidence, vmax=1)
+    Fig.colorbar(cax2)
+    plt.xlabel('Alongshore Distance [m]')
+    plt.ylabel('Cross-Shore Distance [m]')
+
+    plt.tight_layout()
+
+
 def plot_class_area_change_over_time(class_probabilities, num_classes):
 
     class_change_TS = np.zeros([num_classes, num_saves])  # Initialize
@@ -563,6 +606,19 @@ def ani_frame_most_probable_outcome(timestep, class_probabilities, cax1, cax2, t
     return cax1, cax2, text1
 
 
+def ani_frame_most_probable_outcome_2(timestep, class_probabilities, cax1, cax2, text1, text2):
+
+    Max_idx = np.argmax(class_probabilities[:, timestep, :, plot_xmin: plot_xmax], axis=0)
+    Conf = np.max(class_probabilities[:, timestep, :, plot_xmin: plot_xmax], axis=0)
+    cax1.set_data(Max_idx)
+    cax2.set_data(Conf)
+    yrstr = "Year " + str(timestep * save_frequency)
+    text1.set_text(yrstr)
+    text2.set_text(yrstr)
+
+    return cax1, cax2, text1, text2
+
+
 def bins_animation(class_probabilities, class_labels):
     # Set animation base figure
     Fig = plt.figure(figsize=(14, 7.5))
@@ -628,6 +684,38 @@ def most_likely_animation(class_probabilities, class_cmap, num_classes, class_la
     ani2.save("Output/Animation/meeb_most_likely_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
+def most_likely_animation_2(class_probabilities, class_cmap, num_classes, class_labels):
+
+    # Set animation base figure
+    max_idx = np.argmax(class_probabilities[:, 0, :, plot_xmin: plot_xmax], axis=0)  # Bin of most probable outcome
+    conf = np.max(class_probabilities[:, 0, :, plot_xmin: plot_xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
+    min_conf = 1 / num_classes
+
+    Fig = plt.figure(figsize=(10, 11))
+    ax1 = Fig.add_subplot(211)
+    cax1 = ax1.matshow(max_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
+    tic = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
+    mcbar = Fig.colorbar(cax1, ticks=tic)
+    mcbar.ax.set_yticklabels(class_labels)
+    timestr = "Year " + str(0)
+    text1 = plt.text(2, longshore - 2, timestr, c='black')
+
+    ax2 = Fig.add_subplot(212)
+    cax2 = ax2.matshow(conf, cmap='BuPu', vmin=min_conf, vmax=1)
+    Fig.colorbar(cax2)
+    timestr = "Year " + str(0)
+    text2 = plt.text(2, longshore - 2, timestr, c='white')
+
+    plt.tight_layout()
+
+    # Create and save animation
+    ani3 = animation.FuncAnimation(Fig, ani_frame_most_probable_outcome_2, frames=num_saves, fargs=(class_probabilities, cax1, cax2, text1, text2), interval=300, blit=True)
+    c = 1
+    while os.path.exists("Output/Animation/meeb_most_likely2_" + str(c) + ".gif"):
+        c += 1
+    ani3.save("Output/Animation/meeb_most_likely2_" + str(c) + ".gif", dpi=150, writer="imagemagick")
+
+
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
 
@@ -651,6 +739,7 @@ elev_classification_label = 'Elevation Change [m]'  # Axes labels on figures
 elev_class_edges = [-np.inf, -0.5, -0.1, 0.1, 0.5, np.inf]  # [m] Elevation change
 elev_class_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
 elev_class_cmap = colors.ListedColormap(['red', 'gold', 'black', 'aquamarine', 'mediumblue'])
+elev_class_cmap_2 = colors.ListedColormap(['#ca0020', '#f4a582', '#f7f7f7', '#92c5de', '#0571b0'])
 
 state_classification_label = 'Ecogeomorphic State'  # Axes labels on figures
 state_class_edges = [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5]  # [m] State change
@@ -663,19 +752,19 @@ state_class_cmap = colors.ListedColormap(['blue', 'gold', 'saddlebrown', 'red', 
 sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 
-duplicates = 24  # To account for internal stochasticity (e.g., storms, aeolian)
-core_num = min(duplicates, 12)  # Number of cores to use in the parallelization (IR PC: 24)
+duplicates = 18  # To account for internal stochasticity (e.g., storms, aeolian)
+core_num = min(duplicates, 18)  # Number of cores to use in the parallelization (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
-ymin = 17500  # [m] Alongshore coordinate
-ymax = 18000  # [m] Alongshore coordinate
+ymin = 19000  # [m] Alongshore coordinate
+ymax = 19500  # [m] Alongshore coordinate
 xmin = 900  # [m] Cross-shore coordinate
 xmax = 1600  # [m] Cross-shore coordinate
 plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 plot_xmax = plot_xmin + 600  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 
-name = '17500-18000, 2018-2050, 24 duplicates, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), 5Mar24'  # Name of simulation suite
+name = '19000-19500, 2018-2050, 18 duplicates, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), 26May24'  # Name of simulation suite
 
 
 # _____________________
@@ -716,13 +805,13 @@ print("Elapsed Time: ", SimDuration, "sec")
 
 plot_class_maps(elev_class_probabilities, elev_class_labels, it=-1)
 plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
-plot_most_probable_class(elev_class_probabilities, elev_class_cmap, elev_num_classes, elev_class_labels, it=-1)
+plot_most_probable_class_2(elev_class_probabilities, elev_class_cmap_2, elev_num_classes, elev_class_labels, it=-1)
 plot_most_probable_class(state_class_probabilities, state_class_cmap, state_num_classes, state_class_labels, it=-1)
 plot_class_area_change_over_time(state_class_probabilities, state_num_classes)
 plot_most_likely_transition_maps(state_class_probabilities)
 plot_transitions_area_matrix(state_class_probabilities, state_num_classes, state_class_labels)
 bins_animation(elev_class_probabilities, elev_class_labels)
 bins_animation(state_class_probabilities, state_class_labels)
-most_likely_animation(elev_class_probabilities, elev_class_cmap, elev_num_classes, elev_class_labels)
+most_likely_animation_2(elev_class_probabilities, elev_class_cmap_2, elev_num_classes, elev_class_labels)
 most_likely_animation(state_class_probabilities, state_class_cmap, state_num_classes, state_class_labels)
 plt.show()
