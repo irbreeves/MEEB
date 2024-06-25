@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 29 April 2024
+Last update: 25 June 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -74,9 +74,8 @@ class MEEB:
             wave_high_angle_fraction=0.39,  # Fraction of waves approaching at angles higher than 45 degrees from shore normal
             mean_wave_height=0.98,  # [m] Mean offshore significant wave height
             mean_wave_period=6.6,  # [s] Mean wave period
-            wave_period_storm=9.4,  # [s] Representative wave period for storm conditions
             alongshore_section_length=25,  # [m] Distance alongshore between shoreline positions used in the shoreline diffusion calculations
-            average_dune_toe_height=1.39,  # [m] Time- and space-averaged dune toe height above MHW
+            average_dune_toe_height=1.67,  # [m] Time- and space-averaged dune toe height above MHW
             estimate_shoreface_parameters=True,  # [bool] Turn on to estimate shoreface parameters as function of specific wave and sediment characteristics
             shoreface_grain_size=2e-4,  # [m] Median grain size (D50) of ocean shoreface; used for optional shoreface parameter estimations
             shoreface_transport_efficiency=0.01,  # Shoreface suspended sediment transport efficiency factor; used for optional shoreface parameter estimations
@@ -97,12 +96,12 @@ class MEEB:
             sp1_peak=0.2,  # Growth peak, spec1
             sp2_peak=0.05,  # Growth peak, spec2
             VGR=0,  # [%] Growth reduction by end of period
-            sp1_lateral_probability=0.1,  # [0-1] Probability of lateral expansion of existing vegetation
-            sp2_lateral_probability=0.1,  # [0-1] Probability of lateral expansion of existing vegetation
-            sp1_pioneer_probability=0.025,  # [0-1] Probability of occurrence of new pioneering vegetation
-            sp2_pioneer_probability=0.025,  # [0-1] Probability of occurrence of new pioneering vegetation
+            sp1_lateral_probability=0.2,  # [0-1] Probability of lateral expansion of existing vegetation
+            sp2_lateral_probability=0.2,  # [0-1] Probability of lateral expansion of existing vegetation
+            sp1_pioneer_probability=0.05,  # [0-1] Probability of occurrence of new pioneering vegetation
+            sp2_pioneer_probability=0.05,  # [0-1] Probability of occurrence of new pioneering vegetation
             maxvegeff=1.0,  # [0-1] Value of maximum vegetation effectiveness allowed
-            Spec1_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 1 (1 m MHW for A. brevigulata from Young et al., 2011)
+            Spec1_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 1
             Spec2_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 2
             flow_reduction_max_spec1=0.02,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 1 at full density
             flow_reduction_max_spec2=0.05,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 2 at full density
@@ -191,7 +190,6 @@ class MEEB:
         self._wave_high_angle_fraction = wave_high_angle_fraction
         self._mean_wave_height = mean_wave_height
         self._mean_wave_period = mean_wave_period
-        self._wave_period_storm = wave_period_storm
         self._alongshore_section_length = alongshore_section_length
         self._average_dune_toe_height = average_dune_toe_height
         self._eq_backbarrier_depth = eq_backbarrier_depth
@@ -429,6 +427,10 @@ class MEEB:
                 self._spec1[inundated] = 0  # Remove species where beach is inundated
                 self._spec2[inundated] = 0  # Remove species where beach is inundated
                 self._veg = self._spec1 + self._spec2  # Update
+
+                # Check for nans in topo
+                if np.isnan(np.sum(self._topo)):
+                    self._topo = routine.replace_nans(self._topo)
 
             else:
                 self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm

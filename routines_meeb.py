@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 29 April 2024
+Last update: 25 June 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -82,7 +82,6 @@ def shadowzones(topof, shadowangle, direction, MHW):
     return inshade
 
 
-@njit
 def erosprobs(vegf, shade, sand, topof, groundw, p_er, entrainment_veg_limit, slabheight, mhw):
     """ Returns a map with erosion probabilities.
 
@@ -337,7 +336,7 @@ def enforceslopes(topo, vegf, sh, anglesand, angleveg, th, MHW, RNG):
         slopes[:, :, 5] = topof[2:, 0:-2] - central  # dir 6 [+1,-1]
         slopes[:, :, 7] = topof[0:-2, 0:-2] - central  # dir 8 [-1,-1]
 
-        minima = np.amin(slopes, axis=2)  # Identify for each cell the value of the lowest (negative) slope of all 8 directions
+        minima = np.min(slopes, axis=2)  # Identify for each cell the value of the lowest (negative) slope of all 8 directions
 
         # True (1) if steepest slope is in this direction & is more negative than the repose limit
         exceeds[:, :, 0] = (minima == slopes[:, :, 0]) * (slopes[:, :, 0] < -steplimit) * subaerial
@@ -543,7 +542,6 @@ def lateral_expansion(veg, dist, prob, RNG):
     return lateral_expansion_allowed
 
 
-@njit
 def establish_new_vegetation(topof, MHW, prob, RNG):
     """Establishes pioneer vegetation in previously bare cells. Represents the germination and development of veg from seeds or rhizome fragments
     distributed by water or wind.
@@ -656,15 +654,13 @@ def shoreline_change_from_CST(
     k_sf /= storm_iterations_per_year  # [m^3/yr] Convert from m^3/year to m^3/timestep (timestep typically 0.04 yr)
     Qow[Qow < 0] = 0
 
-    h_b = np.array(np.ma.array(topof, mask=(topof < MHW)).mean(axis=1))  # [m NAV88] Average height of subaerial barrier for each cell length alongshore
-
     # Shoreface Flux
     s_sf = d_sf / (x_s - x_t)
     Qsf = k_sf * (s_sf_eq - s_sf)  # [m^3/m/ts]
 
     # Toe, Shoreline, and island base elevation changes
-    x_t_dt_temp = (4 * Qsf * (h_b + d_sf) / (d_sf * (2 * h_b + d_sf))) + (2 * RSLR / s_sf)
-    x_s_dt_temp = 2 * (Qow + Qbe) / ((2 * h_b) + d_sf) - (4 * Qsf * (h_b + d_sf) / (((2 * h_b) + d_sf) ** 2))  # Dune growth and alongshore transport added to LTA14 formulation
+    x_t_dt_temp = (4 * Qsf / d_sf) + (2 * RSLR / s_sf)
+    x_s_dt_temp = (2 * (Qow + Qbe) / d_sf) - (4 * Qsf / d_sf)  # Beach/dune change (Qbe) added to LTA14 formulation, barrier height removed
 
     # Find mean change in x_s and x_t for every dy meters alongshore
     x_t_dt_dy_mean = np.nanmean(np.pad(x_t_dt_temp.copy().astype(float), (0, 0 if x_t_dt_temp.copy().size % dy == 0 else dy - x_t_dt_temp.copy().size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
@@ -1067,7 +1063,6 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, longshore, MHW,
     return storm, Rhigh, Rlow, int(dur)
 
 
-@njit
 def get_storm_timeseries(storm_timeseries, it, longshore, MHW, hindcast_start):
     """Returns storm characteristics for this model iteration from an empirical storm timeseries.
 
@@ -1299,7 +1294,6 @@ def storm_processes(
             beach_equilibrium_slope,
             swash_erosive_timescale,
             beach_substeps,
-            fluxLimit,
         )
 
         # ElevationChangeSeaward = scipy.ndimage.gaussian_filter(ElevationChangeSeaward, sigma=3, mode='constant', axes=[0])  # Smooth beach/dune topo change in alongshore direction (diffuse transects alongshore)
@@ -1331,7 +1325,6 @@ def calc_beach_dune_change(topo,
                            Beq,
                            Te,
                            substeps,
-                           fluxLimit,
                            ):
     """Updates the topography seaward of the dune crest after one storm iteration using a cross-shore sand flux equation
         from the Coast Dune Model (Duran Vinent & Moore, 2015), which is based off of SBEACH from Larson et al. (2004). This function
@@ -1358,8 +1351,6 @@ def calc_beach_dune_change(topo,
             Non-dimensional erosive timescale coefficient.
         substeps : int
             Number of substeps per iteration of beach/duneface model; instabilities will occur if too low.
-        fluxLimit : float
-            [m/hr/substep] Maximum elevation change allowed per time step (prevents instabilities).
 
         Returns
         ----------
@@ -1401,7 +1392,7 @@ def calc_beach_dune_change(topo,
                 zi = topo[y, x]
 
                 # Definition of boundary conditions
-                if x == 0:
+                if x == xStart:
                     hprev = MHW
                 else:
                     hprev = topo[y, x - 1]
@@ -2038,6 +2029,35 @@ def reduce_raster_resolution(raster, reduction_factor):
     return raster.reshape(sh).mean(-1).mean(1)
 
 
+def replace_nans(arr):
+    """Replaces nans in array with the real value of the neighboring cell one cell alongshore.
+
+    Parameters
+    ----------
+    arr : ndarray
+        2D numpy array raster.
+
+    Returns
+    ----------
+    arr
+        2D numpy array with nans replaced by real values.
+    """
+
+    nanny = True
+
+    while nanny:
+
+        nan_bool = np.isnan(arr)  # Bool location of nans
+        replacements = np.roll(arr, shift=1, axis=0)  # Values to replace nans with (alongshore neighboring cell)
+
+        arr[nan_bool] = replacements[nan_bool]  # Replace nans with alongshore neighboring cell value
+
+        if not np.isnan(np.sum(arr)):  # Check if any nans remain
+            nanny = False  # No more nans, exit loop
+
+    return arr
+
+
 @njit
 def calculate_beach_slope(topof, x_s, dune_crest_loc, average_dune_toe_height, MHW):
     """Finds the beach slope for each cell alongshore. Slope is calculated using the average dune toe height.
@@ -2067,7 +2087,7 @@ def calculate_beach_slope(topof, x_s, dune_crest_loc, average_dune_toe_height, M
     for ls in range(topof.shape[0]):
         toe_loc = dune_crest_loc[ls] - np.argmax(np.flip(topof[ls, :dune_crest_loc[ls]]) <= MHW + average_dune_toe_height)
         toe_locs[ls] = toe_loc
-        beach_slopes[ls] = average_dune_toe_height / (toe_loc - x_s[ls])
+        beach_slopes[ls] = topof[ls, toe_loc] / (toe_loc - x_s[ls])
 
     return beach_slopes
 
