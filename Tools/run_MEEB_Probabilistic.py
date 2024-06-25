@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 24 May 2024
+IRBR 25 June 2024
 """
 
 import numpy as np
@@ -43,26 +43,26 @@ def run_individual_sim(rslr):
         storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',
         save_frequency=save_frequency,
         # --- Aeolian --- #
-        p_dep_sand=0.36,
-        p_dep_sand_VegMax=0.60,
-        p_ero_sand=0.13,
-        entrainment_veg_limit=0.37,
-        saltation_veg_limit=0.37,
-        shadowangle=10,
+        p_dep_sand=0.22,
+        p_dep_sand_VegMax=0.54,
+        p_ero_sand=0.10,
+        entrainment_veg_limit=0.10,
+        saltation_veg_limit=0.35,
+        shadowangle=12,
         repose_bare=20,
         repose_veg=30,
-        wind_rose=(0.83, 0.02, 0.12, 0.03),  # (right, down, left, up)
+        wind_rose=(0.81, 0.04, 0.06, 0.09),  # (right, down, left, up)
         groundwater_depth=0.4,
         # --- Storms --- #
-        Rin=271,
-        Cs=0.0233,
+        Rin=249,
+        Cs=0.0283,
         MaxUpSlope=1.5,
         marine_flux_limit=1,
-        Kow=0.0001268,
-        mm=1.05,
+        Kow=0.0001684,
+        mm=1.04,
         overwash_substeps=50,
-        beach_equilibrium_slope=0.026,
-        swash_erosive_timescale=1.44,
+        beach_equilibrium_slope=0.022,
+        swash_erosive_timescale=1.48,
         beach_substeps=25,
         flow_reduction_max_spec1=0.02,
         flow_reduction_max_spec2=0.05,
@@ -74,10 +74,10 @@ def run_individual_sim(rslr):
         alongshore_section_length=25,
         estimate_shoreface_parameters=True,
         # --- Veg --- #
-        sp1_lateral_probability=0.1,
-        sp2_lateral_probability=0.1,
-        sp1_pioneer_probability=0.025,
-        sp2_pioneer_probability=0.025,
+        sp1_lateral_probability=0.2,
+        sp2_lateral_probability=0.2,
+        sp1_pioneer_probability=0.05,
+        sp2_pioneer_probability=0.05,
     )
 
     # Loop through time
@@ -302,7 +302,7 @@ def plot_cell_prob_bar(class_probabilities, class_labels, classification_label, 
     plt.title('Loc: (' + str(c) + ', ' + str(l) + '), Iteration: ' + str(it))
 
 
-def plot_most_probable_class(class_probabilities, class_cmap, num_classes, class_labels, it):
+def plot_most_probable_class(class_probabilities, class_cmap, class_labels, it):
     """Plots the most probable class across the domain at a particular time step. Note: this returns the first max occurance,
     i.e. if multiple bins are tied for the maximum probability of occuring, the first one will be plotted as the most likely.
 
@@ -312,14 +312,13 @@ def plot_most_probable_class(class_probabilities, class_cmap, num_classes, class
         Probabilities of each class over space and time.
     class_cmap
         Discrete colormap for plotting classes.
-    num_classes : int
-        Numer of classes in classification scheme.
     class_labels : list
         List of class names.
     it : int
         Iteration to draw probabilities from.
     """
 
+    num_classes = class_probabilities.shape[0]
     mmax_idx = np.argmax(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Bin of most probable outcome
     confidence = 1 - np.max(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
 
@@ -336,7 +335,7 @@ def plot_most_probable_class(class_probabilities, class_cmap, num_classes, class
     plt.title('Iteration: ' + str(it))
 
 
-def plot_most_probable_class_2(class_probabilities, class_cmap, num_classes, class_labels, it):
+def plot_most_probable_class_2(class_probabilities, class_cmap, class_labels, it):
     """Plots the most probable class across the domain at a particular time step, with separate panel indicating confidence in most likely class prediction.
     Note: this returns the first max occurance, i.e. if multiple bins are tied for the maximum probability of occuring, the first one will be plotted as the most likely.
 
@@ -346,14 +345,13 @@ def plot_most_probable_class_2(class_probabilities, class_cmap, num_classes, cla
         Probabilities of each class over space and time.
     class_cmap
         Discrete colormap for plotting classes.
-    num_classes : int
-        Numer of classes in classification scheme.
     class_labels : list
         List of class names.
     it : int
         Iteration to draw probabilities from.
     """
 
+    num_classes = class_probabilities.shape[0]
     mmax_idx = np.argmax(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Bin of most probable outcome
     confidence = np.max(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
     min_confidence = 1 / num_classes
@@ -376,8 +374,9 @@ def plot_most_probable_class_2(class_probabilities, class_cmap, num_classes, cla
     plt.tight_layout()
 
 
-def plot_class_area_change_over_time(class_probabilities, num_classes):
+def plot_class_area_change_over_time(class_probabilities):
 
+    num_classes = class_probabilities.shape[0]
     class_change_TS = np.zeros([num_classes, num_saves])  # Initialize
 
     subaqueous_0 = np.sum(class_probabilities[0, 0, :, plot_xmin: plot_xmax])
@@ -408,8 +407,9 @@ def plot_class_area_change_over_time(class_probabilities, num_classes):
     plt.xlabel('Forecast Year')
 
 
-def plot_transitions_area_matrix(class_probabilities, num_classes, class_labels):
+def plot_transitions_area_matrix(class_probabilities, class_labels):
 
+    num_classes = class_probabilities.shape[0]
     transition_matrix = np.zeros([num_classes, num_classes])
 
     start_class = np.argmax(class_probabilities[:, 0, :, :], axis=0)  # Bin of most probable outcome
@@ -659,7 +659,9 @@ def bins_animation(class_probabilities, class_labels):
     ani1.save("Output/Animation/meeb_prob_bins_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
-def most_likely_animation(class_probabilities, class_cmap, num_classes, class_labels):
+def most_likely_animation(class_probabilities, class_cmap, class_labels):
+
+    num_classes = class_probabilities.shape[0]
 
     # Set animation base figure
     Fig = plt.figure(figsize=(14, 7.5))
@@ -684,7 +686,9 @@ def most_likely_animation(class_probabilities, class_cmap, num_classes, class_la
     ani2.save("Output/Animation/meeb_most_likely_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
-def most_likely_animation_2(class_probabilities, class_cmap, num_classes, class_labels):
+def most_likely_animation_2(class_probabilities, class_cmap, class_labels):
+
+    num_classes = class_probabilities.shape[0]
 
     # Set animation base figure
     max_idx = np.argmax(class_probabilities[:, 0, :, plot_xmin: plot_xmax], axis=0)  # Bin of most probable outcome
@@ -711,9 +715,9 @@ def most_likely_animation_2(class_probabilities, class_cmap, num_classes, class_
     # Create and save animation
     ani3 = animation.FuncAnimation(Fig, ani_frame_most_probable_outcome_2, frames=num_saves, fargs=(class_probabilities, cax1, cax2, text1, text2), interval=300, blit=True)
     c = 1
-    while os.path.exists("Output/Animation/meeb_most_likely2_" + str(c) + ".gif"):
+    while os.path.exists("Output/Animation/meeb_most_likely_" + str(c) + ".gif"):
         c += 1
-    ani3.save("Output/Animation/meeb_most_likely2_" + str(c) + ".gif", dpi=150, writer="imagemagick")
+    ani3.save("Output/Animation/meeb_most_likely_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
 # __________________________________________________________________________________________________________________________________
@@ -752,20 +756,20 @@ state_class_cmap = colors.ListedColormap(['blue', 'gold', 'saddlebrown', 'red', 
 sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 
-duplicates = 18  # To account for internal stochasticity (e.g., storms, aeolian)
-core_num = min(duplicates, 18)  # Number of cores to use in the parallelization (IR PC: 24)
+duplicates = 32  # To account for internal stochasticity (e.g., storms, aeolian)
+core_num = 16  # min(duplicates, 20)  # Number of cores to use in the parallelization (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
-ymin = 19000  # [m] Alongshore coordinate
-ymax = 19500  # [m] Alongshore coordinate
+ymin = 17500  # [m] Alongshore coordinate
+ymax = 18000  # [m] Alongshore coordinate
 xmin = 900  # [m] Cross-shore coordinate
 xmax = 1600  # [m] Cross-shore coordinate
 plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 plot_xmax = plot_xmin + 600  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 
-name = '19000-19500, 2018-2050, 18 duplicates, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), 26May24'  # Name of simulation suite
-
+name = '17500-18000, 2018-2050, 32 duplicates, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), 19Jun24'  # Name of simulation suite
+savename = '17500-18000_19Jun24'
 
 # _____________________
 # INITIAL CONDITIONS
@@ -805,13 +809,28 @@ print("Elapsed Time: ", SimDuration, "sec")
 
 plot_class_maps(elev_class_probabilities, elev_class_labels, it=-1)
 plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
-plot_most_probable_class_2(elev_class_probabilities, elev_class_cmap_2, elev_num_classes, elev_class_labels, it=-1)
-plot_most_probable_class(state_class_probabilities, state_class_cmap, state_num_classes, state_class_labels, it=-1)
-plot_class_area_change_over_time(state_class_probabilities, state_num_classes)
+plot_most_probable_class_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels, it=-1)
+plot_most_probable_class_2(state_class_probabilities, state_class_cmap, state_class_labels, it=-1)
+plot_class_area_change_over_time(state_class_probabilities)
 plot_most_likely_transition_maps(state_class_probabilities)
-plot_transitions_area_matrix(state_class_probabilities, state_num_classes, state_class_labels)
+plot_transitions_area_matrix(state_class_probabilities, state_class_labels)
 bins_animation(elev_class_probabilities, elev_class_labels)
 bins_animation(state_class_probabilities, state_class_labels)
-most_likely_animation_2(elev_class_probabilities, elev_class_cmap_2, elev_num_classes, elev_class_labels)
-most_likely_animation(state_class_probabilities, state_class_cmap, state_num_classes, state_class_labels)
+most_likely_animation_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels)
+most_likely_animation_2(state_class_probabilities, state_class_cmap, state_class_labels)
 plt.show()
+
+
+# __________________________________________________________________________________________________________________________________
+# SAVE DATA
+
+# Elevation
+elev_name = "ElevClassProbabilities_" + savename
+elev_outloc = "Output/SimData/" + elev_name
+np.save(elev_outloc, elev_class_probabilities)
+
+# State
+state_name = "StateClassProbabilities_" + savename
+state_outloc = "Output/SimData/" + state_name
+np.save(state_outloc, state_class_probabilities)
+

@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 11 March 2024
+IRBR 25 June 2024
 """
 
 import numpy as np
@@ -32,18 +32,18 @@ startdate = '20181007'
 
 # _____________________
 
-sim_duration = 5
+sim_duration = 10
 MHW = 0.39  # [m NAVD88]
-name = '19250-19500, 2018-2023'  # Name of simulation
+name = '19000-20000, 2018-2028, RSLR=0.006, SS=25/15'  # Name of simulation
 
 # _____________________
 # Define Coordinates of Model Domain
-ymin = 19250  # Alongshore
-ymax = 19500  # Alongshore
+ymin = 19000  # Alongshore
+ymax = 20000  # Alongshore
 xmin = 900  # Cross-shore
 xmax = xmin + 900  # Cross-shore
 plot_xmin = 0  # Cross-shore plotting
-plot_xmax = plot_xmin + 600  # Cross-shore plotting
+plot_xmax = plot_xmin + 900  # Cross-shore plotting
 
 
 # __________________________________________________________________________________________________________________________________
@@ -68,26 +68,26 @@ meeb = MEEB(
     # --- Aeolian --- #
     jumplength=5,
     slabheight=0.02,
-    p_dep_sand=0.36,  # Q = hs * L * n * pe/pd
-    p_dep_sand_VegMax=0.60,
-    p_ero_sand=0.13,
-    entrainment_veg_limit=0.37,
-    saltation_veg_limit=0.37,
-    shadowangle=10,
+    p_dep_sand=0.22,  # Q = hs * L * n * pe/pd
+    p_dep_sand_VegMax=0.54,
+    p_ero_sand=0.10,
+    entrainment_veg_limit=0.10,
+    saltation_veg_limit=0.35,
+    shadowangle=12,
     repose_bare=20,
     repose_veg=30,
-    wind_rose=(0.83, 0.02, 0.12, 0.03),  # (right, down, left, up)
+    wind_rose=(0.81, 0.04, 0.06, 0.09),  # (right, down, left, up)
     # --- Storms --- #
-    Rin=200,
-    Cs=0.067,
+    Rin=249,
+    Cs=0.0283,
     MaxUpSlope=1.5,
-    Kow=0.0001227,
+    marine_flux_limit=1,
+    Kow=0.0001684,
     mm=1.04,
-    overwash_substeps=22,
-    beach_equilibrium_slope=0.027,
-    swash_erosive_timescale=1.29,
-    wave_period_storm=9.4,
-    beach_substeps=8,
+    overwash_substeps=25,
+    beach_equilibrium_slope=0.022,
+    swash_erosive_timescale=1.48,
+    beach_substeps=15,
     flow_reduction_max_spec1=0.02,
     flow_reduction_max_spec2=0.05,
     # --- Shoreline --- #
@@ -98,10 +98,10 @@ meeb = MEEB(
     alongshore_section_length=25,
     estimate_shoreface_parameters=True,
     # --- Veg --- #
-    sp1_lateral_probability=0.1,
-    sp2_lateral_probability=0.1,
-    sp1_pioneer_probability=0.025,
-    sp2_pioneer_probability=0.025,
+    sp1_lateral_probability=0.2,
+    sp2_lateral_probability=0.2,
+    sp1_pioneer_probability=0.05,
+    sp2_pioneer_probability=0.05,
 )
 
 print(meeb.name, end='\n' * 2)
@@ -137,7 +137,7 @@ subaerial_mask = topo_end_sim > mhw_end_sim  # [bool] Mask for every cell above 
 
 # Dune crest height
 dune_crest, not_gap = routine.foredune_crest(topo_start_sim, mhw_end_sim)
-
+dune_crest_end, not_gap = routine.foredune_crest(topo_end_sim, mhw_end_sim)
 
 # __________________________________________________________________________________________________________________________________
 # PLOT RESULTS
@@ -183,6 +183,7 @@ Fig = plt.figure(figsize=(14, 7.5))
 Fig.suptitle(meeb.name, fontsize=13)
 ax1 = Fig.add_subplot(211)
 ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=6.0)
+ax1.plot(dune_crest_end - plot_xmin, np.arange(len(dune_crest)), c='black', alpha=0.6)
 ax2 = Fig.add_subplot(212)
 ax2.matshow(tcs, cmap='bwr', vmin=-cmap_lim, vmax=cmap_lim)
 plt.tight_layout()
@@ -219,7 +220,7 @@ proffig2 = plt.figure(figsize=(11, 7.5))
 for t in range(0, int(meeb.simulation_time_yr / meeb.save_frequency), 2):
     prof = meeb.topo_TS[profx, :, t]
     plt.plot(prof)
-dune_crest_end, not_gap = routine.foredune_crest(topo_start_sim, mhw_end_sim)
+prof = meeb.topo_TS[profx, :, -1]
 crest_loc_elev = prof[dune_crest_end[profx]]
 plt.scatter(dune_crest_end[profx], crest_loc_elev)
 plt.title(name + ", x =" + str(profx))
