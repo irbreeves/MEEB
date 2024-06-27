@@ -2,14 +2,14 @@
     use in MEEB (Mesoscale Explicit Ecogeomorphic Barrier model).
 
     IRB Reeves
-    Last update: 5 March 2024
+    Last update: 27 June 2024
 """
 
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
-import copy
 import routines_meeb as routine
+from skimage.transform import resize
 
 
 def populateVeg(topo,
@@ -172,7 +172,7 @@ def densityVeg(veggie, den):
 # SPECIFICATIONS
 
 # Elevation (NAVD88)
-tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/NCFMP_PostSandy_20140406.tif"
+tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/PostFlorence_20181007_USGS_FullNCB.tif"  # Input with 1 m resolution
 MHW = 0.39  # [m initial datum] Mean high water, for finding ocean shoreline
 BB_thresh = 0.08  # [m initial datum] Threshold elevation for finding back-barrier marsh shoreline
 BB_depth = 1.5 - MHW  # [m MHW] Back-barrier bay depth
@@ -188,18 +188,19 @@ ymax = 1800  # [m] Cross-shore coordinate for end of domain
 zmax = 10  # [m NAVD88] Maximum elevation to remove outlier errors
 zmin = -10  # [m NAVD88] Minimum elevation to remove outlier errors
 bay = 0  # [m] Additional width of bay to add to domain
+cellsize = 1  # [m] Cell dimensions; if greater than 1, script resizes arrays to fit new resolution; cellsizes less than 1 m not advised
 
 # Vegetation
 Veggie = True  # [bool] Whether or not to load & convert a contemporaneous init veg raster
 VeggiePop = False  # [bool] Whether or not to use stoachstic population of vegetation or init veg density raster
 Thin = True  # [bool] Whether to artificiallly and randomly thin out vegetation cover
-veg_tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/VegCover_Plover_NOAA_2014.tif"
-vegden_tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/Veg_20140421_NDVI_NOAA_PostSandy.tif"
+veg_tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/VegCover_Plover_NAIP_2018.tif"
+vegden_tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/VegDensity_Plover_NAIP_2018.tif"
 veg_min = 0.5  # [m] Minimum elevation for vegetation
 
 # Save
-save = True  # [bool] Whether or not to save finished arrays
-savename = "NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover-5Mar24"
+save = False  # [bool] Whether or not to save finished arrays
+savename = "NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover"
 
 
 # ================================================================================================================
@@ -274,7 +275,7 @@ vegden = np.rot90(vegden, 3)
 veg[dem < veg_min] = 0  # Remove veg below minimum elevation threshold
 vegden[dem < veg_min] = 0  # Remove veg below minimum elevation threshold
 
-dune_crest = routine.foredune_crest(dem, MHW)
+dune_crest = routine.foredune_crest(dem, MHW, cellsize=1)
 
 if VeggiePop:
     spec1, spec2 = populateVeg(dem,
@@ -298,6 +299,15 @@ else:
 
 veg = spec1 + spec2
 
+# Resize
+if cellsize > 1:
+    orig_size = dem.shape
+    new_size = (int(orig_size[0] / cellsize), int(orig_size[1] / cellsize))
+    dem = resize(dem, new_size)
+    spec1 = resize(spec1, new_size)
+    spec2 = resize(spec2, new_size)
+    veg = resize(veg, new_size)
+    dune_crest = routine.foredune_crest(dem, MHW, cellsize)
 
 # ================================================================================================================
 # PLOT & SAVE
@@ -308,24 +318,24 @@ vmax = 5  # np.max(dem)
 fig = plt.figure()
 ax_1 = fig.add_subplot(111)
 ax_1.matshow(dem, cmap='terrain', vmin=vmin, vmax=vmax)
-plt.tight_layout
+plt.tight_layout()
 # ax_1.plot(np.arange(len(ocean_shoreline)), ocean_shoreline, c='red')
 
 fig = plt.figure()
 ax_1 = fig.add_subplot(111)
 ax_1.matshow(spec1, cmap='YlGn')
 plt.plot(dune_crest, np.arange(len(dune_crest)))
-plt.tight_layout
+plt.tight_layout()
 
 fig = plt.figure()
 ax_1 = fig.add_subplot(111)
 ax_1.matshow(spec2, cmap='YlGn')
-plt.tight_layout
+plt.tight_layout()
 
 fig = plt.figure()
 ax_1 = fig.add_subplot(111)
 ax_1.matshow(veg, cmap='YlGn')
-plt.tight_layout
+plt.tight_layout()
 
 plt.show()
 
