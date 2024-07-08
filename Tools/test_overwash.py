@@ -1,6 +1,6 @@
 """
 Script for testing MEEB overwash function.
-IRBR 8 March 2024
+IRBR 2 July 2024
 """
 
 import numpy as np
@@ -65,11 +65,14 @@ Rhigh = 3.32  # [m NAVD88]
 Rlow = 1.90  # [m NAVD88]
 dur = 83  # [hr]
 MHW = 0.39  # [m NAVD88]
+cellsize = 1  # [m]
 
 # Initial Observed Topo
 Init = np.load("Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy")
 # Final Observed
 End = np.load("Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy")
+# Load observed overwash mask
+overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")
 
 # Define Alongshore Coordinates of Domain
 ymin = 19250  # 19250 8230 22400 6855
@@ -78,12 +81,18 @@ ymax = 19750  # 19750 8730 22900 7355
 plot_xmin = 900
 plot_xmax = plot_xmin + 600
 
-name = "19250-19750, Florence Rh=3.32"
+name = "19250-19750, Florence Rh=3.32, orig Route"
 print(name)
 
 
 # _____________________________________________
 # Conversions & Initializations
+
+# Resize according to cellsize
+ymin = int(ymin / cellsize)  # Alongshore
+ymax = int(ymax / cellsize)  # Alongshore
+plot_xmin = int(plot_xmin / cellsize)  # Cross-shore plotting
+plot_xmax = int(plot_xmax / cellsize)  # Cross-shore plotting
 
 # Initial Observed Topo
 topo0 = Init[0, ymin: ymax, :]  # [m NAVD88]
@@ -100,7 +109,7 @@ veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or la
 veg[veg < 0] = 0
 
 # Find Dune Crest, Shoreline Positions
-dune_crest, not_gap = routine.foredune_crest(topo, MHW)
+dune_crest, not_gap = routine.foredune_crest(topo, MHW, cellsize)
 x_s = routine.ocean_shoreline(topo, MHW)
 
 # Transform water levels to vectors
@@ -119,30 +128,30 @@ sim_topo_post_storm, topo_change_overwash, OWflux, inundated, Qbe = routine.stor
     Rhigh,
     Rlow,
     dur,
-    Rin=200,
-    Cs=0.067,
+    Rin=249,
+    Cs=0.0283,
     nn=0.5,
     MaxUpSlope=1.5,
     fluxLimit=1,
     Qs_min=1,
-    Kow=0.0001227,
+    Kow=0.0001684,
     mm=1.04,
     MHW=MHW,
     Cbb=0.7,
     Qs_bb_min=1,
-    substep=22,
-    beach_equilibrium_slope=0.027,
-    swash_erosive_timescale=1.29,
-    beach_substeps=8,
+    substep=50,
+    beach_equilibrium_slope=0.022,
+    swash_erosive_timescale=1.48,
+    beach_substeps=25,
     x_s=x_s,
-    cellsize=1,
+    cellsize=cellsize,
     spec1=spec1,
     spec2=spec2,
     flow_reduction_max_spec1=0.02,
     flow_reduction_max_spec2=0.05,
 )
 
-sim_topo_final = routine.enforceslopes(sim_topo_post_storm, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, RNG=RNG)[0]  # Enforce angles of repose
+sim_topo_final = routine.enforceslopes(sim_topo_post_storm, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, cellsize=cellsize, RNG=RNG)[0]  # Enforce angles of repose
 
 SimDuration = time.time() - start_time
 print()
@@ -161,18 +170,17 @@ sim_change_m = sim_topo_final - topo_prestorm  # [m] Simulated change
 # Masks for skill scoring
 subaerial_mask = np.logical_and(sim_topo_final > MHW, obs_topo_final > MHW)  # [bool] Map of every cell above water
 
-Florence_Overwash_Mask = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")  # Load observed overwash mask
-Florence_OW_Mask = np.logical_and(Florence_Overwash_Mask[ymin: ymax, :], subaerial_mask)
+overwash_mask = np.logical_and(overwash_mask_file[ymin: ymax, :], subaerial_mask)
 
 beach_duneface_mask = np.zeros(sim_topo_final.shape)
 for l in range(sim_topo_final.shape[0]):
     beach_duneface_mask[l, :dune_crest[l]] = True
 beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
 
-mask_overwash_all = np.logical_and(np.logical_or(Florence_OW_Mask, inundated), ~beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell involved in observed or simulated overwash (landward of dune crest)
+mask_overwash_all = np.logical_and(np.logical_or(overwash_mask, inundated), ~beach_duneface_mask) * subaerial_mask  # [bool] Map of every cell involved in observed or simulated overwash (landward of dune crest)
 
-mask_all = np.logical_or(Florence_OW_Mask, inundated, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in simulation or observation or both
-mask_obs = np.logical_or(Florence_OW_Mask, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in observation
+mask_all = np.logical_or(overwash_mask, inundated, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in simulation or observation or both
+mask_obs = np.logical_or(overwash_mask, beach_duneface_mask.copy()) * subaerial_mask  # [bool] Map of every subaerial cell that was inundated in observation
 obs_change_m[~mask_obs] = 0
 
 # Determine Skill
@@ -288,6 +296,8 @@ print(tabulate({
 cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 
+dune_crest_end, not_gap = routine.foredune_crest(sim_topo_final, MHW, cellsize)
+
 # Set topo change colormap limits
 max_change_obs = max(abs(np.min(obs_change_m)), abs(np.max(obs_change_m)))  # [m]
 max_change_sim = max(abs(np.min(sim_change_m)), abs(np.max(sim_change_m)))  # [m]
@@ -299,7 +309,8 @@ ax1 = Fig.add_subplot(221)
 topo1 = obs_topo_final[:, plot_xmin: plot_xmax]  # [m] Post-storm
 topo1 = np.ma.masked_where(topo1 < MHW, topo1)  # Mask cells below MHW
 cax1 = ax1.matshow(topo1, cmap=cmap1, vmin=0, vmax=6.0)
-# ax1.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
+# ax1.plot(dune_crest - plot_xmin, np.arange(len(dune_crest)), c='black', alpha=0.6)
+# ax1.plot(dune_crest_end - plot_xmin, np.arange(len(dune_crest_end)), c='green', alpha=0.6)
 plt.title('Observed')
 plt.suptitle(name)
 
@@ -315,7 +326,8 @@ plt.title('Simulated')
 # Simulated Topo Change
 ax3 = Fig.add_subplot(224)
 cax3 = ax3.matshow(sim_change_m[:, plot_xmin: plot_xmax], cmap='bwr_r', vmin=-cmap_lim, vmax=cmap_lim)
-# ax3.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
+# ax3.plot(dune_crest - plot_xmin, np.arange(len(dune_crest)), c='black', alpha=0.6)
+# ax3.plot(dune_crest_end - plot_xmin, np.arange(len(dune_crest_end)), c='green', alpha=0.6)
 # cbar = Fig.colorbar(cax3)
 # cbar.set_label('Change [m]', rotation=270, labelpad=20)
 
@@ -324,7 +336,7 @@ ax4 = Fig.add_subplot(223)
 obs_change_masked = obs_change_m.copy()
 obs_change_masked[~mask_obs] = 0
 cax4 = ax4.matshow(obs_change_masked[:, plot_xmin: plot_xmax], cmap='bwr_r', vmin=-cmap_lim, vmax=cmap_lim)
-# ax4.plot(dune_crest - ymin, np.arange(len(dune_crest)), c='black', alpha=0.6)
+# ax4.plot(dune_crest - plot_xmin, np.arange(len(dune_crest)), c='black', alpha=0.6)
 # cbar = Fig.colorbar(cax4)
 # cbar.set_label('Elevation Change [m]', rotation=270, labelpad=20)
 plt.tight_layout()
@@ -342,7 +354,7 @@ plt.tight_layout()
 
 # ----------
 # Profile Change
-profx = 94
+profx = int(94 / cellsize)
 proffig2 = plt.figure(figsize=(11, 7.5))
 plt.plot(topo_prestorm[profx, plot_xmin: plot_xmin + 415], c='black')
 plt.plot(obs_topo_final[profx, plot_xmin: plot_xmin + 415], c='green')

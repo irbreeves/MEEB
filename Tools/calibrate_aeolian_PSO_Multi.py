@@ -4,7 +4,7 @@ Script for calibrating MEEB aeolian parameters using Particle Swarms Optimizatio
 Calibrates based on fitess score for morphologic change between two observation, and incorporates multiple
 timeframes and/or locations into each fitness score.
 
-IRBR 14 March 2024
+IRBR 8 July 2024
 """
 
 import numpy as np
@@ -121,6 +121,7 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         alongshore_domain_boundary_max=ymax,
         crossshore_domain_boundary_min=xmin,
         crossshore_domain_boundary_max=xmax,
+        cellsize=cellsize,
         RSLR=0.004,
         MHW=MHW,
         seeded_random_numbers=True,
@@ -129,6 +130,8 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         simulation_start_date=startdate,
         storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
         # --- Aeolian --- #
+        saltation_length=5,
+        saltation_length_rand_deviation=2,
         p_dep_sand=solution[0],
         p_dep_sand_VegMax=solution[0] + solution[1],
         p_ero_sand=solution[2],
@@ -139,20 +142,24 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         repose_veg=30,
         wind_rose=rose,
         # --- Storms --- #
-        Rin=213,
-        Cx=36,
-        MaxUpSlope=1.57,
-        Kow=0.0000501,
-        mm=1.02,
-        overwash_substeps=4,
-        beach_equilibrium_slope=0.027,
-        swash_transport_coefficient=0.001,
-        wave_period_storm=9.4,
-        beach_substeps=20,
+        Rin=249,
+        Cs=0.0283,
+        MaxUpSlope=1.5,
+        marine_flux_limit=1,
+        Kow=0.0001684,
+        mm=1.04,
+        overwash_substeps=50,
+        beach_equilibrium_slope=0.022,
+        swash_erosive_timescale=1.48,
+        beach_substeps=25,
         flow_reduction_max_spec1=0.02,
         flow_reduction_max_spec2=0.05,
         # --- Veg --- #
         sp1_b=-0.05,
+        sp1_lateral_probability=0.2,
+        sp2_lateral_probability=0.2,
+        sp1_pioneer_probability=0.05,
+        sp2_pioneer_probability=0.05,
     )
 
     # Loop through time
@@ -180,9 +187,9 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
     mask = np.logical_and(range_mask, subaerial_mask)  # [bool] Combined mask used for analysis
 
     # Dune crest locations and heights
-    crest_loc_obs_start, not_gap_obs_start = routine.foredune_crest(topo_start, mhw_end_sim)
-    crest_loc_obs, not_gap_obs = routine.foredune_crest(topo_end_obs, mhw_end_sim)
-    crest_loc_sim, not_gap_sim = routine.foredune_crest(topo_end_sim, mhw_end_sim)
+    crest_loc_obs_start, not_gap_obs_start = routine.foredune_crest(topo_start, mhw_end_sim, cellsize)
+    crest_loc_obs, not_gap_obs = routine.foredune_crest(topo_end_obs, mhw_end_sim, cellsize)
+    crest_loc_sim, not_gap_sim = routine.foredune_crest(topo_end_sim, mhw_end_sim, cellsize)
 
     crest_height_obs_start = topo_start[np.arange(topo_start.shape[0]), crest_loc_obs_start]
     crest_height_obs = topo_end_obs[np.arange(topo_end_obs.shape[0]), crest_loc_obs]
@@ -211,34 +218,34 @@ def multi_fitness(solution):
     score_list = []
 
     for s in range(len(sim_start)):
-        for x in range(len(y_min)):
+        for x in range(len(ymin)):
             # Initial Observed Topo
             Init = np.load("Input/" + sim_start[s])
             # Final Observed
             End = np.load("Input/" + sim_stop[s])
 
             # Transform Initial Observed Topo
-            topo_i = Init[0, y_min[x]: y_max[x], x_min[x]: x_max[x]]  # [m]
+            topo_i = Init[0, ymin[x]: ymax[x], xmin[x]: xmax[x]]  # [m]
             topo_start_x = copy.deepcopy(topo_i)  # [m] INITIAL TOPOGRPAHY
 
             # Transform Final Observed Topo
-            topo_e = End[0, y_min[x]: y_max[x], x_min[x]: x_max[x]]  # [m]
+            topo_e = End[0, ymin[x]: ymax[x], xmin[x]: xmax[x]]  # [m]
             topo_end_obs_x = copy.deepcopy(topo_e)  # [m] FINAL OBSERVED TOPOGRAPHY
 
             # Set Veg Domain
-            spec1_i = Init[1, y_min[x]: y_max[x], x_min[x]: x_max[x]]
-            spec2_i = Init[2, y_min[x]: y_max[x], x_min[x]: x_max[x]]
+            spec1_i = Init[1, ymin[x]: ymax[x], xmin[x]: xmax[x]]
+            spec2_i = Init[2, ymin[x]: ymax[x], xmin[x]: xmax[x]]
             veg_start = spec1_i + spec2_i  # INITIAL VEGETATION COVER
             veg_start[veg_start > 1] = 1
             veg_start[veg_start < 0] = 0
 
-            spec1_e = End[1, y_min[x]: y_max[x], x_min[x]: x_max[x]]
-            spec2_e = End[2, y_min[x]: y_max[x], x_min[x]: x_max[x]]
+            spec1_e = End[1, ymin[x]: ymax[x], xmin[x]: xmax[x]]
+            spec2_e = End[2, ymin[x]: ymax[x], xmin[x]: xmax[x]]
             veg_end = spec1_e + spec2_e  # FINAL OBSERVED VEGETATION COVER
             veg_end[veg_end > 1] = 1
             veg_end[veg_end < 0] = 0
 
-            score = aeolian_fitness(solution, sim_start[s], topo_start_x, topo_end_obs_x, y_min[x], y_max[x], x_min[x], x_max[x], x_range_min[x], x_range_max[x], sim_startdate[s], sim_dur[s])
+            score = aeolian_fitness(solution, sim_start[s], topo_start_x, topo_end_obs_x, ymin[x], ymax[x], xmin[x], xmax[x], x_range_min[x], x_range_max[x], sim_startdate[s], sim_dur[s])
             score_list.append(score)
 
     # Take mean of scores from all locations
@@ -262,7 +269,7 @@ def opt_func(X):
 
 start_time = time.time()  # Record time at start of calibration
 
-n_cores = 16  # Number of cores to run parallel simulations on
+n_cores = 18  # Number of cores to run parallel simulations on
 
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
@@ -274,28 +281,37 @@ sim_start = ["Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"]
 sim_stop = ["Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
 sim_startdate = ['20140406']  # [yyyymmdd]
 sim_dur = [3.44]  # [yr]
-
+cellsize = 1  # [m]
 
 # _____________________________________________
 # Define Multiple Locations
 
 # tall ridge 1, tall ridge 2, overwash fan, overwash gap
-y_min = [6300, 21000, 19030]
-y_max = [6500, 21200, 19230]
-x_min = [700, 900, 900]
-x_max = [1400, 1600, 1600]
+ymin = [6300, 21000, 19030]
+ymax = [6500, 21200, 19230]
+xmin = [700, 900, 900]
+xmax = [1400, 1600, 1600]
 
 # Cross-shore range of foredune system for skill assessment
 x_range_min = [838, 1068, 1135]
 x_range_max = [880, 1100, 1185]
 
+# Resize According to Cellsize
+ymin = [int(i / cellsize) for i in ymin]  # Alongshore
+ymax = [int(i / cellsize) for i in ymax]  # Alongshore
+xmin = [int(i / cellsize) for i in xmin]  # Cross-shore
+xmax = [int(i / cellsize) for i in xmax]  # Cross-shore
+x_range_min = [int(i / cellsize) for i in x_range_min]
+x_range_max = [int(i / cellsize) for i in x_range_max]
 
 # ____________________________________
 # Other Parameters & Variables
 MHW = 0.39  # [m NAVD88] Initial
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
-name = '2014-2017, 3 Locations, Multi-Objective BSS, 3Mar24'
+name = '2014-2017, 3 Locations, Multi-Objective BSS, Expansion=0.2/0.05, 26May24'
+
+print(name)
 
 
 # ___________________________________________________________________________________________________________________________________
@@ -306,7 +322,7 @@ name = '2014-2017, 3 Locations, Multi-Objective BSS, 3Mar24'
 # Prepare Particle Swarm Parameters
 
 iterations = 50
-swarm_size = 16
+swarm_size = 18
 dimensions = 9  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
@@ -322,7 +338,7 @@ bounds = (
               0.02,  # p_ero_sand
               0.05,  # entrainment_veg_limit
               0.05,  # saltveglimit
-              5,     # shadowangle
+              8,    # shadowangle
               0.5,   # Proportion of cross-shore winds versus alongshore
               0.5,   # Proportion of cross-shore winds towards right (onshore)
               0]),   # Proportion of alongshore winds towards down
@@ -332,7 +348,7 @@ bounds = (
               0.5,
               0.55,
               0.4,
-              15,
+              18,
               1,
               1,
               1])

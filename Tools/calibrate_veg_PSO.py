@@ -3,7 +3,7 @@ Script for calibrating MEEB vegetation parameters using Particle Swarms Optimiza
 
 Calibrates based on fitess score for morphologic and ecologic change between two timesteps.
 
-IRBR 8 February 2024
+IRBR 8 July 2024
 """
 
 import numpy as np
@@ -80,36 +80,39 @@ def veg_fitness(solution):
         init_filename=start,
         hindcast=True,
         simulation_start_date=startdate,
-        alongshore_domain_boundary_min=xmin,
-        alongshore_domain_boundary_max=xmax,
-        RSLR=0.004,
+        alongshore_domain_boundary_min=ymin,
+        alongshore_domain_boundary_max=ymax,
+        cellsize=cellsize,
+        RSLR=0.006,
         seeded_random_numbers=False,
         storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
         storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',
         # --- Aeolian --- #
-        p_dep_sand=0.42,  # Q = hs * L * n * pe/pd
-        p_dep_sand_VegMax=0.67,
-        p_ero_sand=0.15,
-        entrainment_veg_limit=0.07,
-        saltation_veg_limit=0.3,
-        shadowangle=5,
+        saltation_length=5,
+        saltation_length_rand_deviation=2,
+        p_dep_sand=0.22,
+        p_dep_sand_VegMax=0.54,
+        p_ero_sand=0.10,
+        entrainment_veg_limit=0.10,
+        saltation_veg_limit=0.35,
+        shadowangle=12,
         repose_bare=20,
         repose_veg=30,
-        wind_rose=(0.81, 0.06, 0.11, 0.02),  # (right, down, left, up)
+        wind_rose=(0.81, 0.04, 0.06, 0.09),  # (right, down, left, up)
         groundwater_depth=0.4,
         # --- Storms --- #
-        Rin=138,
-        Cx=68,
-        MaxUpSlope=1,
-        Kow=0.0000227,
+        Rin=249,
+        Cs=0.0283,
+        MaxUpSlope=1.5,
+        marine_flux_limit=1,
+        Kow=0.0001684,
         mm=1.04,
-        overwash_substeps=4,
-        beach_equilibrium_slope=0.024,
-        swash_transport_coefficient=0.00083,
-        wave_period_storm=9.4,
-        beach_substeps=20,
-        flow_reduction_max_spec1=0.2,
-        flow_reduction_max_spec2=0.3,
+        overwash_substeps=50,
+        beach_equilibrium_slope=0.022,
+        swash_erosive_timescale=1.48,
+        beach_substeps=25,
+        flow_reduction_max_spec1=0.02,
+        flow_reduction_max_spec2=0.05,
         # --- Shoreline --- #
         wave_asymetry=0.6,
         wave_high_angle_fraction=0.39,
@@ -210,15 +213,20 @@ start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
 stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
 startdate = '20140406'
 hindcast_duration = 4.5
-
-# Define Alongshore Coordinates of Domain
-xmin = 18950
-xmax = 19250
+cellsize = 1  # [m]
 
 MHW = 0.39  # [m NAVD88] Initial
 ResReduc = True  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
 name = '18950-19250, 2014-2018, HSS mean(present/absent, change)'
+
+# Define Alongshore Coordinates of Domain
+ymin = 18950
+ymax = 19250
+
+# Resize According to Cellsize
+ymin = int(ymin / cellsize)  # Alongshore
+ymax = int(ymax / cellsize)  # Alongshore
 
 # ____________________________________
 
@@ -228,22 +236,22 @@ Init = np.load("Input/" + start)
 End = np.load("Input/" + stop)
 
 # Transform Initial Observed Topo
-topo_i = Init[0, xmin: xmax, :]  # [m]
+topo_i = Init[0, ymin: ymax, :]  # [m]
 topo_start = copy.deepcopy(topo_i)  # [m] INITIAL TOPOGRPAHY
 
 # Transform Final Observed Topo
-topo_e = End[0, xmin: xmax, :]  # [m]
+topo_e = End[0, ymin: ymax, :]  # [m]
 topo_end_obs = copy.deepcopy(topo_e)  # [m] FINAL OBSERVED TOPOGRAPHY
 
 # Set Veg Domain
-spec1_i = Init[1, xmin: xmax, :]
-spec2_i = Init[2, xmin: xmax, :]
+spec1_i = Init[1, ymin: ymax, :]
+spec2_i = Init[2, ymin: ymax, :]
 veg_start = spec1_i + spec2_i  # INITIAL VEGETATION COVER
 veg_start[veg_start > 1] = 1
 veg_start[veg_start < 0] = 0
 
-spec1_e = End[1, xmin: xmax, :]
-spec2_e = End[2, xmin: xmax, :]
+spec1_e = End[1, ymin: ymax, :]
+spec2_e = End[2, ymin: ymax, :]
 veg_end = spec1_e + spec2_e
 veg_end_obs = veg_end.copy()  # FINAL OBSERVED VEGETATION COVER
 veg_end[veg_end > 1] = 1

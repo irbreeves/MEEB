@@ -40,7 +40,7 @@ def run_individual_sim(rslr):
         storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',
         save_frequency=save_frequency,
         # --- Aeolian --- #
-        jumplength=5,
+        saltation_length=5,
         slabheight=0.02,
         p_dep_sand=0.42,  # Q = hs * L * n * pe/pd
         p_dep_sand_VegMax=0.67,

@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 25 June 2024
+IRBR 2 July 2024
 """
 
 import numpy as np
@@ -33,6 +33,7 @@ def run_individual_sim(rslr):
         alongshore_domain_boundary_max=ymax,
         crossshore_domain_boundary_min=xmin,
         crossshore_domain_boundary_max=xmax,
+        cellsize=cellsize,
         RSLR=rslr,
         MHW=MHW_init,
         init_filename=start,
@@ -43,6 +44,8 @@ def run_individual_sim(rslr):
         storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',
         save_frequency=save_frequency,
         # --- Aeolian --- #
+        saltation_length=2,
+        saltation_length_rand_deviation=1,
         p_dep_sand=0.22,
         p_dep_sand_VegMax=0.54,
         p_ero_sand=0.10,
@@ -60,7 +63,7 @@ def run_individual_sim(rslr):
         marine_flux_limit=1,
         Kow=0.0001684,
         mm=1.04,
-        overwash_substeps=50,
+        overwash_substeps=25,
         beach_equilibrium_slope=0.022,
         swash_erosive_timescale=1.48,
         beach_substeps=25,
@@ -138,9 +141,9 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
         topo = scipy.ndimage.gaussian_filter(topo_TS[:, :, ts], 5, mode='constant')
 
         # Find dune crest, toe, and heel lines
-        dune_crestline, not_gap = routine.foredune_crest(topo, MHW)
-        dune_toeline = routine.foredune_toe(topo, dune_crestline, MHW, not_gap)
-        dune_heelline = routine.foredune_heel(topo, dune_crestline, not_gap, threshold=0.6)
+        dune_crestline, not_gap = routine.foredune_crest(topo, MHW, cellsize)
+        dune_toeline = routine.foredune_toe(topo, dune_crestline, MHW, not_gap, cellsize)
+        dune_heelline = routine.foredune_heel(topo, dune_crestline, not_gap, cellsize, threshold=0.6)
 
         # Make boolean maps of locations landward and seaward of dune lines
         seaward_of_dunetoe = np.zeros(topo.shape, dtype=bool)
@@ -728,7 +731,7 @@ def most_likely_animation_2(class_probabilities, class_cmap, class_labels):
 # startdate = '20140406'
 
 # 2018
-start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
+start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover_2m.npy"
 startdate = '20181007'
 
 
@@ -756,23 +759,34 @@ state_class_cmap = colors.ListedColormap(['blue', 'gold', 'saddlebrown', 'red', 
 sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 
-duplicates = 32  # To account for internal stochasticity (e.g., storms, aeolian)
-core_num = 16  # min(duplicates, 20)  # Number of cores to use in the parallelization (IR PC: 24)
+duplicates = 20  # To account for internal stochasticity (e.g., storms, aeolian)
+core_num = 20  # min(duplicates, 20)  # Number of cores to use in the parallelization (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
-ymin = 17500  # [m] Alongshore coordinate
-ymax = 18000  # [m] Alongshore coordinate
+ymin = 17400  # [m] Alongshore coordinate
+ymax = 20400  # [m] Alongshore coordinate
 xmin = 900  # [m] Cross-shore coordinate
 xmax = 1600  # [m] Cross-shore coordinate
 plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 plot_xmax = plot_xmin + 600  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
+cellsize = 2  # [m]
 
-name = '17500-18000, 2018-2050, 32 duplicates, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), 19Jun24'  # Name of simulation suite
-savename = '17500-18000_19Jun24'
+name = '17400-20400, 2018-2050, 20 duplicates, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), cellsize=2, SS=50/25, 5Jul24'  # Name of simulation suite
+
+save_data = True  # [bool]
+savename = '17400-20400'
 
 # _____________________
 # INITIAL CONDITIONS
+
+# Resize according to cellsize
+ymin = int(ymin / cellsize)  # Alongshore
+ymax = int(ymax / cellsize)  # Alongshore
+xmin = int(xmin / cellsize)  # Cross-shore
+xmax = int(xmax / cellsize)  # Cross-shore
+plot_xmin = int(plot_xmin / cellsize)  # Cross-shore plotting
+plot_xmax = int(plot_xmax / cellsize)  # Cross-shore plotting
 
 # Load Initial Domains
 Init = np.load("Input/" + start)
@@ -784,6 +798,7 @@ elev_num_classes = len(elev_class_edges) - 1
 state_num_classes = len(state_class_edges) - 1
 num_saves = int(np.floor(sim_duration/save_frequency)) + 1
 
+del Init
 
 # __________________________________________________________________________________________________________________________________
 # RUN MODEL
@@ -824,13 +839,15 @@ plt.show()
 # __________________________________________________________________________________________________________________________________
 # SAVE DATA
 
-# Elevation
-elev_name = "ElevClassProbabilities_" + savename
-elev_outloc = "Output/SimData/" + elev_name
-np.save(elev_outloc, elev_class_probabilities)
+if save_data:
 
-# State
-state_name = "StateClassProbabilities_" + savename
-state_outloc = "Output/SimData/" + state_name
-np.save(state_outloc, state_class_probabilities)
+    # Elevation
+    elev_name = "ElevClassProbabilities_" + savename
+    elev_outloc = "Output/SimData/" + elev_name
+    np.save(elev_outloc, elev_class_probabilities)
+
+    # State
+    state_name = "StateClassProbabilities_" + savename
+    state_outloc = "Output/SimData/" + state_name
+    np.save(state_outloc, state_class_probabilities)
 

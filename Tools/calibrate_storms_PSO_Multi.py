@@ -4,7 +4,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 Calibrates based on fitess score for all beach/dune/overwash morphologic change, and incorporates multiple
 storm events and/or locations into each fitness score.
 
-IRBR 14 March 2024
+IRBR 8 July 2024
 """
 
 import numpy as np
@@ -70,23 +70,22 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
     """Run a storm with this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
     # Find Dune Crest, Shoreline Positions
-    dune_crest, not_gap = routine.foredune_crest(topo_start_obs, MHW)
+    dune_crest, not_gap = routine.foredune_crest(topo_start_obs, MHW, cellsize)
     x_s = routine.ocean_shoreline(topo_start_obs, MHW)
 
     # Run Model
     topo_start_copy = copy.deepcopy(topo_start_obs)
     veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
 
-    sim_topo_final, topo_change_overwash, OWflux, netDischarge, inundated, Qbe = routine.storm_processes(
+    sim_topo_final, topo_change_overwash, OWflux, inundated, Qbe = routine.storm_processes(
         topo_start_copy,
         Rhigh,
         Rlow,
         dur,
         Rin=int(round(solution[0])),
-        Cx=int(round(solution[1])),
-        AvgSlope=2 / 200,
+        Cs=round(solution[1], 4),
         nn=0.5,
-        MaxUpSlope=solution[6],
+        MaxUpSlope=1.5,
         fluxLimit=1,
         Qs_min=1,
         Kow=solution[2],
@@ -94,20 +93,19 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
         MHW=MHW,
         Cbb=0.7,
         Qs_bb_min=1,
-        substep=4,
+        substep=50,
         beach_equilibrium_slope=solution[3],
-        swash_transport_coefficient=solution[4],
-        wave_period_storm=9.4,
-        beach_substeps=20,
+        swash_erosive_timescale=solution[4],
+        beach_substeps=25,
         x_s=x_s,
-        cellsize=1,
+        cellsize=cellsize,
         spec1=spec1,
         spec2=spec2,
         flow_reduction_max_spec1=0.02,  # Grass
         flow_reduction_max_spec2=0.05,  # Shrub
     )
 
-    topo_end_sim = routine.enforceslopes(sim_topo_final, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, RNG=RNG)[0]
+    topo_end_sim = routine.enforceslopes(sim_topo_final, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, cellsize=cellsize, RNG=RNG)[0]
 
     topo_change_sim = topo_end_sim - topo_start_obs  # [m] Simulated change
     topo_change_obs = topo_end_obs - topo_start_obs  # [m] Observed change
@@ -144,7 +142,7 @@ def multi_fitness(solution):
     score_list = []
 
     for s in range(len(storm_start)):
-        for x in range(len(x_min)):
+        for x in range(len(ymin)):
 
             # Initial Observed Topo
             Init = np.load(storm_start[s])
@@ -152,16 +150,16 @@ def multi_fitness(solution):
             End = np.load(storm_stop[s])
 
             # Transform Initial Observed Topo
-            topo_init = Init[0, x_min[x]: x_max[x], :]  # [m]
+            topo_init = Init[0, ymin[x]: ymax[x], :]  # [m]
             topo_start = copy.deepcopy(topo_init)  # [m] Initialise the topography map
 
             # Transform Final Observed Topo
-            topo_final = End[0, x_min[x]: x_max[x], :]  # [m]
-            OW_Mask = Florence_Overwash_Mask[x_min[x]: x_max[x], :]  # [bool]
+            topo_final = End[0, ymin[x]: ymax[x], :]  # [m]
+            OW_Mask = overwash_mask_file[ymin[x]: ymax[x], :]  # [bool]
 
             # Set Veg Domain
-            spec1 = Init[1, x_min[x]: x_max[x], :]
-            spec2 = Init[2, x_min[x]: x_max[x], :]
+            spec1 = Init[1, ymin[x]: ymax[x], :]
+            spec2 = Init[2, ymin[x]: ymax[x], :]
 
             # Initialize storm stats
             Rhigh = storm_Rhigh[s] * np.ones(topo_final.shape[0])
@@ -199,16 +197,14 @@ def opt_func(X):
 start_time = time.time()  # Record time at start of calibration
 RNG = np.random.default_rng(seed=13)  # Seeded random numbers for reproducibility
 
-# Choose number of cores to run parallel simulations on
-n_cores = 6
-
 # _____________________________________________
 # Define Variables
 MHW = 0.39  # [m NAVD88]
+cellsize = 1  # [m]
 
 # Observed Overwash Mask
-Florence_Overwash_Mask = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")  # Load observed overwash mask
-name = 'Multi-Location Storm (Florence), NON-Weighted BSS PSO, Nswarm 18, Iterations 50, Smaller veg flow reduction and denser veg, 28Feb24'
+overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")  # Load observed overwash mask
+name = 'Multi-Location Storm (Florence), NON-Weighted BSS PSO, Nswarm 18, Iterations 50, SS=50/25, 24May24'
 
 BestScore = -1e10
 BestScores = []
@@ -223,25 +219,30 @@ storm_Rhigh = [3.32]
 storm_Rlow = [1.90]
 storm_dur = [83]
 
-
 # _____________________________________________
 # Define Location(s)
 
-x_min = [18950, 19825, 20375, 20525, 6300]
-x_max = [19250, 20275, 20525, 20725, 6600]
+ymin = [18950, 19825, 20375, 20525, 6300]
+ymax = [19250, 20275, 20525, 20725, 6600]
 # small flat, large flat, small gap, large gap, tall ridge
 
+# Resize according to cellsize
+ymin = [int(i / cellsize) for i in ymin]  # Alongshore
+ymax = [int(i / cellsize) for i in ymax]  # Alongshore
 
 # ___________________________________________________________________________________________________________________________________
 # ___________________________________________________________________________________________________________________________________
 # PARTICLE SWARMS OPTIMIZATION
+
+# Choose number of cores to run parallel simulations on
+n_cores = 18
 
 # _____________________________________________
 # Prepare Particle Swarms Parameters
 
 iterations = 50
 swarm_size = 18
-dimensions = 7  # Number of free paramters
+dimensions = 6  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
 w: Inertia weight constant. [0-1] Determines how much the particle keeps on with its previous velocity (i.e., speed and direction of the search). 
@@ -251,21 +252,19 @@ particle itself and recognizing the search result of the swarm; Control the trad
 
 bounds = (
     # Minimum
-    np.array([100,  # Rin
-              10,  # Cx
-              8e-06,  # Kr
+    np.array([50,  # Rin
+              0.010,  # Cs
+              0.00005,  # Kr
               0.01,  # beach_equilibrium_slope
-              0.0005,  # swash_transport_coefficient
-              1.0,  # mm
-              0.75]),  # MUS
+              1.0,  # Swash erosive timescale
+              1.01]),  # mm
     # Maximum
-    np.array([320,  # Rin
-              80,  # Cx
-              1e-04,  # Kr
+    np.array([280,  # Rin
+              0.040,  # Cs
+              0.01,  # Kr
               0.04,  # beach_equilibrium_slope
-              0.0035,  # swash_transport_coefficient
-              1.15,  # mm
-              1.75])  # MUS
+              3.0,  # Swash erosive timescale
+              1.12])  # mm
 )
 
 
@@ -297,11 +296,10 @@ print(tabulate({
     "Cx": [best_solution[1]],
     "Kr": [best_solution[2]],
     "Beq": [best_solution[3]],
-    "Kc": [best_solution[4]],
+    "Te": [best_solution[4]],
     "mm": [best_solution[5]],
-    "MaxUpSlope": [best_solution[6]],
     "Score": [solution_fitness * -1]
-}, headers="keys", floatfmt=(None, ".0f", ".0f", ".7f", ".3f", ".5f", ".2f", ".2f", ".4f"))
+}, headers="keys", floatfmt=(None, ".0f", ".4f", ".7f", ".3f", ".2f", ".2f", ".4f"))
 )
 
 # _____________________________________________

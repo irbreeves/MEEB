@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 25 June 2024
+Last update: 2 July 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -50,14 +50,15 @@ class MEEB:
 
             # AEOLIAN
             slabheight=0.02,  # Height of slabs for aeolian transport, proportion of cell dimension (0.02, Teixeira et al. 2023)
-            jumplength=5,  # [cell lengths] Hop length for slabs (5, Teixeira et al. 2023)
+            saltation_length=5,  # [cells] Hop length for saltating slabs of sand (5 m, Teixeira et al. 2023); note units of cells (e.g., if cellsize = 2 m and saltation_length = 5 cells, slabs will hop 10 m)
+            saltation_length_rand_deviation=2,  # [cells] Deviation around saltation_length for random uniform distribution of saltation lengths. Must be at lest 1 cell smaller than saltation_length.
             groundwater_depth=0.4,  # Proportion of the smoothed topography used to set groundwater profile
             wind_rose=(0.83, 0.02, 0.12, 0.03),  # Proportion of wind TOWARDS (right, down, left, up)
             p_dep_sand=0.36,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
-            p_dep_sand_VegMax=0.60,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover. Must be greater than or equal to p_dep_sand/p_dep_base.
+            p_dep_sand_VegMax=0.60,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover; must be greater than or equal to p_dep_sand/p_dep_basesaltation_length_rand_deviation
             p_dep_base=0.1,  # [0-1] Probability of deposition of base cells
             p_ero_sand=0.13,  # [0-1] Probability of erosion of bare/sandy cells
-            entrainment_veg_limit=0.37,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible.
+            entrainment_veg_limit=0.37,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible
             saltation_veg_limit=0.37,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
             shadowangle=10,  # [deg]
             repose_bare=20,  # [deg]
@@ -110,20 +111,20 @@ class MEEB:
             # STORM OVERWASH AND BEACH-DUNE CHANGE
             storm_list_filename="SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy",
             storm_timeseries_filename="StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
-            Rin=200,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
-            Cs=0.06,  # Constant for representing flow momentum for sediment transport in overwash
+            Rin=249,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
+            Cs=0.0283,  # Constant for representing flow momentum for sediment transport in overwash
             nn=0.5,  # Flow routing constant
             MaxUpSlope=1.5,  # Maximum slope water can flow uphill
             marine_flux_limit=1,  # [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
             overwash_min_discharge=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
-            Kow=1.2e-04,  # Sediment transport coefficient for run-up overwash regime
+            Kow=0.0001684,  # Sediment transport coefficient for run-up overwash regime
             mm=1.04,  # Inundation overwash constant
             Cbb=0.7,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
             overwash_min_subaqueous_discharge=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
-            overwash_substeps=22,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
-            beach_equilibrium_slope=0.027,  # Equilibrium slope of the beach
-            swash_erosive_timescale=1.29,  # Non-dimensional erosive timescale coefficient for beach/duneface sediment transport (Duran Vinent & Moore, 2015)
-            beach_substeps=8,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
+            overwash_substeps=25,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
+            beach_equilibrium_slope=0.025,  # Equilibrium slope of the beach
+            swash_erosive_timescale=1.48,  # Non-dimensional erosive timescale coefficient for beach/duneface sediment transport (Duran Vinent & Moore, 2015)
+            beach_substeps=25,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
     ):
         """MEEB: Mesoscale Explicit Ecogeomorphic Barrier model.
 
@@ -178,7 +179,8 @@ class MEEB:
         self._repose_veg = repose_veg
         self._repose_threshold = repose_threshold
         self._saltation_veg_limit = saltation_veg_limit
-        self._jumplength = jumplength
+        self._saltation_length = saltation_length
+        self._saltation_length_rand_deviation = saltation_length_rand_deviation
         self._beach_equilibrium_slope = beach_equilibrium_slope
         self._swash_erosive_timescale = swash_erosive_timescale
         self._beach_substeps = beach_substeps
@@ -260,7 +262,7 @@ class MEEB:
         self._alongshore_domain_boundary_max = min(self._alongshore_domain_boundary_max, Init[0, :, :].shape[0])
         self._crossshore_domain_boundary_max = min(self._crossshore_domain_boundary_max, Init[0, :, :].shape[1])
         self._topo = Init[0, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [m NAVD88] 2D array of initial topography
-        self._longshore, self._crossshore = self._topo.shape * self._cellsize  # [m] Cross-shore/alongshore size of topography
+        self._longshore, self._crossshore = self._topo.shape  # [cells] Cross-shore/alongshore size of domain
         self._groundwater_elevation = np.zeros(self._topo.shape)  # [m NAVD88] Initialize
 
         # SHOREFACE & SHORELINE
@@ -272,6 +274,7 @@ class MEEB:
             self._k_sf = ((3600 * 24 * 365) * ((shoreface_transport_efficiency * shoreface_friction * 9.81 ** (11 / 4) * self._mean_wave_height ** 5 * self._mean_wave_period ** (5 / 2)) / (960 * specific_gravity_submerged_sed * math.pi ** (7 / 2) * w_s ** 2)) *
                           (((1 / (11 / 4 * z0 ** (11 / 4))) - (1 / (11 / 4 * self._DShoreface ** (11 / 4)))) / (self._DShoreface - z0)))  # [m^3/m/yr] Shoreface response rate
             self._LShoreface = int(self._DShoreface / self._s_sf_eq)  # [m] Initialize length of shoreface such that initial shoreface slope equals equilibrium shoreface slope
+        self._alongshore_section_length = int(self._alongshore_section_length / self._cellsize)  # [cells]
         self._x_s = routine.init_ocean_shoreline(self._topo, self._MHW, self._alongshore_section_length)  # [m] Start locations of shoreline according to initial topography and MHW
         self._x_t = self._x_s - self._LShoreface  # [m] Start locations of shoreface toe
 
@@ -290,7 +293,7 @@ class MEEB:
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
         self._veg[self._veg < 0] = 0
-        self._effective_veg = scipy.ndimage.gaussian_filter(self._veg, [self._effective_veg_sigma, self._effective_veg_sigma], mode='constant')  # Effective vegetation cover represents effect of nearby vegetation on local wind
+        self._effective_veg = scipy.ndimage.gaussian_filter(self._veg, [self._effective_veg_sigma / self._cellsize, self._effective_veg_sigma / self._cellsize], mode='constant')  # Effective vegetation cover represents effect of nearby vegetation on local wind
         self._growth_reduction_timeseries = np.linspace(0, self._VGR / 100, int(np.ceil(self._simulation_time_yr)))
 
         # STORMS
@@ -350,12 +353,12 @@ class MEEB:
         topo_iteration_start = copy.deepcopy(self._topo)
 
         # Get present groundwater elevations
-        self._groundwater_elevation = (scipy.ndimage.gaussian_filter(self._topo, sigma=12) - self._MHW) * self._groundwater_depth + self._MHW  # [m NAVD88] Groundwater elevation based on smoothed topographic height above SL
+        self._groundwater_elevation = (scipy.ndimage.gaussian_filter(self._topo, sigma=12 / self._cellsize) - self._MHW) * self._groundwater_depth + self._MHW  # [m NAVD88] Groundwater elevation based on smoothed topographic height above SL
         self._groundwater_elevation[self._groundwater_elevation < self._MHW] = self._MHW  # [m NAVD88]
 
         # Find subaerial and shadow cells
         subaerial = self._topo > self._MHW  # [bool] True for subaerial cells
-        wind_shadows = routine.shadowzones(self._topo, self._shadowangle, direction=int(self._wind_direction[it]), MHW=self._MHW)  # [bool] Map of True for in shadow, False not in shadow
+        wind_shadows = routine.shadowzones(self._topo, self._shadowangle, direction=int(self._wind_direction[it]), MHW=self._MHW, cellsize=self._cellsize)  # [bool] Map of True for in shadow, False not in shadow
 
         # Erosion/Deposition Probabilities
         aeolian_erosion_prob = routine.erosprobs(self._effective_veg, wind_shadows, subaerial, self._topo, self._groundwater_elevation, self._p_ero_sand, self._entrainment_veg_limit, self._slabheight, self._MHW)  # Returns map of erosion probabilities
@@ -363,9 +366,9 @@ class MEEB:
 
         # Move sand slabs
         if self._wind_direction[it] == 1 or self._wind_direction[it] == 3:  # Left or Right wind direction
-            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._jumplength, self._effective_veg, self._saltation_veg_limit, int(self._wind_direction[it]), True, self._topo, self._MHW, self._RNG)  # Returns map of height changes in units of slabs
+            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._saltation_length, self._saltation_length_rand_deviation, self._effective_veg, self._saltation_veg_limit, int(self._wind_direction[it]), True, self._topo, self._MHW, self._RNG)  # Returns map of height changes in units of slabs
         else:  # Up or Down wind direction
-            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._jumplength, self._effective_veg, self._saltation_veg_limit, int(self._wind_direction[it]), True, self._topo, self._MHW, self._RNG)  # Returns map of height changes in units of slabs
+            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._saltation_length, self._saltation_length_rand_deviation, self._effective_veg, self._saltation_veg_limit, int(self._wind_direction[it]), True, self._topo, self._MHW, self._RNG)  # Returns map of height changes in units of slabs
 
         # Apply changes, make calculations
         self._topo += aeolian_elevation_change * self._slabheight  # [m NAVD88] Changes applied to the topography; convert aeolian_elevation_change from slabs to meters
@@ -379,8 +382,8 @@ class MEEB:
             iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
 
             # Beach slopes
-            foredune_crest_loc, not_gap = routine.foredune_crest(self._topo, self._MHW)
-            beach_slopes = routine.calculate_beach_slope(self._topo, self._x_s, foredune_crest_loc, self._average_dune_toe_height, self._MHW)
+            foredune_crest_loc, not_gap = routine.foredune_crest(self._topo, self._MHW, self._cellsize)
+            beach_slopes = routine.calculate_beach_slope(self._topo, self._x_s, foredune_crest_loc, self._average_dune_toe_height, self._MHW, self._cellsize)
 
             # Generate Storms Stats
             if self._hindcast:  # Empirical storm time series
@@ -430,7 +433,7 @@ class MEEB:
 
                 # Check for nans in topo
                 if np.isnan(np.sum(self._topo)):
-                    self._topo = routine.replace_nans(self._topo)
+                    self._topo = routine.replace_nans_infs(self._topo)
 
             else:
                 self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
@@ -445,7 +448,6 @@ class MEEB:
 
             # Update Shoreline Position from Cross-Shore Sediment Transport (i.e., RSLR, overwash, beach/dune change)
             self._x_s, self._x_t, shoreface_slope = routine.shoreline_change_from_CST(
-                self._topo,
                 self._DShoreface,
                 self._k_sf,
                 self._s_sf_eq,
@@ -454,9 +456,9 @@ class MEEB:
                 self._OWflux,
                 self._x_s,
                 self._x_t,
-                self._MHW,
                 self._alongshore_section_length,
                 self._storm_iterations_per_year,
+                self._cellsize,
             )
 
             self._x_s = routine.shoreline_change_from_AST(self._x_s,
@@ -485,7 +487,7 @@ class MEEB:
             # Enforce angles of repose
             """IR 25Apr24: Ideally, angles of repose would be enforced after avery aeolian iteration and every storm. However, to significantly increase model speed, I now enforce AOR only at the end of each
             shoreline iteration (i.e., every 2 aeolian iterations). The morphodynamic effects of this are apparently negligible, while run time is much quicker."""
-            self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._RNG)[0]  # [m NAVD88]
+            self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._cellsize, self._RNG)[0]  # [m NAVD88]
 
             # Update sedimentation balance after adjusting the shoreline and enforcing AOR
             self._sedimentation_balance += self._topo - topo_pre_shoreline_change  # [m] Update the sedimentation balance map
@@ -554,7 +556,7 @@ class MEEB:
             self._veg[self._veg < 0] = 0
 
             # Determine effective vegetation cover by smoothing; represents effect of nearby vegetation on local wind
-            self._effective_veg = scipy.ndimage.gaussian_filter(self._veg, [self._effective_veg_sigma, self._effective_veg_sigma], mode='constant')
+            self._effective_veg = scipy.ndimage.gaussian_filter(self._veg, [self._effective_veg_sigma / self._cellsize, self._effective_veg_sigma / self._cellsize], mode='constant')
 
             self._vegcount = self._vegcount + 1  # Update counter
 
@@ -585,6 +587,10 @@ class MEEB:
     @property
     def iterations_per_cycle(self):
         return self._iterations_per_cycle
+
+    @property
+    def cellsize(self):
+        return self._cellsize
 
     @property
     def topo(self):

@@ -3,7 +3,7 @@ Script for testing MEEB hindcast simulations.
 
 Runs a hindcast simulation and calculates fitess scores for morphologic and ecologic change between simulated and observed.
 
-IRBR 8 March 2024
+IRBR 2 July 2024
 """
 
 import numpy as np
@@ -107,72 +107,6 @@ def model_skill_categorical(obs, sim, catmask):
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
 
-# # 2004 - 2009
-# start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
-# startdate = '20040716'
-# hindcast_duration = 5.1
-
-# # 2004 - 2014
-# start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2014_PostSandyNCFMP.npy"
-# startdate = '20040716'
-# hindcast_duration = 9.72
-
-# # 2004 - 2019
-# start = "Init_NCB-NewDrum-Ocracoke_2004_PostIsabel.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2019_PreDorian.npy"
-# startdate = '20040716'
-# hindcast_duration = 15.12
-
-# # 2009 - 2018
-# start = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
-# startdate = '20090824'
-# hindcast_duration = 9.12
-
-# # 2009 - 2019
-# start = "Init_NCB-NewDrum-Ocracoke_2009_PreIrene.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2019_PreDorian.npy"
-# startdate = '20090824'
-# hindcast_duration = 10.02
-
-# # 2011 - 2016
-# start = "Init_NCB-NewDrum-Ocracoke_2011_PostIrene.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
-# startdate = '20110829'
-# hindcast_duration = 5.12
-
-# # 2011 - 2017
-# start = "Init_NCB-NewDrum-Ocracoke_2011_PostIrene.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# startdate = '20110829'
-# hindcast_duration = 6.04
-
-# # 2012 - 2017
-# start = "Init_NCB-NewDrum-Ocracoke_2012_PostSandyUSGS_NoThin.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# startdate = '20121129'
-# hindcast_duration = 4.78
-
-# # 2012 - 2018
-# start = "Init_NCB-NewDrum-Ocracoke_2012_PostSandyUSGS_MinimalThin.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
-# startdate = '20121129'
-# hindcast_duration = 5.84
-
-# # 2013 - 2014
-# start = "Init_NCB-NewDrum-Ocracoke_2012_PostSandyUSGS_MinimalThin.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-# startdate = '20121129'
-# hindcast_duration = 1.34
-
-# # 2014 - 2016
-# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
-# startdate = '20140406'
-# hindcast_duration = 2.52
-
 # 2014 - 2017
 start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
 stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
@@ -185,43 +119,20 @@ hindcast_duration = 3.44
 # startdate = '20140406'
 # hindcast_duration = 4.5
 
-# # 2014 - 2019
-# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2019_PreDorian.npy"
-# startdate = '20140406'
-# hindcast_duration = 5.4
-
-# # 2016 - 2017
-# start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# startdate = '20161012'
-# hindcast_duration = 0.92
-
-# # 2016 - 2018
-# start = "Init_NCB-NewDrum-Ocracoke_2016_PostMatthew.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
-# startdate = '20161012'
-# hindcast_duration = 1.96
-
 # # 2017 - 2018
 # start = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
 # stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
 # startdate = '20170916'
 # hindcast_duration = 1.06
 
-# # 2018 - 2019
-# start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2019_PreDorian.npy"
-# startdate = '20181015'
-# hindcast_duration = 0.9
 
 # _____________________
 # INPUT
 
 # Define Coordinates of Domain
-ymin = 20500  # 22400 8400 4000 20500
-ymax = 21000  # 22900 8900 4500 21000
-xmin = 900
+ymin = 22400  # 22400 8400 4000 20500
+ymax = 22900  # 22900 8900 4500 21000
+xmin = 900  # 900 700 600 900
 xmax = xmin + 800
 
 # Define Cross-Shore Limits for Plotting
@@ -230,17 +141,28 @@ plot_xmax = plot_xmin + 900
 
 # Define Cross-Shore Limits for Skill Score Mask
 mask_xmin = 1070 - xmin  # 1070  # 930  # 720  # 1070
-mask_xmax = 1120 - xmin  # 1150  # 990  # 790  # 1120
+mask_xmax = 1150 - xmin  # 1150  # 990  # 775  # 1120
 
-rslr = 0.004  # [m/yr]
+rslr = 0.006  # [m/yr]
 MHW = 0.39  # [m NAVD88]
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
+cellsize = 1  # [m]
 
-name = '20500-21000, 2014-2017'
+name = '22400-22900, 2014-2017, RSLR=6'
 
 # _____________________
 # LOAD INITIAL DOMAINS
+
+# Resize According to Cellsize
+ymin = int(ymin / cellsize)  # Alongshore
+ymax = int(ymax / cellsize)  # Alongshore
+xmin = int(xmin / cellsize)  # Cross-shore
+xmax = int(xmax / cellsize)  # Cross-shore
+plot_xmin = int(plot_xmin / cellsize)  # Cross-shore plotting
+plot_xmax = int(plot_xmax / cellsize)  # Cross-shore plotting
+mask_xmin = int(mask_xmin / cellsize)
+mask_xmax = int(mask_xmax / cellsize)
 
 # Initial Observed Topo
 Init = np.load("Input/" + start)
@@ -280,6 +202,7 @@ meeb = MEEB(
     alongshore_domain_boundary_max=ymax,
     crossshore_domain_boundary_min=xmin,
     crossshore_domain_boundary_max=xmax,
+    cellsize=cellsize,
     RSLR=rslr,
     MHW=MHW,
     init_filename=start,
@@ -288,27 +211,29 @@ meeb = MEEB(
     simulation_start_date=startdate,
     storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
     # --- Aeolian --- #
-    p_dep_sand=0.36,  # Q = hs * L * n * pe/pd
-    p_dep_sand_VegMax=0.60,
-    p_ero_sand=0.13,
-    entrainment_veg_limit=0.37,
-    saltation_veg_limit=0.37,
-    shadowangle=5,
+    saltation_length=5,
+    saltation_length_rand_deviation=2,
+    p_dep_sand=0.22,  # Q = hs * L * n * pe/pd
+    p_dep_sand_VegMax=0.54,
+    p_ero_sand=0.10,
+    entrainment_veg_limit=0.10,
+    saltation_veg_limit=0.35,
+    shadowangle=12,
     repose_bare=20,
     repose_veg=30,
-    wind_rose=(0.83, 0.02, 0.12, 0.03),  # (right, down, left, up)
+    wind_rose=(0.81, 0.04, 0.06, 0.09),  # (right, down, left, up)
     groundwater_depth=0.4,
     # --- Storms --- #
-    Rin=213,
-    Cx=36,
-    MaxUpSlope=1.57,
-    Kow=0.0000501,
-    mm=1.02,
-    overwash_substeps=4,
-    beach_equilibrium_slope=0.027,
-    swash_transport_coefficient=0.001,
-    wave_period_storm=9.4,
-    beach_substeps=20,
+    Rin=249,
+    Cs=0.0283,
+    MaxUpSlope=1.5,
+    marine_flux_limit=1,
+    Kow=0.0001684,
+    mm=1.04,
+    overwash_substeps=50,
+    beach_equilibrium_slope=0.022,
+    swash_erosive_timescale=1.48,
+    beach_substeps=25,
     flow_reduction_max_spec1=0.02,
     flow_reduction_max_spec2=0.05,
     # --- Shoreline --- #
@@ -320,6 +245,10 @@ meeb = MEEB(
     estimate_shoreface_parameters=True,
     # --- Veg --- #
     sp1_b=-0.05,
+    sp1_lateral_probability=0.2,
+    sp2_lateral_probability=0.2,
+    sp1_pioneer_probability=0.05,
+    sp2_pioneer_probability=0.05,
 )
 
 print(meeb.name)
@@ -357,16 +286,16 @@ veg_present_obs = veg_end > 0.05  # [bool]
 subaerial_mask = np.logical_and(topo_end_sim > mhw_end_sim, topo_end_obs > mhw_end_sim)  # [bool] Mask for every cell above water
 
 # Beach mask
-dune_crest, not_gap = routine.foredune_crest(topo_start, mhw_end_sim)
+dune_crest, not_gap = routine.foredune_crest(topo_start, mhw_end_sim, cellsize)
 beach_duneface_mask = np.zeros(topo_end_sim.shape)
 for l in range(topo_start.shape[0]):
     beach_duneface_mask[l, :dune_crest[l]] = True
 beach_duneface_mask = np.logical_and(beach_duneface_mask, subaerial_mask)  # [bool] Map of every cell seaward of dune crest
 
 # Dune crest locations and heights
-crest_loc_obs_start, not_gap_obs_start = routine.foredune_crest(topo_start, mhw_end_sim)
-crest_loc_obs, not_gap_obs = routine.foredune_crest(topo_end_obs, mhw_end_sim)
-crest_loc_sim, not_gap_sim = routine.foredune_crest(topo_end_sim, mhw_end_sim)
+crest_loc_obs_start, not_gap_obs_start = routine.foredune_crest(topo_start, mhw_end_sim, cellsize)
+crest_loc_obs, not_gap_obs = routine.foredune_crest(topo_end_obs, mhw_end_sim, cellsize)
+crest_loc_sim, not_gap_sim = routine.foredune_crest(topo_end_sim, mhw_end_sim, cellsize)
 crest_loc_change_obs = crest_loc_obs - crest_loc_obs_start
 crest_loc_change_sim = crest_loc_sim - crest_loc_obs_start
 
@@ -554,7 +483,7 @@ cbar1.set_ticklabels(['Hit', 'False Alarm', 'Correct Reject', 'Miss'])
 # Profiles: Observed vs Simulated
 Fig = plt.figure(figsize=(14, 7.5))
 ax1 = Fig.add_subplot(211)
-profile_x = 10
+profile_x = int(10 / cellsize)
 plt.plot(topo_start[profile_x, plot_xmin: plot_xmax], 'k--')
 plt.plot(topo_end_obs[profile_x, plot_xmin: plot_xmax], 'k')
 plt.plot(topo_end_sim[profile_x, plot_xmin: plot_xmax], 'r')
@@ -573,7 +502,7 @@ plt.figure(figsize=(14, 7.5))
 plt.xlabel('Cross-shore Position [m]')
 plt.ylabel('Alongshore Position [m]')
 for t in range(0, meeb.x_s_TS.shape[0], int(step * meeb.storm_iterations_per_year)):
-    plt.plot(meeb.x_s_TS[t, :], np.arange(len(dune_crest)))
+    plt.plot(meeb.x_s_TS[t, :] * cellsize, np.arange(len(dune_crest)))
 ax = plt.gca()
 ax.invert_yaxis()
 
@@ -581,7 +510,7 @@ ax.invert_yaxis()
 # -----------------
 # Animation: Elevation and Vegetation Over Time
 def ani_frame(timestep):
-    mhw = meeb.RSLR * timestep + MHW
+    mhw = meeb.RSLR * (timestep * meeb.save_frequency) + MHW
 
     elev = meeb.topo_TS[:, plot_xmin: plot_xmax, timestep]  # [m]
     elev = np.ma.masked_where(elev <= mhw, elev)  # Mask cells below MHW
@@ -595,6 +524,7 @@ def ani_frame(timestep):
     text2.set_text(yrstr)
 
     return cax1, cax2, text1, text2
+
 
 # Set animation base figure
 Fig = plt.figure(figsize=(14, 8))

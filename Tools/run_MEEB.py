@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 25 June 2024
+IRBR 2 July 2024
 """
 
 import numpy as np
@@ -32,19 +32,27 @@ startdate = '20181007'
 
 # _____________________
 
-sim_duration = 10
+sim_duration = 20
 MHW = 0.39  # [m NAVD88]
-name = '19000-20000, 2018-2028, RSLR=0.006, SS=25/15'  # Name of simulation
+cellsize = 2  # [m]
+name = '19000-19250, 2018-2038, RSLR=0.006'  # Name of simulation
 
 # _____________________
 # Define Coordinates of Model Domain
 ymin = 19000  # Alongshore
-ymax = 20000  # Alongshore
+ymax = 19250  # Alongshore
 xmin = 900  # Cross-shore
 xmax = xmin + 900  # Cross-shore
 plot_xmin = 0  # Cross-shore plotting
 plot_xmax = plot_xmin + 900  # Cross-shore plotting
 
+# Resize according to cellsize
+ymin = int(ymin / cellsize)  # Alongshore
+ymax = int(ymax / cellsize)  # Alongshore
+xmin = int(xmin / cellsize)  # Cross-shore
+xmax = int(xmax / cellsize)  # Cross-shore
+plot_xmin = int(plot_xmin / cellsize)  # Cross-shore plotting
+plot_xmax = int(plot_xmax / cellsize)  # Cross-shore plotting
 
 # __________________________________________________________________________________________________________________________________
 # RUN MODEL
@@ -57,7 +65,8 @@ meeb = MEEB(
     alongshore_domain_boundary_max=ymax,
     crossshore_domain_boundary_min=xmin,
     crossshore_domain_boundary_max=xmax,
-    RSLR=0.006,
+    cellsize=cellsize,
+    RSLR=0.03,
     MHW=MHW,
     init_filename=start,
     hindcast=False,
@@ -66,7 +75,8 @@ meeb = MEEB(
     storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',  # For hindcasts
     storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',  # For forecasts
     # --- Aeolian --- #
-    jumplength=5,
+    saltation_length=5,
+    saltation_length_rand_deviation=2,
     slabheight=0.02,
     p_dep_sand=0.22,  # Q = hs * L * n * pe/pd
     p_dep_sand_VegMax=0.54,
@@ -84,10 +94,10 @@ meeb = MEEB(
     marine_flux_limit=1,
     Kow=0.0001684,
     mm=1.04,
-    overwash_substeps=25,
+    overwash_substeps=50,
     beach_equilibrium_slope=0.022,
     swash_erosive_timescale=1.48,
-    beach_substeps=15,
+    beach_substeps=25,
     flow_reduction_max_spec1=0.02,
     flow_reduction_max_spec2=0.05,
     # --- Shoreline --- #
@@ -95,7 +105,7 @@ meeb = MEEB(
     wave_high_angle_fraction=0.39,
     mean_wave_height=0.98,
     mean_wave_period=6.6,
-    alongshore_section_length=25,
+    alongshore_section_length=30,
     estimate_shoreface_parameters=True,
     # --- Veg --- #
     sp1_lateral_probability=0.2,
@@ -136,8 +146,8 @@ veg_present_sim = veg_end_sim > 0.05  # [bool]
 subaerial_mask = topo_end_sim > mhw_end_sim  # [bool] Mask for every cell above water
 
 # Dune crest height
-dune_crest, not_gap = routine.foredune_crest(topo_start_sim, mhw_end_sim)
-dune_crest_end, not_gap = routine.foredune_crest(topo_end_sim, mhw_end_sim)
+dune_crest, not_gap = routine.foredune_crest(topo_start_sim, mhw_end_sim, cellsize)
+dune_crest_end, not_gap = routine.foredune_crest(topo_end_sim, mhw_end_sim, cellsize)
 
 # __________________________________________________________________________________________________________________________________
 # PLOT RESULTS
@@ -205,7 +215,7 @@ ax2.matshow(vcs, cmap=cmap3, vmin=-1, vmax=1)
 # Profiles
 Fig = plt.figure(figsize=(14, 7.5))
 ax1 = Fig.add_subplot(211)
-profile_x = 140
+profile_x = int(140 / cellsize)
 plt.plot(topo_start_sim[profile_x, plot_xmin: plot_xmax], 'k--')
 plt.plot(topo_end_sim[profile_x, plot_xmin: plot_xmax], 'r')
 plt.title("Profile " + str(profile_x))
@@ -215,7 +225,7 @@ plt.plot(np.mean(topo_end_sim[:, plot_xmin: plot_xmax], axis=0), 'r')
 plt.legend(['Start', 'Simulated'])
 plt.title("Average Profile")
 
-profx = 140
+profx = int(140 / cellsize)
 proffig2 = plt.figure(figsize=(11, 7.5))
 for t in range(0, int(meeb.simulation_time_yr / meeb.save_frequency), 2):
     prof = meeb.topo_TS[profx, :, t]
@@ -233,7 +243,7 @@ plt.xlabel('Cross-shore Position [m]')
 plt.ylabel('Alongshore Position [m]')
 plt.title(name)
 for t in range(0, meeb.x_s_TS.shape[0], int(step * meeb.storm_iterations_per_year)):
-    plt.plot(meeb.x_s_TS[t, :], np.arange(len(dune_crest)))
+    plt.plot(meeb.x_s_TS[t, :] * cellsize, np.arange(len(dune_crest)))
 ax = plt.gca()
 ax.invert_yaxis()
 
@@ -250,7 +260,7 @@ plt.ylabel("TWL (m NAVD88)")
 # -----------------
 # Animation: Elevation and Vegetation Over Time
 def ani_frame(timestep):
-    mhw = meeb.RSLR * timestep + MHW
+    mhw = meeb.RSLR * (timestep * meeb.save_frequency) + MHW
 
     elev = meeb.topo_TS[:, plot_xmin: plot_xmax, timestep]  # [m]
     elev = np.ma.masked_where(elev <= mhw, elev)  # Mask cells below MHW

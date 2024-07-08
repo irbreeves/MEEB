@@ -494,7 +494,7 @@ plot_xmin = 0  # [m] Cross-shore min coordinate for plotting
 plot_xmax = plot_xmin + 600  # [m] Cross-shore max coordinate for plotting
 longshore = elev_class_probabilities.shape[2]
 crossshore = elev_class_probabilities.shape[3]
-
+cellsize = 1  # [m]
 
 # __________________________________________________________________________________________________________________________________
 # PLOT RESULTS
