@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 2 July 2024
+IRBR 9 July 2024
 """
 
 import numpy as np
@@ -233,22 +233,27 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
     return state_classes
 
 
-def internal_probability(rslr):
-    """Runs a batch of duplicate simulations to find the classification probability from stochastic processes intrinsic to the system, particularly storm
+def intrinsic_probability(sims):
+    """Runs a batch of duplicate simulations, for a range of scenarios for external forcing, to find the classification probability from stochastic processes intrinsic to the system, particularly storm
     occurence & intensity, aeolian dynamics, and vegetation dynamics."""
 
-    # Initialize storage array
-    elev_class_bins = np.zeros([elev_num_classes, num_saves, longshore, crossshore])
-    state_class_bins = np.zeros([state_num_classes, num_saves, longshore, crossshore])
+    # Create array of simulations of all parameter combinations and duplicates
+    sims = np.repeat(np.arange(len(RSLR_bin)), duplicates)
 
-    with routine.tqdm_joblib(tqdm(desc="RSLR[" + str(rslr) + "]", total=duplicates)) as progress_bar:
-        class_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(rslr) for i in range(duplicates))
+    # Run through simulations in parallel
+    with routine.tqdm_joblib(tqdm(desc="Probabilistic Simulation Batch", total=len(sims))) as progress_bar:
+        class_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(RSLR_bin[i]) for i in sims)
+
+    # Organize resulting data
+    elev_class_bins = np.zeros([len(RSLR_bin), elev_num_classes, num_saves, longshore, crossshore])  # Initialize
+    state_class_bins = np.zeros([len(RSLR_bin), state_num_classes, num_saves, longshore, crossshore])  # Initialize
 
     for ts in range(num_saves):
         for b in range(elev_num_classes):
-            for n in range(duplicates):
-                elev_class_bins[b, ts, :, :] += class_duplicates[n][0][b, ts, :, :]
-                state_class_bins[b, ts, :, :] += class_duplicates[n][1][b, ts, :, :]
+            for n in range(len(sims)):
+                rslr = sims[n]
+                elev_class_bins[rslr, b, ts, :, :] += class_duplicates[n][0][b, ts, :, :]
+                state_class_bins[rslr, b, ts, :, :] += class_duplicates[n][1][b, ts, :, :]
 
     elev_internal_prob = elev_class_bins / duplicates
     state_internal_prob = state_class_bins / duplicates
@@ -257,16 +262,25 @@ def internal_probability(rslr):
 
 
 def joint_probability():
-    """Runs a range of probabilistic scenarios to find the classification probability from stochastic processes external to the system (e.g., RSLR, atmospheric temperature)."""
+    """Finds the joint external-intrinsic probabilistic classification. Runs a range of probabilistic scenarios to find the classification probability from
+    stochastic processes external to the system (e.g., RSLR, atmospheric temperature) and and duplicates of each scenario to find the classification probability
+    from stochastic processes intrinsic to the system (i.e., the inherent randomness of natural phenomena).
+    """
 
-    # Create storage array
+    # Create array of simulations of all parameter combinations and duplicates
+    sims = np.repeat(np.arange(len(RSLR_bin)), duplicates)
+
+    # Find intrinsic probability
+    elev_internal_prob, state_internal_prob = intrinsic_probability(sims)
+
+    # Create storage array for joint probability
     elev_joint_prob = np.zeros([elev_num_classes, num_saves, longshore, crossshore])
     state_joint_prob = np.zeros([state_num_classes, num_saves, longshore, crossshore])
 
-    for r in range(len(RSLR_prob)):
-        elev_internal_prob, state_internal_prob = internal_probability(RSLR_bin[r])
-        elev_external_prob = elev_internal_prob * RSLR_prob[r]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
-        state_external_prob = state_internal_prob * RSLR_prob[r]
+    # Apply external probability to get joint probability
+    for r in range(len(RSLR_bin)):
+        elev_external_prob = elev_internal_prob[r, :, :, :, :] * RSLR_prob[r]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
+        state_external_prob = state_internal_prob[r, :, :, :, :] * RSLR_prob[r]
         elev_joint_prob += elev_external_prob
         state_joint_prob += state_external_prob
 
@@ -756,15 +770,15 @@ state_class_cmap = colors.ListedColormap(['blue', 'gold', 'saddlebrown', 'red', 
 # _____________________
 # INITIAL PARAMETERS
 
-sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
+sim_duration = 1  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 
-duplicates = 20  # To account for internal stochasticity (e.g., storms, aeolian)
-core_num = 20  # min(duplicates, 20)  # Number of cores to use in the parallelization (IR PC: 24)
+duplicates = 10  # To account for internal stochasticity (e.g., storms, aeolian)
+core_num = 8  # min(duplicates, 20)  # Number of cores to use in the parallelization (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
-ymin = 17400  # [m] Alongshore coordinate
-ymax = 20400  # [m] Alongshore coordinate
+ymin = 19000  # [m] Alongshore coordinate
+ymax = 19500  # [m] Alongshore coordinate
 xmin = 900  # [m] Cross-shore coordinate
 xmax = 1600  # [m] Cross-shore coordinate
 plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
@@ -774,7 +788,7 @@ cellsize = 2  # [m]
 
 name = '17400-20400, 2018-2050, 20 duplicates, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), cellsize=2, SS=50/25, 5Jul24'  # Name of simulation suite
 
-save_data = True  # [bool]
+save_data = False  # [bool]
 savename = '17400-20400'
 
 # _____________________
