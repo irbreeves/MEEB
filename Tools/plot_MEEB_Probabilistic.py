@@ -1,7 +1,7 @@
 """
 Script for plotting output from datafiles of probabilistic MEEB simulation.
 
-IRBR 24 June 2024
+IRBR 24 July 2024
 """
 
 import numpy as np
@@ -67,11 +67,11 @@ def plot_most_probable_class(class_probabilities, class_cmap, class_labels, it):
     mmax_idx = np.argmax(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Bin of most probable outcome
     confidence = 1 - np.max(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
 
-    conf_cmap = colors.ListedColormap(['white'])
+    white_cmap = colors.ListedColormap(['white'])
 
     fig, ax = plt.subplots()
     cax = ax.matshow(mmax_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
-    cax2 = ax.matshow(np.ones(mmax_idx.shape), cmap=conf_cmap, vmin=0, vmax=1, alpha=confidence)
+    cax2 = ax.matshow(np.ones(mmax_idx.shape), cmap=white_cmap, vmin=0, vmax=1, alpha=confidence)
     tic = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
     mcbar = fig.colorbar(cax, ticks=tic)
     mcbar.ax.set_yticklabels(class_labels)
@@ -111,7 +111,7 @@ def plot_most_probable_class_2(class_probabilities, class_cmap, class_labels, it
     plt.ylabel('Cross-Shore Distance [m]')
 
     ax2 = Fig.add_subplot(212)
-    cax2 = ax2.matshow(confidence, cmap='BuPu', vmin=min_confidence, vmax=1)
+    cax2 = ax2.matshow(confidence, cmap=cmap_conf, vmin=min_confidence, vmax=1)
     Fig.colorbar(cax2)
     plt.xlabel('Alongshore Distance [m]')
     plt.ylabel('Cross-Shore Distance [m]')
@@ -411,11 +411,11 @@ def most_likely_animation(class_probabilities, class_cmap, class_labels):
     # Set animation base figure
     Fig = plt.figure(figsize=(14, 7.5))
     ax1 = Fig.add_subplot(111)
-    conf_cmap = colors.ListedColormap(['white'])
+    white_cmap = colors.ListedColormap(['white'])
     max_idx = np.argmax(class_probabilities[:, 0, :, plot_xmin: plot_xmax], axis=0)
     conf = 1 - np.max(class_probabilities[:, 0, :, plot_xmin: plot_xmax], axis=0)
     cax1 = ax1.matshow(max_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
-    cax2 = ax1.matshow(np.ones(conf.shape), cmap=conf_cmap, vmin=0, vmax=1, alpha=conf)
+    cax2 = ax1.matshow(np.ones(conf.shape), cmap=white_cmap, vmin=0, vmax=1, alpha=conf)
     ticks = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
     cbar = Fig.colorbar(cax1, ticks=ticks)
     cbar.ax.set_yticklabels(class_labels)
@@ -450,7 +450,7 @@ def most_likely_animation_2(class_probabilities, class_cmap, class_labels):
     text1 = plt.text(2, longshore - 2, timestr, c='black')
 
     ax2 = Fig.add_subplot(212)
-    cax2 = ax2.matshow(conf, cmap='BuPu', vmin=min_conf, vmax=1)
+    cax2 = ax2.matshow(conf, cmap=cmap_conf, vmin=min_conf, vmax=1)
     Fig.colorbar(cax2)
     timestr = "Year " + str(0)
     text2 = plt.text(2, longshore - 2, timestr, c='white')
@@ -468,8 +468,8 @@ def most_likely_animation_2(class_probabilities, class_cmap, class_labels):
 # __________________________________________________________________________________________________________________________________
 # LOAD PROBABILISTIC SIM DATA
 
-elev_class_probabilities = np.load("Output/SimData/ElevClassProbabilities_4500-5000_16Jun24.npy")
-state_class_probabilities = np.load("Output/SimData/StateClassProbabilities_4500-5000_16Jun24.npy")
+elev_class_probabilities = np.load("Output/SimData/ElevClassProbabilities_17500-18000_19Jun24.npy")
+state_class_probabilities = np.load("Output/SimData/StateClassProbabilities_17500-18000_19Jun24.npy")
 
 # __________________________________________________________________________________________________________________________________
 # CLASS SPECIFICATIONS
@@ -481,6 +481,9 @@ elev_class_cmap = colors.ListedColormap(['#ca0020', '#f4a582', '#f7f7f7', '#92c5
 # State
 state_class_labels = ['Subaqueous', 'Beach', 'Dune', 'Washover', 'Interior']
 state_class_cmap = colors.ListedColormap(['blue', 'gold', 'saddlebrown', 'red', 'green'])
+
+# Confidence
+cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 
 # __________________________________________________________________________________________________________________________________
 # SIM SPECIFICATIONS

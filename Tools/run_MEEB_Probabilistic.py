@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 9 July 2024
+IRBR 24 July 2024
 """
 
 import numpy as np
@@ -383,7 +383,7 @@ def plot_most_probable_class_2(class_probabilities, class_cmap, class_labels, it
     plt.ylabel('Cross-Shore Distance [m]')
 
     ax2 = Fig.add_subplot(212)
-    cax2 = ax2.matshow(confidence, cmap='BuPu', vmin=min_confidence, vmax=1)
+    cax2 = ax2.matshow(confidence, cmap=cmap_conf, vmin=min_confidence, vmax=1)
     Fig.colorbar(cax2)
     plt.xlabel('Alongshore Distance [m]')
     plt.ylabel('Cross-Shore Distance [m]')
@@ -722,7 +722,7 @@ def most_likely_animation_2(class_probabilities, class_cmap, class_labels):
     text1 = plt.text(2, longshore - 2, timestr, c='black')
 
     ax2 = Fig.add_subplot(212)
-    cax2 = ax2.matshow(conf, cmap='BuPu', vmin=min_conf, vmax=1)
+    cax2 = ax2.matshow(conf, cmap=cmap_conf, vmin=min_conf, vmax=1)
     Fig.colorbar(cax2)
     timestr = "Year " + str(0)
     text2 = plt.text(2, longshore - 2, timestr, c='white')
@@ -766,6 +766,9 @@ state_classification_label = 'Ecogeomorphic State'  # Axes labels on figures
 state_class_edges = [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5]  # [m] State change
 state_class_labels = ['Subaqueous', 'Beach', 'Dune', 'Washover', 'Interior']
 state_class_cmap = colors.ListedColormap(['blue', 'gold', 'saddlebrown', 'red', 'green'])
+
+# Confidence
+cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 
 # _____________________
 # INITIAL PARAMETERS
