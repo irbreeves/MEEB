@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 24 July 2024
+IRBR 30 July 2024
 """
 
 import numpy as np
@@ -102,7 +102,7 @@ def run_individual_sim(rslr):
 
     # Create classified map
     elevation_classification = classify_topo_change(meeb.topo_TS.shape[2], topo_change_sim_TS)
-    state_classification = classify_ecogeomorphic_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.veg_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.12)
+    state_classification = classify_ecogeomorphic_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.veg_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.25)  # vegetated_threshold was 0.12
 
     classes = [elevation_classification, state_classification]
 
@@ -138,7 +138,7 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
         MHW = mhw_init + rslr * ts * save_frequency
 
         # Smooth topography to remove small-scale variability
-        topo = scipy.ndimage.gaussian_filter(topo_TS[:, :, ts], 5, mode='constant')
+        topo = scipy.ndimage.gaussian_filter(topo_TS[:, :, ts], 5, mode='reflect')
 
         # Find dune crest, toe, and heel lines
         dune_crestline, not_gap = routine.foredune_crest(topo, MHW, cellsize)
@@ -773,7 +773,7 @@ cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 # _____________________
 # INITIAL PARAMETERS
 
-sim_duration = 1  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
+sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 
 duplicates = 10  # To account for internal stochasticity (e.g., storms, aeolian)
@@ -789,10 +789,12 @@ plot_xmax = plot_xmin + 600  # [m] Cross-shore coordinate (for plotting), relati
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 cellsize = 2  # [m]
 
-name = '17400-20400, 2018-2050, 20 duplicates, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), cellsize=2, SS=50/25, 5Jul24'  # Name of simulation suite
+name = '19000-19500, 2018-2050, 10 duplicates, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), 30Jul24'  # Name of simulation suite
 
+plot = True  # [bool]
+animate = False  # [bool]
 save_data = False  # [bool]
-savename = '17400-20400'
+savename = '19000-19500'
 
 # _____________________
 # INITIAL CONDITIONS
@@ -839,17 +841,19 @@ print("Elapsed Time: ", SimDuration, "sec")
 # __________________________________________________________________________________________________________________________________
 # PLOT RESULTS
 
-plot_class_maps(elev_class_probabilities, elev_class_labels, it=-1)
-plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
-plot_most_probable_class_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels, it=-1)
-plot_most_probable_class_2(state_class_probabilities, state_class_cmap, state_class_labels, it=-1)
-plot_class_area_change_over_time(state_class_probabilities)
-plot_most_likely_transition_maps(state_class_probabilities)
-plot_transitions_area_matrix(state_class_probabilities, state_class_labels)
-bins_animation(elev_class_probabilities, elev_class_labels)
-bins_animation(state_class_probabilities, state_class_labels)
-most_likely_animation_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels)
-most_likely_animation_2(state_class_probabilities, state_class_cmap, state_class_labels)
+if plot:
+    plot_class_maps(elev_class_probabilities, elev_class_labels, it=-1)
+    plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
+    plot_most_probable_class_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels, it=-1)
+    plot_most_probable_class_2(state_class_probabilities, state_class_cmap, state_class_labels, it=-1)
+    plot_class_area_change_over_time(state_class_probabilities)
+    plot_most_likely_transition_maps(state_class_probabilities)
+    plot_transitions_area_matrix(state_class_probabilities, state_class_labels)
+if animate:
+    bins_animation(elev_class_probabilities, elev_class_labels)
+    bins_animation(state_class_probabilities, state_class_labels)
+    most_likely_animation_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels)
+    most_likely_animation_2(state_class_probabilities, state_class_cmap, state_class_labels)
 plt.show()
 
 
@@ -857,12 +861,10 @@ plt.show()
 # SAVE DATA
 
 if save_data:
-
     # Elevation
     elev_name = "ElevClassProbabilities_" + savename
     elev_outloc = "Output/SimData/" + elev_name
     np.save(elev_outloc, elev_class_probabilities)
-
     # State
     state_name = "StateClassProbabilities_" + savename
     state_outloc = "Output/SimData/" + state_name
