@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 30 July 2024
+IRBR 12 August 2024
 """
 
 import numpy as np
@@ -352,7 +352,7 @@ def plot_most_probable_class(class_probabilities, class_cmap, class_labels, it):
     plt.title('Iteration: ' + str(it))
 
 
-def plot_most_probable_class_2(class_probabilities, class_cmap, class_labels, it):
+def plot_most_probable_class_2(class_probabilities, class_cmap, class_labels, it, orientation='vertical'):
     """Plots the most probable class across the domain at a particular time step, with separate panel indicating confidence in most likely class prediction.
     Note: this returns the first max occurance, i.e. if multiple bins are tied for the maximum probability of occuring, the first one will be plotted as the most likely.
 
@@ -366,6 +366,8 @@ def plot_most_probable_class_2(class_probabilities, class_cmap, class_labels, it
         List of class names.
     it : int
         Iteration to draw probabilities from.
+    orientation : str
+        ['vertical' or 'horizontal'] Orientation to plot domain: vertical will plot ocean along left edge of domain, 'horizontal' along bottom.
     """
 
     num_classes = class_probabilities.shape[0]
@@ -373,18 +375,37 @@ def plot_most_probable_class_2(class_probabilities, class_cmap, class_labels, it
     confidence = np.max(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
     min_confidence = 1 / num_classes
 
+    if orientation == 'vertical':
+        Fig = plt.figure(figsize=(8, 10))
+        ax1 = Fig.add_subplot(121)
+        ax2 = Fig.add_subplot(122)
+    elif orientation == 'horizontal':
+        mmax_idx = np.rot90(mmax_idx, k=1)
+        confidence = np.rot90(confidence, k=1)
+        Fig = plt.figure(figsize=(14, 10))
+        ax1 = Fig.add_subplot(211)
+        ax2 = Fig.add_subplot(212)
+    else:
+        raise ValueError("plot_most_probable_class: orientation invalid, must use 'vertical' or 'horizontal'")
+
+    im_ratio = mmax_idx.shape[0] / mmax_idx.shape[1]
     Fig = plt.figure(figsize=(10, 11))
-    ax1 = Fig.add_subplot(211)
+    if mmax_idx.shape[0] > mmax_idx.shape[1]:
+        ax1 = Fig.add_subplot(121)
+        ax2 = Fig.add_subplot(122)
+    else:
+        ax1 = Fig.add_subplot(211)
+        ax2 = Fig.add_subplot(212)
+
     cax1 = ax1.matshow(mmax_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
     tic = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
-    mcbar = Fig.colorbar(cax1, ticks=tic)
+    mcbar = Fig.colorbar(cax1, fraction=0.046 * im_ratio, ticks=tic)
     mcbar.ax.set_yticklabels(class_labels)
     plt.xlabel('Alongshore Distance [m]')
     plt.ylabel('Cross-Shore Distance [m]')
 
-    ax2 = Fig.add_subplot(212)
     cax2 = ax2.matshow(confidence, cmap=cmap_conf, vmin=min_confidence, vmax=1)
-    Fig.colorbar(cax2)
+    Fig.colorbar(cax2, fraction=0.046 * im_ratio)
     plt.xlabel('Alongshore Distance [m]')
     plt.ylabel('Cross-Shore Distance [m]')
 
@@ -623,10 +644,15 @@ def ani_frame_most_probable_outcome(timestep, class_probabilities, cax1, cax2, t
     return cax1, cax2, text1
 
 
-def ani_frame_most_probable_outcome_2(timestep, class_probabilities, cax1, cax2, text1, text2):
+def ani_frame_most_probable_outcome_2(timestep, class_probabilities, cax1, cax2, text1, text2, orientation):
 
     Max_idx = np.argmax(class_probabilities[:, timestep, :, plot_xmin: plot_xmax], axis=0)
     Conf = np.max(class_probabilities[:, timestep, :, plot_xmin: plot_xmax], axis=0)
+
+    if orientation == 'horizontal':
+        Max_idx = np.rot90(Max_idx, k=1)
+        Conf = np.rot90(Conf, k=1)
+
     cax1.set_data(Max_idx)
     cax2.set_data(Conf)
     yrstr = "Year " + str(timestep * save_frequency)
@@ -703,7 +729,7 @@ def most_likely_animation(class_probabilities, class_cmap, class_labels):
     ani2.save("Output/Animation/meeb_most_likely_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
-def most_likely_animation_2(class_probabilities, class_cmap, class_labels):
+def most_likely_animation_2(class_probabilities, class_cmap, class_labels, orientation='vertical'):
 
     num_classes = class_probabilities.shape[0]
 
@@ -712,25 +738,36 @@ def most_likely_animation_2(class_probabilities, class_cmap, class_labels):
     conf = np.max(class_probabilities[:, 0, :, plot_xmin: plot_xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
     min_conf = 1 / num_classes
 
-    Fig = plt.figure(figsize=(10, 11))
-    ax1 = Fig.add_subplot(211)
+    if orientation == 'vertical':
+        Fig = plt.figure(figsize=(8, 10))
+        ax1 = Fig.add_subplot(121)
+        ax2 = Fig.add_subplot(122)
+    elif orientation == 'horizontal':
+        max_idx = np.rot90(max_idx, k=1)
+        conf = np.rot90(conf, k=1)
+        Fig = plt.figure(figsize=(14, 10))
+        ax1 = Fig.add_subplot(211)
+        ax2 = Fig.add_subplot(212)
+    else:
+        raise ValueError("plot_most_probable_class: orientation invalid, must use 'vertical' or 'horizontal'")
+
+    im_ratio = max_idx.shape[0] / max_idx.shape[1]
     cax1 = ax1.matshow(max_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
     tic = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
-    mcbar = Fig.colorbar(cax1, ticks=tic)
+    mcbar = Fig.colorbar(cax1, fraction=0.046 * im_ratio, ticks=tic)
     mcbar.ax.set_yticklabels(class_labels)
     timestr = "Year " + str(0)
     text1 = plt.text(2, longshore - 2, timestr, c='black')
 
-    ax2 = Fig.add_subplot(212)
     cax2 = ax2.matshow(conf, cmap=cmap_conf, vmin=min_conf, vmax=1)
-    Fig.colorbar(cax2)
+    Fig.colorbar(cax2, fraction=0.046 * im_ratio)
     timestr = "Year " + str(0)
     text2 = plt.text(2, longshore - 2, timestr, c='white')
 
     plt.tight_layout()
 
     # Create and save animation
-    ani3 = animation.FuncAnimation(Fig, ani_frame_most_probable_outcome_2, frames=num_saves, fargs=(class_probabilities, cax1, cax2, text1, text2), interval=300, blit=True)
+    ani3 = animation.FuncAnimation(Fig, ani_frame_most_probable_outcome_2, frames=num_saves, fargs=(class_probabilities, cax1, cax2, text1, text2, orientation), interval=300, blit=True)
     c = 1
     while os.path.exists("Output/Animation/meeb_most_likely_" + str(c) + ".gif"):
         c += 1
@@ -776,25 +813,25 @@ cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 
-duplicates = 10  # To account for internal stochasticity (e.g., storms, aeolian)
-core_num = 8  # min(duplicates, 20)  # Number of cores to use in the parallelization (IR PC: 24)
+duplicates = 18  # To account for internal stochasticity (e.g., storms, aeolian)
+core_num = 18  # min(duplicates, 20)  # Number of cores to use in the parallelization (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
-ymin = 19000  # [m] Alongshore coordinate
-ymax = 19500  # [m] Alongshore coordinate
+ymin = 16600  # [m] Alongshore coordinate
+ymax = 20600  # [m] Alongshore coordinate
 xmin = 900  # [m] Cross-shore coordinate
-xmax = 1600  # [m] Cross-shore coordinate
+xmax = 1800  # [m] Cross-shore coordinate
 plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
-plot_xmax = plot_xmin + 600  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
+plot_xmax = 900  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 cellsize = 2  # [m]
 
-name = '19000-19500, 2018-2050, 10 duplicates, Elevation and Ecogeomorphic State, RSLR Rate(6.8, 9.6, 12.4) Prob(0.26, 0.55, 0.19), 30Jul24'  # Name of simulation suite
+name = '16600-20600, 2018-2050, n=18, Elevation and Ecogeomorphic State, RSLR, 12Aug24'  # Name of simulation suite
 
 plot = True  # [bool]
 animate = False  # [bool]
-save_data = False  # [bool]
-savename = '19000-19500'
+save_data = True  # [bool]
+savename = '12Aug24_16600-20600'
 
 # _____________________
 # INITIAL CONDITIONS
@@ -844,16 +881,16 @@ print("Elapsed Time: ", SimDuration, "sec")
 if plot:
     plot_class_maps(elev_class_probabilities, elev_class_labels, it=-1)
     plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
-    plot_most_probable_class_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels, it=-1)
-    plot_most_probable_class_2(state_class_probabilities, state_class_cmap, state_class_labels, it=-1)
+    plot_most_probable_class_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels, it=-1, orientation='horizontal')
+    plot_most_probable_class_2(state_class_probabilities, state_class_cmap, state_class_labels, it=-1,  orientation='horizontal')
     plot_class_area_change_over_time(state_class_probabilities)
     plot_most_likely_transition_maps(state_class_probabilities)
     plot_transitions_area_matrix(state_class_probabilities, state_class_labels)
 if animate:
     bins_animation(elev_class_probabilities, elev_class_labels)
     bins_animation(state_class_probabilities, state_class_labels)
-    most_likely_animation_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels)
-    most_likely_animation_2(state_class_probabilities, state_class_cmap, state_class_labels)
+    most_likely_animation_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels, orientation='horizontal')
+    most_likely_animation_2(state_class_probabilities, state_class_cmap, state_class_labels, orientation='horizontal')
 plt.show()
 
 
