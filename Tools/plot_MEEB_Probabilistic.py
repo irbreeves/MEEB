@@ -1,7 +1,7 @@
 """
 Script for plotting output from datafiles of probabilistic MEEB simulation.
 
-IRBR 12 August 2024
+IRBR 21 August 2024
 """
 
 import numpy as np
@@ -128,6 +128,40 @@ def plot_most_probable_class_2(class_probabilities, class_cmap, class_labels, it
     Fig.colorbar(cax2, fraction=0.046 * im_ratio)
     plt.xlabel('Alongshore Distance [m]')
     plt.ylabel('Cross-Shore Distance [m]')
+
+    plt.tight_layout()
+
+
+def plot_class_probability(class_probabilities, it, orientation='vertical'):
+    """Plots the probability of a class (e.g., inundation) across the domain at a particular time step.
+
+    Parameters
+    ----------
+    class_probabilities : ndarray
+        Probabilities of a class over space and time.
+    it : int
+        Iteration to draw probabilities from.
+    orientation : str
+        ['vertical' or 'horizontal'] Orientation to plot domain: vertical will plot ocean along left edge of domain, 'horizontal' along bottom.
+    """
+
+    inun_prob = class_probabilities[it, :, :]
+
+    if orientation == 'vertical':
+        Fig = plt.figure(figsize=(8, 10))
+        ax1 = Fig.add_subplot(111)
+    elif orientation == 'horizontal':
+        inun_prob = np.rot90(inun_prob, k=1)
+        Fig = plt.figure(figsize=(14, 10))
+        ax1 = Fig.add_subplot(111)
+    else:
+        raise ValueError("plot_most_probable_class: orientation invalid, must use 'vertical' or 'horizontal'")
+
+    im_ratio = inun_prob.shape[0] / inun_prob.shape[1]
+    cax1 = ax1.matshow(inun_prob, cmap='cividis', vmin=0, vmax=1)
+    Fig.colorbar(cax1, fraction=0.046 * im_ratio)
+    plt.xlabel('Meters Alongshore')
+    plt.ylabel('Meters Cross-Shore')
 
     plt.tight_layout()
 
@@ -382,6 +416,20 @@ def ani_frame_most_probable_outcome_2(timestep, class_probabilities, cax1, cax2,
     return cax1, cax2, text1, text2
 
 
+def ani_frame_class_probability(timestep, class_probabilities, cax1, text1, orientation):
+
+    inun_prob = class_probabilities[timestep, :, :]
+
+    if orientation == 'horizontal':
+        inun_prob = np.rot90(inun_prob, k=1)
+
+    cax1.set_data(inun_prob)
+    yrstr = "Year " + str(timestep * save_frequency)
+    text1.set_text(yrstr)
+
+    return cax1, text1
+
+
 def bins_animation(class_probabilities, class_labels):
     # Set animation base figure
     Fig = plt.figure(figsize=(14, 7.5))
@@ -494,11 +542,45 @@ def most_likely_animation_2(class_probabilities, class_cmap, class_labels, orien
     ani3.save("Output/Animation/meeb_most_likely_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
+def class_probability_animation(class_probabilities, orientation='vertical'):
+
+    inun_prob = class_probabilities[0, :, :]
+    timestr = "Year " + str(0)
+
+    if orientation == 'vertical':
+        Fig = plt.figure(figsize=(8, 10))
+        ax1 = Fig.add_subplot(111)
+        text1 = plt.text(2, longshore - 2, timestr, c='black')
+    elif orientation == 'horizontal':
+        inun_prob = np.rot90(inun_prob, k=1)
+        Fig = plt.figure(figsize=(14, 10))
+        ax1 = Fig.add_subplot(111)
+        text1 = plt.text(2, crossshore - 2, timestr, c='black')
+    else:
+        raise ValueError("plot_most_probable_class: orientation invalid, must use 'vertical' or 'horizontal'")
+
+    im_ratio = inun_prob.shape[0] / inun_prob.shape[1]
+    cax1 = ax1.matshow(inun_prob, cmap='cividis', vmin=0, vmax=1)
+    Fig.colorbar(cax1, fraction=0.046 * im_ratio)
+    plt.xlabel('Meters Alongshore')
+    plt.ylabel('Meters Cross-Shore')
+
+    plt.tight_layout()
+
+    # Create and save animation
+    ani4 = animation.FuncAnimation(Fig, ani_frame_class_probability, frames=num_saves, fargs=(class_probabilities, cax1, text1, orientation), interval=300, blit=True)
+    c = 1
+    while os.path.exists("Output/Animation/meeb_class_probability_" + str(c) + ".gif"):
+        c += 1
+    ani4.save("Output/Animation/meeb_class_probability_" + str(c) + ".gif", dpi=150, writer="imagemagick")
+
+
 # __________________________________________________________________________________________________________________________________
 # LOAD PROBABILISTIC SIM DATA
 
-elev_class_probabilities = np.load("Output/SimData/ElevClassProbabilities_17500-18000_19Jun24.npy")
-state_class_probabilities = np.load("Output/SimData/StateClassProbabilities_17500-18000_19Jun24.npy")
+elev_class_probabilities = np.load("Output/SimData/ElevClassProbabilities_15Aug24_18750-19250_HPCTEST.npy")
+state_class_probabilities = np.load("Output/SimData/StateClassProbabilities_15Aug24_18750-19250_HPCTEST.npy")
+inundation_class_probabilities = np.load("Output/SimData/InundationClassProbabilities_15Aug24_18750-19250_HPCTEST.npy")
 
 # __________________________________________________________________________________________________________________________________
 # CLASS SPECIFICATIONS
@@ -518,7 +600,7 @@ cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 # SIM SPECIFICATIONS
 name = '4500-5000, 16Jun24'  # Name of simulation suite
 
-sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
+sim_duration = 5  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 num_saves = int(np.floor(sim_duration/save_frequency)) + 1
 
@@ -539,6 +621,7 @@ if plot:
     plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
     plot_most_probable_class_2(elev_class_probabilities, elev_class_cmap, elev_class_labels, it=-1, orientation='horizontal')
     plot_most_probable_class_2(state_class_probabilities, state_class_cmap, state_class_labels, it=-1, orientation='horizontal')
+    plot_class_probability(inundation_class_probabilities, it=-1, orientation='horizontal')
     plot_class_area_change_over_time(state_class_probabilities)
     plot_most_likely_transition_maps(state_class_probabilities)
     plot_transitions_area_matrix(state_class_probabilities, state_class_labels)
@@ -547,5 +630,6 @@ if animate:
     bins_animation(state_class_probabilities, state_class_labels)
     most_likely_animation_2(elev_class_probabilities, elev_class_cmap, elev_class_labels, orientation='horizontal')
     most_likely_animation_2(state_class_probabilities, state_class_cmap, state_class_labels, orientation='horizontal')
+    class_probability_animation(inundation_class_probabilities, orientation='horizontal')
 plt.show()
 

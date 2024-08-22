@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 12 August 2024
+IRBR 21 August 2024
 """
 
 import numpy as np
@@ -103,8 +103,9 @@ def run_individual_sim(rslr):
     # Create classified map
     elevation_classification = classify_topo_change(meeb.topo_TS.shape[2], topo_change_sim_TS)
     state_classification = classify_ecogeomorphic_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.veg_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.25)  # vegetated_threshold was 0.12
+    inundation_classification = classify_inundation(meeb.topo_TS.shape[2], meeb.storm_inundation_TS, meeb.topo_TS, meeb.MHW_init, meeb.RSLR)
 
-    classes = [elevation_classification, state_classification]
+    classes = [elevation_classification, state_classification, inundation_classification]
 
     return classes
 
@@ -233,7 +234,31 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
     return state_classes
 
 
-def intrinsic_probability(sims):
+def classify_inundation(TS, inundation_TS, topo, mhw_init, rslr):
+    """Classify according to inundation from storms (active) or RSLR (passive), cumulative through time."""
+
+    inundation = np.zeros([num_saves, longshore, crossshore])
+
+    for ts in range(TS):
+        MHW = mhw_init + rslr * ts * save_frequency
+        if ts == 0:
+            # [bool] Find inundation for this timestep, rslr and storms
+            rslr_inun = topo[:, :, ts] < MHW
+            storm_inun = inundation_TS[:, :, ts]
+            inundation[ts, :, :] = np.logical_or(rslr_inun, storm_inun)
+        else:
+            # [bool] Find inundation for this timestep, rslr and storms
+            rslr_inun = topo[:, :, ts] < MHW
+            storm_inun = inundation_TS[:, :, ts]
+            inundation_next = np.logical_or(rslr_inun, storm_inun)
+            # Find inundation, cumulative over time
+            inundation_prev = inundation[ts - 1, :, :]
+            inundation[ts, :, :] = np.logical_or(inundation_next, inundation_prev)
+
+    return inundation
+
+
+def intrinsic_probability():
     """Runs a batch of duplicate simulations, for a range of scenarios for external forcing, to find the classification probability from stochastic processes intrinsic to the system, particularly storm
     occurence & intensity, aeolian dynamics, and vegetation dynamics."""
 
@@ -244,9 +269,10 @@ def intrinsic_probability(sims):
     with routine.tqdm_joblib(tqdm(desc="Probabilistic Simulation Batch", total=len(sims))) as progress_bar:
         class_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(RSLR_bin[i]) for i in sims)
 
-    # Organize resulting data
+    # Unpack resulting data
     elev_class_bins = np.zeros([len(RSLR_bin), elev_num_classes, num_saves, longshore, crossshore])  # Initialize
     state_class_bins = np.zeros([len(RSLR_bin), state_num_classes, num_saves, longshore, crossshore])  # Initialize
+    inundation_class_bins = np.zeros([len(RSLR_bin), num_saves, longshore, crossshore])  # Initialize
 
     for ts in range(num_saves):
         for b in range(elev_num_classes):
@@ -255,10 +281,16 @@ def intrinsic_probability(sims):
                 elev_class_bins[rslr, b, ts, :, :] += class_duplicates[n][0][b, ts, :, :]
                 state_class_bins[rslr, b, ts, :, :] += class_duplicates[n][1][b, ts, :, :]
 
-    elev_internal_prob = elev_class_bins / duplicates
-    state_internal_prob = state_class_bins / duplicates
+    for ts in range(num_saves):
+        for n in range(len(sims)):
+            rslr = sims[n]
+            inundation_class_bins[rslr, ts, :, :] += class_duplicates[n][2][ts, :, :]
 
-    return elev_internal_prob, state_internal_prob
+    elev_intrinsic_prob = elev_class_bins / duplicates
+    state_intrinsic_prob = state_class_bins / duplicates
+    inundation_intrinsic_prob = inundation_class_bins / duplicates
+
+    return elev_intrinsic_prob, state_intrinsic_prob, inundation_intrinsic_prob
 
 
 def joint_probability():
@@ -267,24 +299,24 @@ def joint_probability():
     from stochastic processes intrinsic to the system (i.e., the inherent randomness of natural phenomena).
     """
 
-    # Create array of simulations of all parameter combinations and duplicates
-    sims = np.repeat(np.arange(len(RSLR_bin)), duplicates)
-
     # Find intrinsic probability
-    elev_internal_prob, state_internal_prob = intrinsic_probability(sims)
+    elev_intrinsic_prob, state_intrinsic_prob, inundation_intrinsic_prob = intrinsic_probability()
 
     # Create storage array for joint probability
     elev_joint_prob = np.zeros([elev_num_classes, num_saves, longshore, crossshore])
     state_joint_prob = np.zeros([state_num_classes, num_saves, longshore, crossshore])
+    inundation_joint_prob = np.zeros([num_saves, longshore, crossshore])
 
     # Apply external probability to get joint probability
     for r in range(len(RSLR_bin)):
-        elev_external_prob = elev_internal_prob[r, :, :, :, :] * RSLR_prob[r]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
-        state_external_prob = state_internal_prob[r, :, :, :, :] * RSLR_prob[r]
+        elev_external_prob = elev_intrinsic_prob[r, :, :, :, :] * RSLR_prob[r]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
+        state_external_prob = state_intrinsic_prob[r, :, :, :, :] * RSLR_prob[r]
+        inundation_external_prob = inundation_intrinsic_prob[r, :, :, :] * RSLR_prob[r]
         elev_joint_prob += elev_external_prob
         state_joint_prob += state_external_prob
+        inundation_joint_prob += inundation_external_prob
 
-    return elev_joint_prob, state_joint_prob
+    return elev_joint_prob, state_joint_prob, inundation_joint_prob
 
 
 def plot_cell_prob_bar(class_probabilities, class_labels, classification_label, it, l, c):
@@ -389,14 +421,6 @@ def plot_most_probable_class_2(class_probabilities, class_cmap, class_labels, it
         raise ValueError("plot_most_probable_class: orientation invalid, must use 'vertical' or 'horizontal'")
 
     im_ratio = mmax_idx.shape[0] / mmax_idx.shape[1]
-    Fig = plt.figure(figsize=(10, 11))
-    if mmax_idx.shape[0] > mmax_idx.shape[1]:
-        ax1 = Fig.add_subplot(121)
-        ax2 = Fig.add_subplot(122)
-    else:
-        ax1 = Fig.add_subplot(211)
-        ax2 = Fig.add_subplot(212)
-
     cax1 = ax1.matshow(mmax_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
     tic = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
     mcbar = Fig.colorbar(cax1, fraction=0.046 * im_ratio, ticks=tic)
@@ -408,6 +432,40 @@ def plot_most_probable_class_2(class_probabilities, class_cmap, class_labels, it
     Fig.colorbar(cax2, fraction=0.046 * im_ratio)
     plt.xlabel('Alongshore Distance [m]')
     plt.ylabel('Cross-Shore Distance [m]')
+
+    plt.tight_layout()
+
+
+def plot_class_probability(class_probabilities, it, orientation='vertical'):
+    """Plots the probability of a class (e.g., inundation) across the domain at a particular time step.
+
+    Parameters
+    ----------
+    class_probabilities : ndarray
+        Probabilities of a class over space and time.
+    it : int
+        Iteration to draw probabilities from.
+    orientation : str
+        ['vertical' or 'horizontal'] Orientation to plot domain: vertical will plot ocean along left edge of domain, 'horizontal' along bottom.
+    """
+
+    inun_prob = class_probabilities[it, :, :]
+
+    if orientation == 'vertical':
+        Fig = plt.figure(figsize=(8, 10))
+        ax1 = Fig.add_subplot(111)
+    elif orientation == 'horizontal':
+        inun_prob = np.rot90(inun_prob, k=1)
+        Fig = plt.figure(figsize=(14, 10))
+        ax1 = Fig.add_subplot(111)
+    else:
+        raise ValueError("plot_most_probable_class: orientation invalid, must use 'vertical' or 'horizontal'")
+
+    im_ratio = inun_prob.shape[0] / inun_prob.shape[1]
+    cax1 = ax1.matshow(inun_prob, cmap='cividis', vmin=0, vmax=1)
+    Fig.colorbar(cax1, fraction=0.046 * im_ratio)
+    plt.xlabel('Meters Alongshore')
+    plt.ylabel('Meters Cross-Shore')
 
     plt.tight_layout()
 
@@ -662,6 +720,20 @@ def ani_frame_most_probable_outcome_2(timestep, class_probabilities, cax1, cax2,
     return cax1, cax2, text1, text2
 
 
+def ani_frame_class_probability(timestep, class_probabilities, cax1, text1, orientation):
+
+    inun_prob = class_probabilities[timestep, :, :]
+
+    if orientation == 'horizontal':
+        inun_prob = np.rot90(inun_prob, k=1)
+
+    cax1.set_data(inun_prob)
+    yrstr = "Year " + str(timestep * save_frequency)
+    text1.set_text(yrstr)
+
+    return cax1, text1
+
+
 def bins_animation(class_probabilities, class_labels):
     # Set animation base figure
     Fig = plt.figure(figsize=(14, 7.5))
@@ -774,6 +846,39 @@ def most_likely_animation_2(class_probabilities, class_cmap, class_labels, orien
     ani3.save("Output/Animation/meeb_most_likely_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
+def class_probability_animation(class_probabilities, orientation='vertical'):
+
+    inun_prob = class_probabilities[0, :, :]
+    timestr = "Year " + str(0)
+
+    if orientation == 'vertical':
+        Fig = plt.figure(figsize=(8, 10))
+        ax1 = Fig.add_subplot(111)
+        text1 = plt.text(2, longshore - 2, timestr, c='black')
+    elif orientation == 'horizontal':
+        inun_prob = np.rot90(inun_prob, k=1)
+        Fig = plt.figure(figsize=(14, 10))
+        ax1 = Fig.add_subplot(111)
+        text1 = plt.text(2, crossshore - 2, timestr, c='black')
+    else:
+        raise ValueError("plot_most_probable_class: orientation invalid, must use 'vertical' or 'horizontal'")
+
+    im_ratio = inun_prob.shape[0] / inun_prob.shape[1]
+    cax1 = ax1.matshow(inun_prob, cmap='cividis', vmin=0, vmax=1)
+    Fig.colorbar(cax1, fraction=0.046 * im_ratio)
+    plt.xlabel('Meters Alongshore')
+    plt.ylabel('Meters Cross-Shore')
+
+    plt.tight_layout()
+
+    # Create and save animation
+    ani4 = animation.FuncAnimation(Fig, ani_frame_class_probability, frames=num_saves, fargs=(class_probabilities, cax1, text1, orientation), interval=300, blit=True)
+    c = 1
+    while os.path.exists("Output/Animation/meeb_class_probability_" + str(c) + ".gif"):
+        c += 1
+    ani4.save("Output/Animation/meeb_class_probability_" + str(c) + ".gif", dpi=150, writer="imagemagick")
+
+
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
 
@@ -810,15 +915,17 @@ cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 # _____________________
 # INITIAL PARAMETERS
 
-sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
+sim_duration = 5  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 
-duplicates = 18  # To account for internal stochasticity (e.g., storms, aeolian)
-core_num = 18  # min(duplicates, 20)  # Number of cores to use in the parallelization (IR PC: 24)
+duplicates = 4  # To account for intrinsic stochasticity (e.g., storms, aeolian)
+
+# core_num = int(os.environ['SLURM_CPUS_PER_TASK'])  # Number of cores to use in the parallelization --> Use this if running on HPC
+core_num = 4  # Number of cores to use in the parallelization --> Use this if not running on HPC (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
-ymin = 16600  # [m] Alongshore coordinate
-ymax = 20600  # [m] Alongshore coordinate
+ymin = 18750  # [m] Alongshore coordinate
+ymax = 19250  # [m] Alongshore coordinate
 xmin = 900  # [m] Cross-shore coordinate
 xmax = 1800  # [m] Cross-shore coordinate
 plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
@@ -826,12 +933,12 @@ plot_xmax = 900  # [m] Cross-shore coordinate (for plotting), relative to trimme
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 cellsize = 2  # [m]
 
-name = '16600-20600, 2018-2050, n=18, Elevation and Ecogeomorphic State, RSLR, 12Aug24'  # Name of simulation suite
+name = '18750-19250, 2018-2023, n=4, Probabilistic RSLR'  # Name of simulation suite
 
 plot = True  # [bool]
-animate = False  # [bool]
+animate = True  # [bool]
 save_data = True  # [bool]
-savename = '12Aug24_16600-20600'
+savename = '15Aug24_18750-19250_HPCTEST'
 
 # _____________________
 # INITIAL CONDITIONS
@@ -866,7 +973,7 @@ print()
 start_time = time.time()  # Record time at start of simulation
 
 # Determine classification probabilities cross space and time for joint intrinsic-external stochastic elements
-elev_class_probabilities, state_class_probabilities = joint_probability()
+elev_class_probabilities, state_class_probabilities, inundation_class_probabilities = joint_probability()
 
 # Print elapsed time of simulation
 print()
@@ -883,6 +990,7 @@ if plot:
     plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
     plot_most_probable_class_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels, it=-1, orientation='horizontal')
     plot_most_probable_class_2(state_class_probabilities, state_class_cmap, state_class_labels, it=-1,  orientation='horizontal')
+    plot_class_probability(inundation_class_probabilities, it=-1, orientation='horizontal')
     plot_class_area_change_over_time(state_class_probabilities)
     plot_most_likely_transition_maps(state_class_probabilities)
     plot_transitions_area_matrix(state_class_probabilities, state_class_labels)
@@ -891,6 +999,7 @@ if animate:
     bins_animation(state_class_probabilities, state_class_labels)
     most_likely_animation_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels, orientation='horizontal')
     most_likely_animation_2(state_class_probabilities, state_class_cmap, state_class_labels, orientation='horizontal')
+    class_probability_animation(inundation_class_probabilities, orientation='horizontal')
 plt.show()
 
 
@@ -906,4 +1015,8 @@ if save_data:
     state_name = "StateClassProbabilities_" + savename
     state_outloc = "Output/SimData/" + state_name
     np.save(state_outloc, state_class_probabilities)
+    # Inundation
+    inun_name = "InundationClassProbabilities_" + savename
+    inun_outloc = "Output/SimData/" + inun_name
+    np.save(inun_outloc, inundation_class_probabilities)
 

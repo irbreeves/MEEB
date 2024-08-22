@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 2 July 2024
+Last update: 20 August 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -333,6 +333,8 @@ class MEEB:
         self._spec2_TS[:, :, 0] = self._spec2
         self._veg_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each veg map at specified frequency
         self._veg_TS[:, :, 0] = self._veg
+        self._storm_inundation_TS = np.zeros([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=bool)  # Array for saving each veg map at specified frequency
+        self._inundated_output_aggregate = np.empty([self._longshore, self._crossshore], dtype=bool)
 
         del Init
 
@@ -430,6 +432,9 @@ class MEEB:
                 self._spec1[inundated] = 0  # Remove species where beach is inundated
                 self._spec2[inundated] = 0  # Remove species where beach is inundated
                 self._veg = self._spec1 + self._spec2  # Update
+
+                # Aggregate inundation [boolean] for the period between the previous and next time step at which output is saved (save_frequency)
+                self._inundated_output_aggregate = np.logical_or(inundated, self._inundated_output_aggregate)
 
                 # Check for nans in topo
                 if np.isnan(np.sum(self._topo)):
@@ -569,6 +574,8 @@ class MEEB:
             self._spec1_TS[:, :, moment] = self._spec1
             self._spec2_TS[:, :, moment] = self._spec2
             self._veg_TS[:, :, moment] = self._veg
+            self._storm_inundation_TS[:, :, moment] = self._inundated_output_aggregate
+            self._inundated_output_aggregate *= False  # Reset for next output period
 
         # --------------------------------------
         # RESET DOMAINS
@@ -619,6 +626,10 @@ class MEEB:
     @property
     def spec2_TS(self):
         return self._spec2_TS
+
+    @property
+    def storm_inundation_TS(self):
+        return self._storm_inundation_TS
 
     @property
     def save_data(self):
