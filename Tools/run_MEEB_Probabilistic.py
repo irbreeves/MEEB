@@ -104,8 +104,9 @@ def run_individual_sim(rslr):
     elevation_classification = classify_topo_change(meeb.topo_TS.shape[2], topo_change_sim_TS)
     state_classification = classify_ecogeomorphic_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.veg_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.25)  # vegetated_threshold was 0.12
     inundation_classification = classify_inundation(meeb.topo_TS.shape[2], meeb.storm_inundation_TS, meeb.topo_TS, meeb.MHW_init, meeb.RSLR)
+    habitat_state_classification = classify_ecogeomorphic_habitat_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.veg_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.25)
 
-    classes = [elevation_classification, state_classification, inundation_classification]
+    classes = [elevation_classification, state_classification, inundation_classification, habitat_state_classification]
 
     return classes
 
@@ -234,6 +235,128 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
     return state_classes
 
 
+def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_threshold):
+    """Classify by ecogeomorphic state using topography and vegetatio, with focus on bird and turtle habitat."""
+
+    habitat_state_classes = np.zeros([habitat_state_num_classes, num_saves, longshore, crossshore])  # Initialize
+
+    # Run Categorization
+    # Loop through saved timesteps
+    for ts in range(TS):
+
+        # Find MHW for this time step
+        MHW = mhw_init + rslr * ts * save_frequency
+
+        # Smooth topography to remove small-scale variability
+        topo = scipy.ndimage.gaussian_filter(topo_TS[:, :, ts], 5, mode='reflect')
+
+        # Find dune crest, toe, and heel lines
+        dune_crestline, not_gap = routine.foredune_crest(topo, MHW, cellsize)
+        dune_toeline = routine.foredune_toe(topo, dune_crestline, MHW, not_gap, cellsize)
+        dune_heelline = routine.foredune_heel(topo, dune_crestline, not_gap, cellsize, threshold=0.6)
+
+        # Beach slope
+        x_s = routine.ocean_shoreline(topo, MHW)
+        toe_elev = topo[np.arange(longshore), dune_toeline]
+        beach_width = (dune_toeline - x_s) * cellsize
+        beach_slopes = (toe_elev - MHW) / beach_width
+
+        # Make boolean maps of locations landward and seaward of dune lines
+        seaward_of_dunetoe = np.zeros(topo.shape, dtype=bool)
+        for ls in range(longshore):
+            seaward_of_dunetoe[ls, :dune_toeline[ls]] = True
+
+        landward_of_dunetoe = np.zeros(topo.shape, dtype=bool)
+        for ls in range(longshore):
+            landward_of_dunetoe[ls, dune_toeline[ls]:] = True
+
+        seaward_of_duneheel = np.zeros(topo.shape, dtype=bool)
+        for ls in range(longshore):
+            seaward_of_duneheel[ls, :dune_heelline[ls]] = True
+
+        landward_of_duneheel = np.zeros(topo.shape, dtype=bool)
+        for ls in range(longshore):
+            landward_of_duneheel[ls, dune_heelline[ls]:] = True
+
+        seaward_of_dunecrest = np.zeros(topo.shape, dtype=bool)
+        for ls in range(longshore):
+            seaward_of_dunecrest[ls, :dune_crestline[ls]] = True
+
+        landward_of_dunecrest = np.zeros(topo.shape, dtype=bool)
+        for ls in range(longshore):
+            landward_of_dunecrest[ls, dune_crestline[ls]:] = True
+
+        # Make boolean maps of locations fronted by dune gaps
+        fronting_dune_gap_simple = np.ones(topo.shape, dtype=bool)  # [bool] Areas directly orthogonal to dune gaps
+        for ls in range(longshore):
+            if not_gap[ls]:
+                fronting_dune_gap_simple[ls, :] = False
+
+        fronting_dune_gap = np.zeros(topo.shape, dtype=bool)  # Areas with 90 deg spread of dune gaps
+        for ls in range(longshore):
+            if not not_gap[ls]:
+                crest_loc = dune_crestline[ls]
+                temp = np.ones([crossshore - crest_loc, longshore])
+                right_diag = np.tril(temp, k=ls)
+                left_diag = np.fliplr(np.tril(temp, k=len(dune_crestline) - ls - 1))
+                spread = np.rot90(right_diag * left_diag, 1)
+                fronting_dune_gap[:, crest_loc:] = np.flipud(np.logical_or(fronting_dune_gap[:, crest_loc:], spread))
+                trim = max(0, right_diag.shape[0] - crest_loc)
+                fronting_dune_gap[:, max(0, crest_loc - right_diag.shape[0]): crest_loc] = np.fliplr(fronting_dune_gap[:, crest_loc:])[:, trim:]
+
+        # Find dune crest heights
+        dune_crestheight = np.zeros(longshore)
+        for ls in range(longshore):
+            dune_crestheight[ls] = topo[ls, dune_crestline[ls]]  # [m NAVD88]
+
+        # Make boolean maps of locations fronted by low dunes (quite similar to fronting_dune_gaps)
+        fronting_low_dune = np.zeros(topo.shape, dtype=bool)
+        for ls in range(longshore):
+            if dune_crestheight[ls] - MHW < 2.7:
+                crest_loc = dune_crestline[ls]
+                temp = np.ones([crossshore - crest_loc, longshore])
+                right_diag = np.tril(temp, k=ls)
+                left_diag = np.fliplr(np.tril(temp, k=len(dune_crestline) - ls - 1))
+                spread = np.rot90(right_diag * left_diag, 1)
+                fronting_low_dune[:, crest_loc:] = np.flipud(np.logical_or(fronting_low_dune[:, crest_loc:], spread))
+
+        # Make boolean maps of areas alongshore with beach slope greater than threshold (i.e., turtle habitat)
+        steep_beach_threshold = 0.02
+        steep_beach_slope = np.rot90(np.array([beach_slopes > steep_beach_threshold] * crossshore), -1)
+
+        # Smooth vegetation to remove small-scale variability
+        veg = scipy.ndimage.gaussian_filter(veg_TS[:, :, ts], 5, mode='constant')
+        unvegetated = veg < vegetated_threshold  # [bool] Map of unvegetated areas
+
+        # Categorize Cells of Model Domain
+
+        # Subaqueous: below MHW
+        subaqueous_class_TS = topo < MHW
+        habitat_state_classes[0, ts, :, :] += subaqueous_class_TS
+
+        # Dune: between toe and heel, and not fronting dune gap
+        dune_class_TS = landward_of_dunetoe * seaward_of_duneheel * ~fronting_dune_gap_simple * ~subaqueous_class_TS
+        habitat_state_classes[3, ts, :, :] += dune_class_TS
+
+        # Beach-Steep: seaward of dune crest, not dune or subaqueous, beach slope > threshold
+        beach_class_steep_TS = seaward_of_dunecrest * ~dune_class_TS * ~subaqueous_class_TS * steep_beach_slope
+        habitat_state_classes[1, ts, :, :] += beach_class_steep_TS
+
+        # Beach-Shallow: seaward of dune crest, and not dune or subaqueous, , beach slope >= threshold
+        beach_class_shallow_TS = seaward_of_dunecrest * ~dune_class_TS * ~subaqueous_class_TS * ~steep_beach_slope
+        habitat_state_classes[2, ts, :, :] += beach_class_shallow_TS
+
+        # Washover: landward of dune crest, unvegetated, and fronting dune gap
+        washover_class_TS = landward_of_dunecrest * unvegetated * fronting_dune_gap * ~dune_class_TS * ~beach_class_steep_TS * ~beach_class_shallow_TS * ~subaqueous_class_TS
+        habitat_state_classes[4, ts, :, :] += washover_class_TS
+
+        # Interior: all other cells landward of dune crest
+        interior_class_TS = landward_of_dunecrest * ~washover_class_TS * ~dune_class_TS * ~beach_class_steep_TS * ~beach_class_shallow_TS * ~subaqueous_class_TS
+        habitat_state_classes[5, ts, :, :] += interior_class_TS
+
+    return habitat_state_classes
+
+
 def classify_inundation(TS, inundation_TS, topo, mhw_init, rslr):
     """Classify according to inundation from storms (active) or RSLR (passive), cumulative through time."""
 
@@ -263,16 +386,17 @@ def intrinsic_probability():
     occurence & intensity, aeolian dynamics, and vegetation dynamics."""
 
     # Create array of simulations of all parameter combinations and duplicates
-    sims = np.repeat(np.arange(len(RSLR_bin)), duplicates)
+    sims = np.repeat(np.arange(len(ExSE_A_bins)), duplicates)
 
     # Run through simulations in parallel
     with routine.tqdm_joblib(tqdm(desc="Probabilistic Simulation Batch", total=len(sims))) as progress_bar:
-        class_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(RSLR_bin[i]) for i in sims)
+        class_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(ExSE_A_bins[i]) for i in sims)
 
     # Unpack resulting data
-    elev_class_bins = np.zeros([len(RSLR_bin), elev_num_classes, num_saves, longshore, crossshore])  # Initialize
-    state_class_bins = np.zeros([len(RSLR_bin), state_num_classes, num_saves, longshore, crossshore])  # Initialize
-    inundation_class_bins = np.zeros([len(RSLR_bin), num_saves, longshore, crossshore])  # Initialize
+    elev_class_bins = np.zeros([len(ExSE_A_bins), elev_num_classes, num_saves, longshore, crossshore])  # Initialize
+    state_class_bins = np.zeros([len(ExSE_A_bins), state_num_classes, num_saves, longshore, crossshore])  # Initialize
+    habitat_state_class_bins = np.zeros([len(ExSE_A_bins), habitat_state_num_classes, num_saves, longshore, crossshore])  # Initialize
+    inundation_class_bins = np.zeros([len(ExSE_A_bins), num_saves, longshore, crossshore])  # Initialize
 
     for ts in range(num_saves):
         for b in range(elev_num_classes):
@@ -280,17 +404,20 @@ def intrinsic_probability():
                 rslr = sims[n]
                 elev_class_bins[rslr, b, ts, :, :] += class_duplicates[n][0][b, ts, :, :]
                 state_class_bins[rslr, b, ts, :, :] += class_duplicates[n][1][b, ts, :, :]
-
-    for ts in range(num_saves):
+        for b in range(habitat_state_num_classes):
+            for n in range(len(sims)):
+                rslr = sims[n]
+                habitat_state_class_bins[rslr, b, ts, :, :] += class_duplicates[n][3][b, ts, :, :]
         for n in range(len(sims)):
             rslr = sims[n]
             inundation_class_bins[rslr, ts, :, :] += class_duplicates[n][2][ts, :, :]
 
     elev_intrinsic_prob = elev_class_bins / duplicates
     state_intrinsic_prob = state_class_bins / duplicates
+    habitat_state_intrinsic_prob = habitat_state_class_bins / duplicates
     inundation_intrinsic_prob = inundation_class_bins / duplicates
 
-    return elev_intrinsic_prob, state_intrinsic_prob, inundation_intrinsic_prob
+    return elev_intrinsic_prob, state_intrinsic_prob, inundation_intrinsic_prob, habitat_state_intrinsic_prob
 
 
 def joint_probability():
@@ -300,23 +427,26 @@ def joint_probability():
     """
 
     # Find intrinsic probability
-    elev_intrinsic_prob, state_intrinsic_prob, inundation_intrinsic_prob = intrinsic_probability()
+    elev_intrinsic_prob, state_intrinsic_prob, inundation_intrinsic_prob, habitat_state_intrinsic_prob = intrinsic_probability()
 
     # Create storage array for joint probability
     elev_joint_prob = np.zeros([elev_num_classes, num_saves, longshore, crossshore])
     state_joint_prob = np.zeros([state_num_classes, num_saves, longshore, crossshore])
+    habitat_state_joint_prob = np.zeros([habitat_state_num_classes, num_saves, longshore, crossshore])
     inundation_joint_prob = np.zeros([num_saves, longshore, crossshore])
 
     # Apply external probability to get joint probability
-    for r in range(len(RSLR_bin)):
-        elev_external_prob = elev_intrinsic_prob[r, :, :, :, :] * RSLR_prob[r]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
-        state_external_prob = state_intrinsic_prob[r, :, :, :, :] * RSLR_prob[r]
-        inundation_external_prob = inundation_intrinsic_prob[r, :, :, :] * RSLR_prob[r]
+    for a in range(len(ExSE_A_bins)):
+        elev_external_prob = elev_intrinsic_prob[a, :, :, :, :] * ExSE_A_prob[a]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
+        state_external_prob = state_intrinsic_prob[a, :, :, :, :] * ExSE_A_prob[a]
+        habitat_state_external_prob = habitat_state_intrinsic_prob[a, :, :, :, :] * ExSE_A_prob[a]
+        inundation_external_prob = inundation_intrinsic_prob[a, :, :, :] * ExSE_A_prob[a]
         elev_joint_prob += elev_external_prob
         state_joint_prob += state_external_prob
+        habitat_state_joint_prob += habitat_state_external_prob
         inundation_joint_prob += inundation_external_prob
 
-    return elev_joint_prob, state_joint_prob, inundation_joint_prob
+    return elev_joint_prob, state_joint_prob, inundation_joint_prob, habitat_state_joint_prob
 
 
 def plot_cell_prob_bar(class_probabilities, class_labels, classification_label, it, l, c):
@@ -890,11 +1020,16 @@ def class_probability_animation(class_probabilities, orientation='vertical'):
 start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover_2m.npy"
 startdate = '20181007'
 
-
 # _____________________
-# PROBABILISTIC PROJECTIONS
-RSLR_bin = [0.0068, 0.0096, 0.0124]  # [m/yr] Bins of future RSLR rates
-RSLR_prob = [0.26, 0.55, 0.19]  # Probability of future RSLR bins (must sum to 1.0)
+# EXTERNAL STOCHASTIC ELEMENTS (ExSE)
+
+# RSLR
+ExSE_A_bins = [0.0068, 0.0096, 0.0124]  # [m/yr] Bins of future RSLR rates up to 2050
+ExSE_A_prob = [0.26, 0.55, 0.19]  # Probability of future RSLR bins (must sum to 1.0)
+
+# Storm Intensity
+ExSE_B_bins = [0.004, 0.114, 0.223]  # [%/yr] Bins of yearly percent change in mean storm intensity up to 2050
+ExSE_B_prob = [0.296, 0.526, 0.178]  # Probability of future storm intensity bins (must sum to 1.0)
 
 # _____________________
 # CLASSIFICATION SCHEME SPECIFICATIONS
@@ -909,22 +1044,27 @@ state_class_edges = [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5]  # [m] State change
 state_class_labels = ['Subaqueous', 'Beach', 'Dune', 'Washover', 'Interior']
 state_class_cmap = colors.ListedColormap(['blue', 'gold', 'saddlebrown', 'red', 'green'])
 
+habitat_state_classification_label = 'Habitat-Ecogeomorphic State'  # Axes labels on figures
+habitat_state_class_edges = [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5]  # [m] State change
+habitat_state_class_labels = ['Subaqueous', 'Beach-Steep', 'Beach-Shallow', 'Dune', 'Washover', 'Interior']
+habitat_state_class_cmap = colors.ListedColormap(['blue', 'gold', 'tan', 'saddlebrown', 'red', 'green'])
+
 # Confidence
 cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 
 # _____________________
 # INITIAL PARAMETERS
 
-sim_duration = 5  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
+sim_duration = 10  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 
-duplicates = 4  # To account for intrinsic stochasticity (e.g., storms, aeolian)
+duplicates = 10  # To account for intrinsic stochasticity (e.g., storms, aeolian)
 
 # core_num = int(os.environ['SLURM_CPUS_PER_TASK'])  # Number of cores to use in the parallelization --> Use this if running on HPC
-core_num = 4  # Number of cores to use in the parallelization --> Use this if not running on HPC (IR PC: 24)
+core_num = 10  # Number of cores to use in the parallelization --> Use this if not running on HPC (IR PC: 24)
 
 # Define Horizontal and Vertical References of Domain
-ymin = 18750  # [m] Alongshore coordinate
+ymin = 18950  # [m] Alongshore coordinate
 ymax = 19250  # [m] Alongshore coordinate
 xmin = 900  # [m] Cross-shore coordinate
 xmax = 1800  # [m] Cross-shore coordinate
@@ -933,12 +1073,12 @@ plot_xmax = 900  # [m] Cross-shore coordinate (for plotting), relative to trimme
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 cellsize = 2  # [m]
 
-name = '18750-19250, 2018-2023, n=4, Probabilistic RSLR'  # Name of simulation suite
+name = '18950-19250, 2018-2019, n=10, Probabilistic RSLR'  # Name of simulation suite
 
 plot = True  # [bool]
-animate = True  # [bool]
-save_data = True  # [bool]
-savename = '15Aug24_18750-19250_HPCTEST'
+animate = False  # [bool]
+save_data = False  # [bool]
+savename = '21Aug24_18950-19250'
 
 # _____________________
 # INITIAL CONDITIONS
@@ -959,6 +1099,7 @@ longshore, crossshore = topo_start.shape
 
 elev_num_classes = len(elev_class_edges) - 1
 state_num_classes = len(state_class_edges) - 1
+habitat_state_num_classes = len(habitat_state_class_edges) - 1
 num_saves = int(np.floor(sim_duration/save_frequency)) + 1
 
 del Init
@@ -973,7 +1114,7 @@ print()
 start_time = time.time()  # Record time at start of simulation
 
 # Determine classification probabilities cross space and time for joint intrinsic-external stochastic elements
-elev_class_probabilities, state_class_probabilities, inundation_class_probabilities = joint_probability()
+elev_class_probabilities, state_class_probabilities, inundation_class_probabilities, habitat_state_class_probabilities = joint_probability()
 
 # Print elapsed time of simulation
 print()
@@ -990,6 +1131,7 @@ if plot:
     plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
     plot_most_probable_class_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels, it=-1, orientation='horizontal')
     plot_most_probable_class_2(state_class_probabilities, state_class_cmap, state_class_labels, it=-1,  orientation='horizontal')
+    plot_most_probable_class_2(habitat_state_class_probabilities, habitat_state_class_cmap, habitat_state_class_labels, it=-1, orientation='horizontal')
     plot_class_probability(inundation_class_probabilities, it=-1, orientation='horizontal')
     plot_class_area_change_over_time(state_class_probabilities)
     plot_most_likely_transition_maps(state_class_probabilities)
