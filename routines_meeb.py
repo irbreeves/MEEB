@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 2 July 2024
+Last update: 23 August 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -1013,7 +1013,7 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, longshore, MHW,
     iteration : int
         Present iteration for the year.
     storm_list : ndarray
-        List of synthetic storms (rows), with wave and tide statistics (columns) desccribing each storm. Order of statistics: Hs, dur, TWL, SL, Tp, R2, Rlow
+        List of synthetic storms (rows), with wave and tide statistics (columns) desccribing each storm. Order of statistics: Hs, dur, TWL, SL, Tp, R2, Rlow. Elevations in NAVD88.
     beach_slope : float
         Equilibrium beach slope.
     longshore :
@@ -1028,9 +1028,9 @@ def stochastic_storm(pstorm, iteration, storm_list, beach_slope, longshore, MHW,
     storm
         Bool whether or not storm occurs this time step.
     Rhigh
-        [m MHW] Highest elevation of the landward margin of runup (i.e. total water level).
+        [m NAVD88] Highest elevation of the landward margin of runup (i.e. total water level).
     Rlow
-        [m MHW] Lowest elevation of the landward margin of runup.
+        [m NAVD88] Lowest elevation of the landward margin of runup.
     dur
         [hrs] Duration of storm.
     """
@@ -1124,7 +1124,6 @@ def get_storm_timeseries(storm_timeseries, it, longshore, MHW, hindcast_start):
 def storm_processes(
         topof,
         Rhigh,
-        Rlow,
         dur,
         Rin,
         Cs,
@@ -1158,8 +1157,6 @@ def storm_processes(
             [m NAVD88] Current elevation domain.
         Rhigh : ndarray
             [m NAVD88] Highest elevation of the landward margin of runup (i.e. total water level).
-        Rlow : ndarray
-            [m NAVD88] Lowest elevation of the landward margin of runup.
         dur: int
             [hrs] Duration of storm.
         Rin : float
