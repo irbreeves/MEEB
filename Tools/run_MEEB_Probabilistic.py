@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 21 August 2024
+IRBR 23 August 2024
 """
 
 import numpy as np
@@ -22,7 +22,7 @@ from meeb import MEEB
 # FUNCTIONS
 
 
-def run_individual_sim(rslr):
+def run_individual_sim(rslr, shift_mean_storm_intensity):
     """Runs uniqe individual MEEB simulation."""
 
     # Create an instance of the MEEB class
@@ -35,6 +35,7 @@ def run_individual_sim(rslr):
         crossshore_domain_boundary_max=xmax,
         cellsize=cellsize,
         RSLR=rslr,
+        shift_mean_storm_intensity=shift_mean_storm_intensity,
         MHW=MHW_init,
         init_filename=start,
         hindcast=False,
@@ -386,31 +387,44 @@ def intrinsic_probability():
     occurence & intensity, aeolian dynamics, and vegetation dynamics."""
 
     # Create array of simulations of all parameter combinations and duplicates
-    sims = np.repeat(np.arange(len(ExSE_A_bins)), duplicates)
+    sims = np.zeros([2, len(ExSE_A_bins) * len(ExSE_B_bins)])
+    col = 0
+    for a in range(len(ExSE_A_bins)):
+        for b in range(len(ExSE_B_bins)):
+            sims[0, col] = a
+            sims[1, col] = b
+            col += 1
+
+    sims = np.repeat(sims, duplicates, axis=1)
+    sims = sims.astype(int)
+    num_sims = np.arange(sims.shape[1])
 
     # Run through simulations in parallel
-    with routine.tqdm_joblib(tqdm(desc="Probabilistic Simulation Batch", total=len(sims))) as progress_bar:
-        class_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(ExSE_A_bins[i]) for i in sims)
+    with routine.tqdm_joblib(tqdm(desc="Probabilistic Simulation Batch", total=len(num_sims))) as progress_bar:
+        class_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(ExSE_A_bins[sims[0, i]], ExSE_B_bins[sims[1, i]]) for i in num_sims)
 
     # Unpack resulting data
-    elev_class_bins = np.zeros([len(ExSE_A_bins), elev_num_classes, num_saves, longshore, crossshore])  # Initialize
-    state_class_bins = np.zeros([len(ExSE_A_bins), state_num_classes, num_saves, longshore, crossshore])  # Initialize
-    habitat_state_class_bins = np.zeros([len(ExSE_A_bins), habitat_state_num_classes, num_saves, longshore, crossshore])  # Initialize
-    inundation_class_bins = np.zeros([len(ExSE_A_bins), num_saves, longshore, crossshore])  # Initialize
+    elev_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), elev_num_classes, num_saves, longshore, crossshore])  # Initialize
+    state_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), state_num_classes, num_saves, longshore, crossshore])  # Initialize
+    habitat_state_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), habitat_state_num_classes, num_saves, longshore, crossshore])  # Initialize
+    inundation_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), num_saves, longshore, crossshore])  # Initialize
 
     for ts in range(num_saves):
         for b in range(elev_num_classes):
-            for n in range(len(sims)):
-                rslr = sims[n]
-                elev_class_bins[rslr, b, ts, :, :] += class_duplicates[n][0][b, ts, :, :]
-                state_class_bins[rslr, b, ts, :, :] += class_duplicates[n][1][b, ts, :, :]
+            for n in range(len(num_sims)):
+                exse_a = sims[0, n]
+                exse_b = sims[1, n]
+                elev_class_bins[exse_a, exse_b, b, ts, :, :] += class_duplicates[n][0][b, ts, :, :]
+                state_class_bins[exse_a, exse_b, b, ts, :, :] += class_duplicates[n][1][b, ts, :, :]
         for b in range(habitat_state_num_classes):
-            for n in range(len(sims)):
-                rslr = sims[n]
-                habitat_state_class_bins[rslr, b, ts, :, :] += class_duplicates[n][3][b, ts, :, :]
-        for n in range(len(sims)):
-            rslr = sims[n]
-            inundation_class_bins[rslr, ts, :, :] += class_duplicates[n][2][ts, :, :]
+            for n in range(len(num_sims)):
+                exse_a = sims[0, n]
+                exse_b = sims[1, n]
+                habitat_state_class_bins[exse_a, exse_b, b, ts, :, :] += class_duplicates[n][3][b, ts, :, :]
+        for n in range(len(num_sims)):
+            exse_a = sims[0, n]
+            exse_b = sims[1, n]
+            inundation_class_bins[exse_a, exse_b, ts, :, :] += class_duplicates[n][2][ts, :, :]
 
     elev_intrinsic_prob = elev_class_bins / duplicates
     state_intrinsic_prob = state_class_bins / duplicates
@@ -437,14 +451,15 @@ def joint_probability():
 
     # Apply external probability to get joint probability
     for a in range(len(ExSE_A_bins)):
-        elev_external_prob = elev_intrinsic_prob[a, :, :, :, :] * ExSE_A_prob[a]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
-        state_external_prob = state_intrinsic_prob[a, :, :, :, :] * ExSE_A_prob[a]
-        habitat_state_external_prob = habitat_state_intrinsic_prob[a, :, :, :, :] * ExSE_A_prob[a]
-        inundation_external_prob = inundation_intrinsic_prob[a, :, :, :] * ExSE_A_prob[a]
-        elev_joint_prob += elev_external_prob
-        state_joint_prob += state_external_prob
-        habitat_state_joint_prob += habitat_state_external_prob
-        inundation_joint_prob += inundation_external_prob
+        for b in range(len(ExSE_B_bins)):
+            elev_external_prob = elev_intrinsic_prob[a, b, :, :, :, :] * ExSE_A_prob[a] * ExSE_B_prob[b]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
+            state_external_prob = state_intrinsic_prob[a, b, :, :, :, :] * ExSE_A_prob[a] * ExSE_B_prob[b]
+            habitat_state_external_prob = habitat_state_intrinsic_prob[a, b, :, :, :, :] * ExSE_A_prob[a] * ExSE_B_prob[b]
+            inundation_external_prob = inundation_intrinsic_prob[a, b, :, :, :] * ExSE_A_prob[a] * ExSE_B_prob[b]
+            elev_joint_prob += elev_external_prob
+            state_joint_prob += state_external_prob
+            habitat_state_joint_prob += habitat_state_external_prob
+            inundation_joint_prob += inundation_external_prob
 
     return elev_joint_prob, state_joint_prob, inundation_joint_prob, habitat_state_joint_prob
 
@@ -1027,9 +1042,9 @@ startdate = '20181007'
 ExSE_A_bins = [0.0068, 0.0096, 0.0124]  # [m/yr] Bins of future RSLR rates up to 2050
 ExSE_A_prob = [0.26, 0.55, 0.19]  # Probability of future RSLR bins (must sum to 1.0)
 
-# Storm Intensity
-ExSE_B_bins = [0.004, 0.114, 0.223]  # [%/yr] Bins of yearly percent change in mean storm intensity up to 2050
-ExSE_B_prob = [0.296, 0.526, 0.178]  # Probability of future storm intensity bins (must sum to 1.0)
+# Mean Storm Intensity
+ExSE_B_bins = [0]  # [0.004, 0.114, 0.223]  # [%/yr] Bins of yearly percent shift in mean storm intensity up to 2050
+ExSE_B_prob = [1]  # [0.296, 0.526, 0.178]  # Probability of future storm intensity bins (must sum to 1.0)
 
 # _____________________
 # CLASSIFICATION SCHEME SPECIFICATIONS
