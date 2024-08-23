@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 20 August 2024
+Last update: 23 August 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -125,6 +125,7 @@ class MEEB:
             beach_equilibrium_slope=0.025,  # Equilibrium slope of the beach
             swash_erosive_timescale=1.48,  # Non-dimensional erosive timescale coefficient for beach/duneface sediment transport (Duran Vinent & Moore, 2015)
             beach_substeps=25,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
+            shift_mean_storm_intensity=0,  # [%/yr] Linear yearly percent shift in mean storm TWL (as proxy for intensity) in stochastic storm model; use 0 for no shift
     ):
         """MEEB: Mesoscale Explicit Ecogeomorphic Barrier model.
 
@@ -229,6 +230,7 @@ class MEEB:
         self._Cbb = Cbb
         self._overwash_min_subaqueous_discharge = overwash_min_subaqueous_discharge
         self._overwash_substeps = overwash_substeps
+        self._shift_mean_storm_intensity = shift_mean_storm_intensity
 
         # __________________________________________________________________________________________________________________________________
         # SET INITIAL CONDITIONS
@@ -298,6 +300,7 @@ class MEEB:
 
         # STORMS
         self._StormList = np.float32(np.load(inputloc + storm_list_filename))
+        self._mean_stochastic_storm_TWL = np.mean(self._StormList[:, 2])  # np.mean(self._StormList[:, 2][self._StormList[:, 2] >= self._average_dune_toe_height])
         self._storm_timeseries = np.load(inputloc + storm_timeseries_filename)
         self._pstorm = [0.333, 0.333, 0.167, 0.310, 0.381, 0.310, 0.310, 0.310, 0.286, 0, 0.119, 0.024, 0.048, 0.048, 0.048, 0.071, 0.333, 0.286, 0.214,
                         0.190, 0.190, 0.262, 0.214, 0.262, 0.238]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 NCB storm record (1.78 m NAVD88 Berm Elev.)
@@ -391,10 +394,13 @@ class MEEB:
             if self._hindcast:  # Empirical storm time series
                 storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._MHW, self._simulation_start_iteration)  # [m NAVD88]
             else:  # Stochastic storm model
-                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, beach_slopes, self._longshore, self._MHW, self._RNG_storm)  # [m initial MSL]
-                # Account for change in mean sea-level on synthetic storm elevations by adding aggregate RSLR since simulation start (i.e., convert from initial MSL to m NAVD88)
-                Rhigh += (self._MHW - self._MHW_init)  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
-                Rlow += (self._MHW - self._MHW_init)  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level
+                storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, beach_slopes, self._longshore, self._MHW, self._RNG_storm)  # [m NAVD88]
+
+                # # Account for change in mean sea-level on synthetic storm elevations by adding aggregate RSLR since simulation start, and any linear storm climate shift in intensity
+                # TWL_climate_shift = self._mean_stochastic_storm_TWL * ((self._shift_mean_storm_intensity / 100) * (it / self._aeolian_iterations_per_year))  # This version shifts TWL of all storms equally
+                TWL_climate_shift = Rhigh * ((self._shift_mean_storm_intensity / 100) * (it / self._aeolian_iterations_per_year))  # This version shifts TWL more for bigger storms
+                Rhigh += (self._MHW - self._MHW_init) + TWL_climate_shift  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level, and shift intensity
+                Rlow += (self._MHW - self._MHW_init) + TWL_climate_shift  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level, and shift intensity
 
             if storm:
 
@@ -403,7 +409,6 @@ class MEEB:
                 self._topo, topo_change, self._OWflux, inundated, Qbe = routine.storm_processes(
                     topof=self._topo,
                     Rhigh=Rhigh,
-                    Rlow=Rlow,
                     dur=dur,
                     Rin=self._Rin,
                     Cs=self._Cs,
