@@ -1,14 +1,16 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 23 August 2024
+IRBR 9 September 2024
 """
 
+import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import time
-import os
+import gc
 import scipy
 from tqdm import tqdm
 from matplotlib import colors
@@ -16,7 +18,7 @@ from joblib import Parallel, delayed
 import routines_meeb as routine
 
 from meeb import MEEB
-
+sys.path.append(os.getcwd())
 
 # __________________________________________________________________________________________________________________________________
 # FUNCTIONS
@@ -96,7 +98,7 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
     # Subaerial mask
     subaerial_mask = topo_end_sim > MHW_init  # [bool] Mask for every cell above initial MHW; Note: this should be changed if modeling sea-level fall
 
-    topo_change_sim_TS = np.zeros(meeb.topo_TS.shape)
+    topo_change_sim_TS = np.zeros(meeb.topo_TS.shape, dtype=np.float32)
     for ts in range(meeb.topo_TS.shape[2]):
         topo_change_ts = (meeb.topo_TS[:, :, ts] - topo_start_sim) * subaerial_mask  # Disregard change that is not subaerial
         topo_change_sim_TS[:, :, ts] = topo_change_ts
@@ -109,13 +111,16 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
 
     classes = [elevation_classification, state_classification, inundation_classification, habitat_state_classification]
 
+    del elevation_classification, state_classification, inundation_classification, habitat_state_classification, meeb, topo_change_sim_TS
+    gc.collect()
+
     return classes
 
 
 def classify_topo_change(TS, topo_change_sim_TS):
     """Classify according to range of elevation change."""
 
-    topo_change_bin = np.zeros([elev_num_classes, num_saves, longshore, crossshore])
+    topo_change_bin = np.zeros([elev_num_classes, num_saves, longshore, crossshore], dtype=np.float32)
 
     for b in range(len(elev_class_edges) - 1):
         lower = elev_class_edges[b]
@@ -131,7 +136,7 @@ def classify_topo_change(TS, topo_change_sim_TS):
 def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_threshold):
     """Classify by ecogeomorphic state using topography and vegetation."""
 
-    state_classes = np.zeros([state_num_classes, num_saves, longshore, crossshore])  # Initialize
+    state_classes = np.zeros([state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
 
     # Run Categorization
     # Loop through saved timesteps
@@ -183,7 +188,7 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
         for ls in range(longshore):
             if not not_gap[ls]:
                 crest_loc = dune_crestline[ls]
-                temp = np.ones([crossshore - crest_loc, longshore])
+                temp = np.ones([crossshore - crest_loc, longshore], dtype=np.float32)
                 right_diag = np.tril(temp, k=ls)
                 left_diag = np.fliplr(np.tril(temp, k=len(dune_crestline) - ls - 1))
                 spread = np.rot90(right_diag * left_diag, 1)
@@ -192,7 +197,7 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
                 fronting_dune_gap[:, max(0, crest_loc - right_diag.shape[0]): crest_loc] = np.fliplr(fronting_dune_gap[:, crest_loc:])[:, trim:]
 
         # Find dune crest heights
-        dune_crestheight = np.zeros(longshore)
+        dune_crestheight = np.zeros(longshore, dtype=np.float32)
         for ls in range(longshore):
             dune_crestheight[ls] = topo[ls, dune_crestline[ls]]  # [m NAVD88]
 
@@ -201,7 +206,7 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
         for ls in range(longshore):
             if dune_crestheight[ls] - MHW < 2.7:
                 crest_loc = dune_crestline[ls]
-                temp = np.ones([crossshore - crest_loc, longshore])
+                temp = np.ones([crossshore - crest_loc, longshore], dtype=np.float32)
                 right_diag = np.tril(temp, k=ls)
                 left_diag = np.fliplr(np.tril(temp, k=len(dune_crestline) - ls - 1))
                 spread = np.rot90(right_diag * left_diag, 1)
@@ -233,13 +238,16 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
         interior_class_TS = landward_of_dunecrest * ~washover_class_TS * ~dune_class_TS * ~beach_class_TS * ~subaqueous_class_TS
         state_classes[4, ts, :, :] += interior_class_TS
 
+    del topo, seaward_of_dunecrest, seaward_of_duneheel, seaward_of_dunetoe, landward_of_dunecrest, landward_of_duneheel, landward_of_dunetoe, subaqueous_class_TS, dune_class_TS, beach_class_TS, washover_class_TS, interior_class_TS
+    gc.collect()
+
     return state_classes
 
 
 def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_threshold):
     """Classify by ecogeomorphic state using topography and vegetatio, with focus on bird and turtle habitat."""
 
-    habitat_state_classes = np.zeros([habitat_state_num_classes, num_saves, longshore, crossshore])  # Initialize
+    habitat_state_classes = np.zeros([habitat_state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
 
     # Run Categorization
     # Loop through saved timesteps
@@ -297,7 +305,7 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, ve
         for ls in range(longshore):
             if not not_gap[ls]:
                 crest_loc = dune_crestline[ls]
-                temp = np.ones([crossshore - crest_loc, longshore])
+                temp = np.ones([crossshore - crest_loc, longshore], dtype=np.float32)
                 right_diag = np.tril(temp, k=ls)
                 left_diag = np.fliplr(np.tril(temp, k=len(dune_crestline) - ls - 1))
                 spread = np.rot90(right_diag * left_diag, 1)
@@ -306,7 +314,7 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, ve
                 fronting_dune_gap[:, max(0, crest_loc - right_diag.shape[0]): crest_loc] = np.fliplr(fronting_dune_gap[:, crest_loc:])[:, trim:]
 
         # Find dune crest heights
-        dune_crestheight = np.zeros(longshore)
+        dune_crestheight = np.zeros(longshore, dtype=np.float32)
         for ls in range(longshore):
             dune_crestheight[ls] = topo[ls, dune_crestline[ls]]  # [m NAVD88]
 
@@ -315,7 +323,7 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, ve
         for ls in range(longshore):
             if dune_crestheight[ls] - MHW < 2.7:
                 crest_loc = dune_crestline[ls]
-                temp = np.ones([crossshore - crest_loc, longshore])
+                temp = np.ones([crossshore - crest_loc, longshore], dtype=np.float32)
                 right_diag = np.tril(temp, k=ls)
                 left_diag = np.fliplr(np.tril(temp, k=len(dune_crestline) - ls - 1))
                 spread = np.rot90(right_diag * left_diag, 1)
@@ -361,7 +369,7 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, ve
 def classify_inundation(TS, inundation_TS, topo, mhw_init, rslr):
     """Classify according to inundation from storms (active) or RSLR (passive), cumulative through time."""
 
-    inundation = np.zeros([num_saves, longshore, crossshore])
+    inundation = np.zeros([num_saves, longshore, crossshore], dtype=np.float32)
 
     for ts in range(TS):
         MHW = mhw_init + rslr * ts * save_frequency
@@ -404,10 +412,10 @@ def intrinsic_probability():
         class_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(ExSE_A_bins[sims[0, i]], ExSE_B_bins[sims[1, i]]) for i in num_sims)
 
     # Unpack resulting data
-    elev_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), elev_num_classes, num_saves, longshore, crossshore])  # Initialize
-    state_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), state_num_classes, num_saves, longshore, crossshore])  # Initialize
-    habitat_state_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), habitat_state_num_classes, num_saves, longshore, crossshore])  # Initialize
-    inundation_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), num_saves, longshore, crossshore])  # Initialize
+    elev_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), elev_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
+    state_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
+    habitat_state_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), habitat_state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
+    inundation_class_bins = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
 
     for ts in range(num_saves):
         for b in range(elev_num_classes):
@@ -426,10 +434,16 @@ def intrinsic_probability():
             exse_b = sims[1, n]
             inundation_class_bins[exse_a, exse_b, ts, :, :] += class_duplicates[n][2][ts, :, :]
 
+    del class_duplicates
+    gc.collect()
+
     elev_intrinsic_prob = elev_class_bins / duplicates
     state_intrinsic_prob = state_class_bins / duplicates
     habitat_state_intrinsic_prob = habitat_state_class_bins / duplicates
     inundation_intrinsic_prob = inundation_class_bins / duplicates
+
+    del elev_class_bins, state_class_bins, habitat_state_class_bins, inundation_class_bins
+    gc.collect()
 
     return elev_intrinsic_prob, state_intrinsic_prob, inundation_intrinsic_prob, habitat_state_intrinsic_prob
 
@@ -444,10 +458,10 @@ def joint_probability():
     elev_intrinsic_prob, state_intrinsic_prob, inundation_intrinsic_prob, habitat_state_intrinsic_prob = intrinsic_probability()
 
     # Create storage array for joint probability
-    elev_joint_prob = np.zeros([elev_num_classes, num_saves, longshore, crossshore])
-    state_joint_prob = np.zeros([state_num_classes, num_saves, longshore, crossshore])
-    habitat_state_joint_prob = np.zeros([habitat_state_num_classes, num_saves, longshore, crossshore])
-    inundation_joint_prob = np.zeros([num_saves, longshore, crossshore])
+    elev_joint_prob = np.zeros([elev_num_classes, num_saves, longshore, crossshore], dtype=np.float32)
+    state_joint_prob = np.zeros([state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)
+    habitat_state_joint_prob = np.zeros([habitat_state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)
+    inundation_joint_prob = np.zeros([num_saves, longshore, crossshore], dtype=np.float32)
 
     # Apply external probability to get joint probability
     for a in range(len(ExSE_A_bins)):
@@ -496,40 +510,7 @@ def plot_cell_prob_bar(class_probabilities, class_labels, classification_label, 
     plt.title('Loc: (' + str(c) + ', ' + str(l) + '), Iteration: ' + str(it))
 
 
-def plot_most_probable_class(class_probabilities, class_cmap, class_labels, it):
-    """Plots the most probable class across the domain at a particular time step. Note: this returns the first max occurance,
-    i.e. if multiple bins are tied for the maximum probability of occuring, the first one will be plotted as the most likely.
-
-    Parameters
-    ----------
-    class_probabilities : ndarray
-        Probabilities of each class over space and time.
-    class_cmap
-        Discrete colormap for plotting classes.
-    class_labels : list
-        List of class names.
-    it : int
-        Iteration to draw probabilities from.
-    """
-
-    num_classes = class_probabilities.shape[0]
-    mmax_idx = np.argmax(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Bin of most probable outcome
-    confidence = 1 - np.max(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Confidence, i.e. probability of most probable outcome
-
-    conf_cmap = colors.ListedColormap(['white'])
-
-    fig, ax = plt.subplots()
-    cax = ax.matshow(mmax_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
-    cax2 = ax.matshow(np.ones(mmax_idx.shape), cmap=conf_cmap, vmin=0, vmax=1, alpha=confidence)
-    tic = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
-    mcbar = fig.colorbar(cax, ticks=tic)
-    mcbar.ax.set_yticklabels(class_labels)
-    plt.xlabel('Alongshore Distance [m]')
-    plt.ylabel('Cross-Shore Distance [m]')
-    plt.title('Iteration: ' + str(it))
-
-
-def plot_most_probable_class_2(class_probabilities, class_cmap, class_labels, it, orientation='vertical'):
+def plot_most_probable_class(class_probabilities, class_cmap, class_labels, it, orientation='vertical'):
     """Plots the most probable class across the domain at a particular time step, with separate panel indicating confidence in most likely class prediction.
     Note: this returns the first max occurance, i.e. if multiple bins are tied for the maximum probability of occuring, the first one will be plotted as the most likely.
 
@@ -835,19 +816,7 @@ def ani_frame_bins(timestep, class_probabilities, cax1, cax2, cax3, cax4, cax5, 
     return cax1, cax2, cax3, cax4, cax5, text1, text2, text3, text4, text5
 
 
-def ani_frame_most_probable_outcome(timestep, class_probabilities, cax1, cax2, text1):
-
-    Max_idx = np.argmax(class_probabilities[:, timestep, :, plot_xmin: plot_xmax], axis=0)
-    Conf = 1 - np.max(class_probabilities[:, timestep, :, plot_xmin: plot_xmax], axis=0)
-    cax1.set_data(Max_idx)
-    cax2.set_alpha(Conf)
-    yrstr = "Year " + str(timestep * save_frequency)
-    text1.set_text(yrstr)
-
-    return cax1, cax2, text1
-
-
-def ani_frame_most_probable_outcome_2(timestep, class_probabilities, cax1, cax2, text1, text2, orientation):
+def ani_frame_most_probable_outcome(timestep, class_probabilities, cax1, cax2, text1, text2, orientation):
 
     Max_idx = np.argmax(class_probabilities[:, timestep, :, plot_xmin: plot_xmax], axis=0)
     Conf = np.max(class_probabilities[:, timestep, :, plot_xmin: plot_xmax], axis=0)
@@ -919,34 +888,7 @@ def bins_animation(class_probabilities, class_labels):
     ani1.save("Output/Animation/meeb_prob_bins_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
-def most_likely_animation(class_probabilities, class_cmap, class_labels):
-
-    num_classes = class_probabilities.shape[0]
-
-    # Set animation base figure
-    Fig = plt.figure(figsize=(14, 7.5))
-    ax1 = Fig.add_subplot(111)
-    conf_cmap = colors.ListedColormap(['white'])
-    max_idx = np.argmax(class_probabilities[:, 0, :, plot_xmin: plot_xmax], axis=0)
-    conf = 1 - np.max(class_probabilities[:, 0, :, plot_xmin: plot_xmax], axis=0)
-    cax1 = ax1.matshow(max_idx, cmap=class_cmap, vmin=0, vmax=num_classes - 1)
-    cax2 = ax1.matshow(np.ones(conf.shape), cmap=conf_cmap, vmin=0, vmax=1, alpha=conf)
-    ticks = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
-    cbar = Fig.colorbar(cax1, ticks=ticks)
-    cbar.ax.set_yticklabels(class_labels)
-    plt.title(name)
-    timestr = "Year " + str(0)
-    text1 = plt.text(2, longshore - 2, timestr, c='white')
-
-    # Create and save animation
-    ani2 = animation.FuncAnimation(Fig, ani_frame_most_probable_outcome, frames=num_saves, fargs=(class_probabilities, cax1, cax2, text1), interval=300, blit=True)
-    c = 1
-    while os.path.exists("Output/Animation/meeb_most_likely_" + str(c) + ".gif"):
-        c += 1
-    ani2.save("Output/Animation/meeb_most_likely_" + str(c) + ".gif", dpi=150, writer="imagemagick")
-
-
-def most_likely_animation_2(class_probabilities, class_cmap, class_labels, orientation='vertical'):
+def most_likely_animation(class_probabilities, class_cmap, class_labels, orientation='vertical'):
 
     num_classes = class_probabilities.shape[0]
 
@@ -984,7 +926,7 @@ def most_likely_animation_2(class_probabilities, class_cmap, class_labels, orien
     plt.tight_layout()
 
     # Create and save animation
-    ani3 = animation.FuncAnimation(Fig, ani_frame_most_probable_outcome_2, frames=num_saves, fargs=(class_probabilities, cax1, cax2, text1, text2, orientation), interval=300, blit=True)
+    ani3 = animation.FuncAnimation(Fig, ani_frame_most_probable_outcome, frames=num_saves, fargs=(class_probabilities, cax1, cax2, text1, text2, orientation), interval=300, blit=True)
     c = 1
     while os.path.exists("Output/Animation/meeb_most_likely_" + str(c) + ".gif"):
         c += 1
@@ -1043,7 +985,7 @@ ExSE_A_bins = [0.0068, 0.0096, 0.0124]  # [m/yr] Bins of future RSLR rates up to
 ExSE_A_prob = [0.26, 0.55, 0.19]  # Probability of future RSLR bins (must sum to 1.0)
 
 # Mean Storm Intensity
-ExSE_B_bins = [0]  # [0.004, 0.114, 0.223]  # [%/yr] Bins of yearly percent shift in mean storm intensity up to 2050
+ExSE_B_bins = [0]  # [0.005, 0.135, 0.266]  # [%/yr] Bins of yearly percent shift in mean storm intensity up to 2050
 ExSE_B_prob = [1]  # [0.296, 0.526, 0.178]  # Probability of future storm intensity bins (must sum to 1.0)
 
 # _____________________
@@ -1051,8 +993,7 @@ ExSE_B_prob = [1]  # [0.296, 0.526, 0.178]  # Probability of future storm intens
 elev_classification_label = 'Elevation Change [m]'  # Axes labels on figures
 elev_class_edges = [-np.inf, -0.5, -0.1, 0.1, 0.5, np.inf]  # [m] Elevation change
 elev_class_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
-elev_class_cmap = colors.ListedColormap(['red', 'gold', 'black', 'aquamarine', 'mediumblue'])
-elev_class_cmap_2 = colors.ListedColormap(['#ca0020', '#f4a582', '#f7f7f7', '#92c5de', '#0571b0'])
+elev_class_cmap = colors.ListedColormap(['#ca0020', '#f4a582', '#f7f7f7', '#92c5de', '#0571b0'])
 
 state_classification_label = 'Ecogeomorphic State'  # Axes labels on figures
 state_class_edges = [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5]  # [m] State change
@@ -1070,30 +1011,31 @@ cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 # _____________________
 # INITIAL PARAMETERS
 
-sim_duration = 10  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
+sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 0.5  # [yr] Time step for probability calculations
 
-duplicates = 10  # To account for intrinsic stochasticity (e.g., storms, aeolian)
+duplicates = 45  # To account for intrinsic stochasticity (e.g., storms, aeolian)
 
-# core_num = int(os.environ['SLURM_CPUS_PER_TASK'])  # Number of cores to use in the parallelization --> Use this if running on HPC
-core_num = 10  # Number of cores to use in the parallelization --> Use this if not running on HPC (IR PC: 24)
+# Number of cores to use in the parallelization
+# core_num = int(os.environ['SLURM_CPUS_PER_TASK'])  # --> Use this if running on HPC
+core_num = 15  # --> Use this if running on local machine
 
 # Define Horizontal and Vertical References of Domain
-ymin = 18950  # [m] Alongshore coordinate
-ymax = 19250  # [m] Alongshore coordinate
+ymin = 18500  # [m] Alongshore coordinate
+ymax = 19500  # [m] Alongshore coordinate
 xmin = 900  # [m] Cross-shore coordinate
-xmax = 1800  # [m] Cross-shore coordinate
+xmax = 1700  # [m] Cross-shore coordinate
 plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
-plot_xmax = 900  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
+plot_xmax = 800  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 cellsize = 2  # [m]
 
-name = '18950-19250, 2018-2019, n=10, Probabilistic RSLR'  # Name of simulation suite
+name = '18500-19500, 2018-2050, n=45'  # Name of simulation suite
 
-plot = True  # [bool]
+plot = False  # [bool]
 animate = False  # [bool]
-save_data = False  # [bool]
-savename = '21Aug24_18950-19250'
+save_data = True  # [bool]
+savename = '9Sep24_18500-19500'
 
 # _____________________
 # INITIAL CONDITIONS
@@ -1118,6 +1060,7 @@ habitat_state_num_classes = len(habitat_state_class_edges) - 1
 num_saves = int(np.floor(sim_duration/save_frequency)) + 1
 
 del Init
+gc.collect()
 
 # __________________________________________________________________________________________________________________________________
 # RUN MODEL
@@ -1144,9 +1087,9 @@ print("Elapsed Time: ", SimDuration, "sec")
 if plot:
     plot_class_maps(elev_class_probabilities, elev_class_labels, it=-1)
     plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
-    plot_most_probable_class_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels, it=-1, orientation='horizontal')
-    plot_most_probable_class_2(state_class_probabilities, state_class_cmap, state_class_labels, it=-1,  orientation='horizontal')
-    plot_most_probable_class_2(habitat_state_class_probabilities, habitat_state_class_cmap, habitat_state_class_labels, it=-1, orientation='horizontal')
+    plot_most_probable_class(elev_class_probabilities, elev_class_cmap, elev_class_labels, it=-1, orientation='horizontal')
+    plot_most_probable_class(state_class_probabilities, state_class_cmap, state_class_labels, it=-1, orientation='horizontal')
+    plot_most_probable_class(habitat_state_class_probabilities, habitat_state_class_cmap, habitat_state_class_labels, it=-1, orientation='horizontal')
     plot_class_probability(inundation_class_probabilities, it=-1, orientation='horizontal')
     plot_class_area_change_over_time(state_class_probabilities)
     plot_most_likely_transition_maps(state_class_probabilities)
@@ -1154,8 +1097,8 @@ if plot:
 if animate:
     bins_animation(elev_class_probabilities, elev_class_labels)
     bins_animation(state_class_probabilities, state_class_labels)
-    most_likely_animation_2(elev_class_probabilities, elev_class_cmap_2, elev_class_labels, orientation='horizontal')
-    most_likely_animation_2(state_class_probabilities, state_class_cmap, state_class_labels, orientation='horizontal')
+    most_likely_animation(elev_class_probabilities, elev_class_cmap, elev_class_labels, orientation='horizontal')
+    most_likely_animation(state_class_probabilities, state_class_cmap, state_class_labels, orientation='horizontal')
     class_probability_animation(inundation_class_probabilities, orientation='horizontal')
 plt.show()
 
