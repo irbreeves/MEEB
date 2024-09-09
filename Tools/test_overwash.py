@@ -1,6 +1,6 @@
 """
 Script for testing MEEB overwash function.
-IRBR 2 July 2024
+IRBR 9 September 2024
 """
 
 import numpy as np
@@ -81,7 +81,7 @@ ymax = 19750  # 19750 8730 22900 7355
 plot_xmin = 900
 plot_xmax = plot_xmin + 600
 
-name = "19250-19750, Florence Rh=3.32, orig Route"
+name = "19250-19750, Florence Rh=3.32"
 print(name)
 
 
@@ -126,7 +126,6 @@ topo_prestorm = copy.deepcopy(topo)  # [m NAVD88]
 sim_topo_post_storm, topo_change_overwash, OWflux, inundated, Qbe = routine.storm_processes(
     topo,
     Rhigh,
-    Rlow,
     dur,
     Rin=249,
     Cs=0.0283,

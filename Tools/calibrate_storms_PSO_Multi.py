@@ -4,7 +4,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 Calibrates based on fitess score for all beach/dune/overwash morphologic change, and incorporates multiple
 storm events and/or locations into each fitness score.
 
-IRBR 8 July 2024
+IRBR 9 September 2024
 """
 
 import numpy as np
@@ -66,7 +66,7 @@ def model_skill(obs, sim, t0, mask):
     return nse, rmse, nmae, mass, bss
 
 
-def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_Mask, spec1, spec2):
+def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, spec1, spec2):
     """Run a storm with this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
     # Find Dune Crest, Shoreline Positions
@@ -80,7 +80,6 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, Rlow, dur, OW_M
     sim_topo_final, topo_change_overwash, OWflux, inundated, Qbe = routine.storm_processes(
         topo_start_copy,
         Rhigh,
-        Rlow,
         dur,
         Rin=int(round(solution[0])),
         Cs=round(solution[1], 4),
@@ -163,10 +162,9 @@ def multi_fitness(solution):
 
             # Initialize storm stats
             Rhigh = storm_Rhigh[s] * np.ones(topo_final.shape[0])
-            Rlow = storm_Rlow[s] * np.ones(topo_final.shape[0])
             dur = storm_dur[s]
 
-            score = storm_fitness(solution, topo_start, topo_final, Rhigh, Rlow, dur, OW_Mask, spec1, spec2)
+            score = storm_fitness(solution, topo_start, topo_final, Rhigh, dur, OW_Mask, spec1, spec2)
             score_list.append(score)
 
     # Take mean of scores from all locations
@@ -216,7 +214,6 @@ storm_name = ['Florence']
 storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
 storm_stop = ["Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"]
 storm_Rhigh = [3.32]
-storm_Rlow = [1.90]
 storm_dur = [83]
 
 # _____________________________________________

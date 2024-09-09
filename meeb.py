@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 23 August 2024
+Last update: 9 September 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -15,6 +15,7 @@ import math
 import matplotlib.pyplot as plt
 import scipy
 import copy
+import gc
 from datetime import datetime, timedelta
 
 import routines_meeb as routine
@@ -285,7 +286,6 @@ class MEEB:
                                                                                              self._mean_wave_height,
                                                                                              self._mean_wave_period,
                                                                                              self._DShoreface,
-                                                                                             self._average_dune_toe_height,
                                                                                              self._alongshore_section_length,
                                                                                              self._longshore)
 
@@ -340,6 +340,7 @@ class MEEB:
         self._inundated_output_aggregate = np.empty([self._longshore, self._crossshore], dtype=bool)
 
         del Init
+        gc.collect()
 
     # __________________________________________________________________________________________________________________________________
     # MAIN ITERATION LOOP

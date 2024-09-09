@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 23 August 2024
+Last update: 9 September 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -1764,7 +1764,6 @@ def init_AST_environment(wave_asymetry,
                          mean_wave_height,
                          mean_wave_period,
                          DShoreface,
-                         mean_barrier_height,
                          dy,
                          alongshore,
                          n_bins=181,
@@ -1784,8 +1783,6 @@ def init_AST_environment(wave_asymetry,
         [s] Mean offshore wave period.
     DShoreface: float
         [m] Shoreface depth.
-    mean_barrier_height: float
-        [m] Average height of the barrier above MHW (typically taken as the average height of the dune toe above MHW).
     dy: int
         [m] Alongshore width of shoreline sections.
     alongshore: int
@@ -1816,7 +1813,7 @@ def init_AST_environment(wave_asymetry,
     wave_pdf = angles.pdf(angle_array) * step  # Wave climate PDF
 
     diff = (-(k
-              / (mean_barrier_height + DShoreface)
+              / DShoreface
               * mean_wave_height ** 2.4
               * mean_wave_period ** 0.2
               )
