@@ -621,7 +621,7 @@ def plot_class_area_change_over_time(class_probabilities):
         class_change_TS[4, ts] = delta_i
 
     plt.figure()
-    xx = np.arange(0, num_saves/2, save_frequency)
+    xx = np.arange(0, num_saves) * save_frequency
     for n in range(num_classes):
         plt.plot(xx, class_change_TS[n, :])
     plt.legend(['Subaqueous', 'Beach', 'Dune', 'Washover', 'Interior'])
