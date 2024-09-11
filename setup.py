@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="meeb",
-    version="0.2",
+    version="1.0",
     description="Mesoscale Explicit Ecogeomorphic Barrier model",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
