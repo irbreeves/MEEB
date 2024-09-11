@@ -47,8 +47,8 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',
         save_frequency=save_frequency,
         # --- Aeolian --- #
-        saltation_length=2,
-        saltation_length_rand_deviation=1,
+        saltation_length=5,
+        saltation_length_rand_deviation=2,
         p_dep_sand=0.22,
         p_dep_sand_VegMax=0.54,
         p_ero_sand=0.10,
@@ -973,8 +973,12 @@ def class_probability_animation(class_probabilities, orientation='vertical'):
 # start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
 # startdate = '20140406'
 
+# # 2018
+# start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover_2m.npy"
+# startdate = '20181007'
+
 # 2018
-start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover_2m.npy"
+start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_18400-23400.npy"
 startdate = '20181007'
 
 # _____________________
@@ -1011,31 +1015,31 @@ cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 # _____________________
 # INITIAL PARAMETERS
 
-sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
-save_frequency = 0.5  # [yr] Time step for probability calculations
+sim_duration = 12  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
+save_frequency = 1  # [yr] Time step for probability calculations
 
-duplicates = 45  # To account for intrinsic stochasticity (e.g., storms, aeolian)
+duplicates = 8  # To account for intrinsic stochasticity (e.g., storms, aeolian)
 
 # Number of cores to use in the parallelization
 # core_num = int(os.environ['SLURM_CPUS_PER_TASK'])  # --> Use this if running on HPC
-core_num = 15  # --> Use this if running on local machine
+core_num = 8  # --> Use this if running on local machine
 
 # Define Horizontal and Vertical References of Domain
-ymin = 18500  # [m] Alongshore coordinate
-ymax = 19500  # [m] Alongshore coordinate
-xmin = 900  # [m] Cross-shore coordinate
-xmax = 1700  # [m] Cross-shore coordinate
+ymin = 250  # [m] Alongshore coordinate
+ymax = 750  # [m] Alongshore coordinate
+xmin = 0  # [m] Cross-shore coordinate
+xmax = 850  # [m] Cross-shore coordinate
 plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 plot_xmax = 800  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
-cellsize = 2  # [m]
+cellsize = 1  # [m]
 
-name = '18500-19500, 2018-2050, n=45'  # Name of simulation suite
+name = '250-750, 2018-2030, n=8'  # Name of simulation suite
 
-plot = False  # [bool]
+plot = True  # [bool]
 animate = False  # [bool]
-save_data = True  # [bool]
-savename = '9Sep24_18500-19500'
+save_data = False  # [bool]
+savename = '9Sep24_250-750_2018-2030'
 
 # _____________________
 # INITIAL CONDITIONS

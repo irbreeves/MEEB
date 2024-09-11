@@ -26,25 +26,29 @@ from meeb import MEEB
 # start = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
 # startdate = '20170916'
 
+# # 2018
+# start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover_2m.npy"
+# startdate = '20181007'
+
 # 2018
-start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
+start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_18400-23400.npy"
 startdate = '20181007'
 
 # _____________________
 
-sim_duration = 20
+sim_duration = 12
 MHW = 0.39  # [m NAVD88]
-cellsize = 2  # [m]
-name = '19000-19250, 2018-2038, RSLR=0.006'  # Name of simulation
+cellsize = 1  # [m]
+name = '250-750, 2018-2030, RSLR=0.0124'  # Name of simulation
 
 # _____________________
 # Define Coordinates of Model Domain
-ymin = 19000  # Alongshore
-ymax = 19250  # Alongshore
-xmin = 900  # Cross-shore
-xmax = xmin + 900  # Cross-shore
+ymin = 250  # Alongshore
+ymax = 750  # Alongshore
+xmin = 0  # Cross-shore
+xmax = 850  # Cross-shore
 plot_xmin = 0  # Cross-shore plotting
-plot_xmax = plot_xmin + 900  # Cross-shore plotting
+plot_xmax = 800  # Cross-shore plotting
 
 # Resize according to cellsize
 ymin = int(ymin / cellsize)  # Alongshore
@@ -66,7 +70,7 @@ meeb = MEEB(
     crossshore_domain_boundary_min=xmin,
     crossshore_domain_boundary_max=xmax,
     cellsize=cellsize,
-    RSLR=0.03,
+    RSLR=0.0124,
     MHW=MHW,
     init_filename=start,
     hindcast=False,
