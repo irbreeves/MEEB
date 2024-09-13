@@ -55,8 +55,8 @@ conditions and the inherent randomness of natural phenomena
 2) Create an instance of the *MEEB* class, specifying 3yr, 500m-long simulation with a relative sea-level rise rate of 3 mm/yr:
 
          meeb = MEEB(
-             simulation_time_yr=3,  # [y]
-             RSLR=0.003,  # [mm/y]
+             simulation_time_yr=3,  # [yr]
+             RSLR=0.003,  # [mm/yr]
              alongshore_domain_boundary_min=500,  # [m]
              alongshore_domain_boundary_max=1000,  # [m]
          )
@@ -71,4 +71,4 @@ conditions and the inherent randomness of natural phenomena
         plt.matshow(meeb.topo, cmap='terrain', vmin=-1, vmax=6)
         plt.show()
 
-Refer to the provided run scripts refernced above for additional complexity.
+Refer to the provided run scripts referenced above for additional complexity.
