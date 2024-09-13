@@ -54,7 +54,12 @@ conditions and the inherent randomness of natural phenomena
 
 2) Create an instance of the *MEEB* class, specifying 3yr, 500m-long simulation with a relative sea-level rise rate of 3 mm/yr:
 
-        meeb = MEEB(simulation_time_yr=3, RSLR=0.003, alongshore_domain_boundary_min=500, alongshore_domain_boundary_max=1000)
+         meeb = MEEB(
+             simulation_time_yr=3,  # [y]
+             RSLR=0.003,  # [mm/y]
+             alongshore_domain_boundary_min=500,  # [m]
+             alongshore_domain_boundary_max=1000,  # [m]
+         )
 
 3) Loop through time with *MEEB's* `update()` function:
 
