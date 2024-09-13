@@ -27,15 +27,43 @@ Then, run the following from the top-level folder (the one that contains `setup.
 
     pip install -e .
 
-## Input Files, Parameters, and Run Scripts
+## Input Files & Parameters Values
 
-Input files are located in the `/Input` directory and include initial topography and storm timeseries. A main set of 
-commonly-manipulated parameters can be adjusted in the initializarion of the *MEEB* class in a model run script.
+Input files are located in the `/Input` directory and include initial topography and storm timeseries. A set of 
+commonly-manipulated parameters can be adjusted in the initializarion of the *MEEB* class in a model run script (see examples below).
 
-Two run scripts for *MEEB* are available:
+## Running *MEEB*
+
+### Run Scripts
+
+Run scripts are separate files that run model simulations and produce model output (i.e., plot results and/or save data). These 
+scripts can be manipulated to alter model parameters and simulation specifications according to the needs of the modeler. Two run 
+scripts for *MEEB* are available:
     
 `/Tools/run_MEEB.py` runs a single deterministic simulation
 
 `/Tools/run_MEEB_Probabilistic.py` produces probabilistic projections that account for uncertainties related to future forcing
 conditions and the inherent randomness of natural phenomena
 
+### Basic approach for running a MEEB simulation
+
+1) Import *MEEB* and dependencies:
+
+        from meeb import MEEB
+        import matplotlib.pyplot as plt
+
+2) Create an instance of the *MEEB* class, specifying 3yr, 500m-long simulation with a relative sea-level rise rate of 3 mm/yr:
+
+        meeb = MEEB(simulation_time_yr=3, RSLR=0.003, alongshore_domain_boundary_min=500, alongshore_domain_boundary_max=1000)
+
+3) Loop through time with *MEEB's* `update()` function:
+
+        for time_step in range(int(meeb.iterations)):
+            meeb.update(time_step)
+
+4) Once the simulation finishes, plot results such as the elevation at the last time step:
+
+        plt.matshow(meeb.topo, cmap='terrain', vmin=-1, vmax=6)
+        plt.show()
+
+Refer to the provided run scripts refernced above for additional complexity.

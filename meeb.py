@@ -28,7 +28,7 @@ class MEEB:
             # GENERAL
             name="default",
             simnum=1,  # Reference number of the simulation. Used for personal reference.
-            MHW=0,  # [m NAVD88] Initial mean high water
+            MHW=0.39,  # [m NAVD88] Initial mean high water
             RSLR=0.000,  # [m/yr] Relative sea-level rise rate
             aeolian_iterations_per_year=50,  # Number of aeolian updates in 1 model year
             storm_iterations_per_year=25,  # Number of storm and shoreline change updates in 1 model year
@@ -42,7 +42,7 @@ class MEEB:
             crossshore_domain_boundary_max=10e7,  # [m] Cross-shore maximum boundary location for model domain; if left to this default value, it will automatically adjust to the actual full length of the domain
             inputloc="Input/",  # Input file directory (end string with "/")
             outputloc="Output/",  # Output file directory (end string with "/")
-            init_filename="Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy",  # [m NVD88] Name of initial topography and vegetation input file
+            init_filename="Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_18400-23400.npy",  # [m NVD88] Name of initial topography and vegetation input file
             hindcast=False,  # [bool] Determines whether the model is run with the default stochastisity generated storms [hindcast=False], or an empirical storm, wind, wave, temp timeseries [hindcast=True]
             simulation_start_date='20181007',  # [date] Date from which to start hindcast; must be string in format 'yyyymmdd'
             hindcast_timeseries_start_date='19790101',  # [date] Start date of hindcast timeseries input data; format 'yyyymmdd'
@@ -54,14 +54,14 @@ class MEEB:
             saltation_length=5,  # [cells] Hop length for saltating slabs of sand (5 m, Teixeira et al. 2023); note units of cells (e.g., if cellsize = 2 m and saltation_length = 5 cells, slabs will hop 10 m)
             saltation_length_rand_deviation=2,  # [cells] Deviation around saltation_length for random uniform distribution of saltation lengths. Must be at lest 1 cell smaller than saltation_length.
             groundwater_depth=0.4,  # Proportion of the smoothed topography used to set groundwater profile
-            wind_rose=(0.83, 0.02, 0.12, 0.03),  # Proportion of wind TOWARDS (right, down, left, up)
-            p_dep_sand=0.36,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
-            p_dep_sand_VegMax=0.60,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover; must be greater than or equal to p_dep_sand/p_dep_basesaltation_length_rand_deviation
+            wind_rose=(0.81, 0.04, 0.06, 0.09),  # Proportion of wind TOWARDS (right, down, left, up)
+            p_dep_sand=0.22,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
+            p_dep_sand_VegMax=0.54,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover; must be greater than or equal to p_dep_sand/p_dep_basesaltation_length_rand_deviation
             p_dep_base=0.1,  # [0-1] Probability of deposition of base cells
-            p_ero_sand=0.13,  # [0-1] Probability of erosion of bare/sandy cells
-            entrainment_veg_limit=0.37,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible
-            saltation_veg_limit=0.37,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
-            shadowangle=10,  # [deg]
+            p_ero_sand=0.10,  # [0-1] Probability of erosion of bare/sandy cells
+            entrainment_veg_limit=0.10,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible
+            saltation_veg_limit=0.35,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
+            shadowangle=12,  # [deg]
             repose_bare=20,  # [deg]
             repose_veg=30,  # [deg]
             repose_threshold=0.3,  # [0-1] Vegetation threshold for applying repose_veg
@@ -123,7 +123,7 @@ class MEEB:
             Cbb=0.7,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
             overwash_min_subaqueous_discharge=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
             overwash_substeps=25,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
-            beach_equilibrium_slope=0.025,  # Equilibrium slope of the beach
+            beach_equilibrium_slope=0.022,  # Equilibrium slope of the beach
             swash_erosive_timescale=1.48,  # Non-dimensional erosive timescale coefficient for beach/duneface sediment transport (Duran Vinent & Moore, 2015)
             beach_substeps=25,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
             shift_mean_storm_intensity=0,  # [%/yr] Linear yearly percent shift in mean storm TWL (as proxy for intensity) in stochastic storm model; use 0 for no shift
