@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 9 September 2024
+Last update: 16 September 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -42,7 +42,11 @@ class MEEB:
             crossshore_domain_boundary_max=10e7,  # [m] Cross-shore maximum boundary location for model domain; if left to this default value, it will automatically adjust to the actual full length of the domain
             inputloc="Input/",  # Input file directory (end string with "/")
             outputloc="Output/",  # Output file directory (end string with "/")
-            init_filename="Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_18400-23400.npy",  # [m NVD88] Name of initial topography and vegetation input file
+            init_by_file=True,  # [bool] Whether to initialize model by providing filenames for numpy arrays that are read (True), or directly input arrays into model (False); the latter is MUCH better for parallel sims
+            init_filename="Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_18400-23400.npy",  # [m NVD88] Name of initial topography and vegetation input file; requires input_by_file to be TRUE
+            init_elev_array=np.array(np.nan),  # [m NAVD88] Numpy array of initial elevation; requires init_by_file to be False
+            init_spec1_array=np.array(np.nan),  # [0-1] Numpy array of initial spec1 density; requires init_by_file to be False
+            init_spec2_array=np.array(np.nan),  # [0-1] Numpy array of initial spec2 density; requires init_by_file to be False
             hindcast=False,  # [bool] Determines whether the model is run with the default stochastisity generated storms [hindcast=False], or an empirical storm, wind, wave, temp timeseries [hindcast=True]
             simulation_start_date='20181007',  # [date] Date from which to start hindcast; must be string in format 'yyyymmdd'
             hindcast_timeseries_start_date='19790101',  # [date] Start date of hindcast timeseries input data; format 'yyyymmdd'
@@ -261,10 +265,20 @@ class MEEB:
         self._iteration_dates = [self._simulation_start_date + timedelta(minutes=10512 * x) for x in range(self._iterations)]  # List of dates corresponding to each model iteration
 
         # TOPOGRAPHY
-        Init = np.float32(np.load(inputloc + init_filename))
-        self._alongshore_domain_boundary_max = min(self._alongshore_domain_boundary_max, Init[0, :, :].shape[0])
-        self._crossshore_domain_boundary_max = min(self._crossshore_domain_boundary_max, Init[0, :, :].shape[1])
-        self._topo = Init[0, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [m NAVD88] 2D array of initial topography
+        if init_by_file:
+            Init = np.float32(np.load(inputloc + init_filename))
+            self._alongshore_domain_boundary_max = min(self._alongshore_domain_boundary_max, Init[0, :, :].shape[0])
+            self._crossshore_domain_boundary_max = min(self._crossshore_domain_boundary_max, Init[0, :, :].shape[1])
+            self._topo = Init[0, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [m NAVD88] 2D array of initial topography
+            self._spec1 = Init[1, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [0-1] 2D array of vegetation effectiveness for spec1
+            self._spec2 = Init[2, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [0-1] 2D array of vegetation effectiveness for spec2
+        else:
+            if np.isnan(init_elev_array) or np.isnan(init_spec1_array) or np.isnan(init_spec2_array):
+                raise ValueError("An initial elevation numpy array must be provided as input to MEEB object if init_by_file is False.")
+            else:
+                self._topo = copy.deepcopy(init_elev_array)  # [m NAVD88] 2D array of initial topography
+                self._spec1 = copy.deepcopy(init_spec1_array)  # [0-1] 2D array of vegetation effectiveness for spec1
+                self._spec2 = copy.deepcopy(init_spec2_array)  # [0-1] 2D array of vegetation effectiveness for spec2
         self._longshore, self._crossshore = self._topo.shape  # [cells] Cross-shore/alongshore size of domain
         self._groundwater_elevation = np.zeros(self._topo.shape)  # [m NAVD88] Initialize
 
@@ -290,8 +304,6 @@ class MEEB:
                                                                                              self._longshore)
 
         # VEGETATION
-        self._spec1 = Init[1, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [0-1] 2D array of vegetation effectiveness for spec1
-        self._spec2 = Init[2, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [0-1] 2D array of vegetation effectiveness for spec2
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
         self._veg[self._veg < 0] = 0
@@ -339,8 +351,9 @@ class MEEB:
         self._storm_inundation_TS = np.zeros([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=bool)  # Array for saving each veg map at specified frequency
         self._inundated_output_aggregate = np.empty([self._longshore, self._crossshore], dtype=bool)
 
-        del Init
-        gc.collect()
+        if init_by_file:
+            del Init
+            gc.collect()
 
     # __________________________________________________________________________________________________________________________________
     # MAIN ITERATION LOOP
