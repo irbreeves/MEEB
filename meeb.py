@@ -273,8 +273,8 @@ class MEEB:
             self._spec1 = Init[1, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [0-1] 2D array of vegetation effectiveness for spec1
             self._spec2 = Init[2, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [0-1] 2D array of vegetation effectiveness for spec2
         else:
-            if np.isnan(init_elev_array) or np.isnan(init_spec1_array) or np.isnan(init_spec2_array):
-                raise ValueError("An initial elevation numpy array must be provided as input to MEEB object if init_by_file is False.")
+            if np.logical_or(np.isnan(np.sum(init_elev_array)), np.logical_or(np.isnan(np.sum(init_spec1_array)), np.isnan(np.sum(init_spec2_array)))):
+                raise ValueError("Initial elevation and vegetation numpy arrays must be provided as input to MEEB object if init_by_file is False.")
             else:
                 self._topo = copy.deepcopy(init_elev_array)  # [m NAVD88] 2D array of initial topography
                 self._spec1 = copy.deepcopy(init_spec1_array)  # [0-1] 2D array of vegetation effectiveness for spec1
