@@ -45,18 +45,37 @@ scripts for *MEEB* are available:
 `/Tools/run_MEEB_Probabilistic.py` produces probabilistic projections that account for uncertainties related to future forcing
 conditions and the inherent randomness of natural phenomena
 
-### Basic approach for running a MEEB simulation
+### Jupyter Notebook Tutorials
+
+In-depth tutorials for running *MEEB* deterministically and probabilistically are stored in the `/Notebooks` folder. These Jupyter
+Notebooks step through an example deterministic or probabilistic run script with descriptions and explanations for each block of code.
+To run a Notebook, navigate to the main `/MEEB` directory in a *terminal* window and type:
+
+      jupyter notebook
+
+This will launch an interactive Notebook environment in your default web browser. In the Jupyter Notebook web browser, open on the 
+`/Notebook` folder, and double click to open one of two Notebook tutorials:
+
+   `run_MEEB_Deterministic.ipynb` for a simple deterministic run. Start here!
+
+   `run_MEEB_Probabilistic.ipynb` for a much more complex probabilistic projection.
+
+Progress through the tutorials, cell-by-cell, by clicking the play button on the top ribbon. You can also edit cells to explore different
+parameter values. [Click here](https://jupyter-notebook.readthedocs.io/en/stable/user-documentation.html "Jupyter Notebook Documentation")
+for more documentation on Jupyter Notebooks.
+
+### Basic approach for running a *MEEB* simulation
 
 1) Import *MEEB* and dependencies:
 
         from meeb import MEEB
         import matplotlib.pyplot as plt
 
-2) Create an instance of the *MEEB* class, specifying 3yr, 500m-long simulation with a relative sea-level rise rate of 3 mm/yr:
+2) Create an instance of the *MEEB* class, here specifying a 3 yr, 500-m-long simulation with a relative sea-level rise rate of 3 mm/yr:
 
          meeb = MEEB(
              simulation_time_yr=3,  # [yr]
-             RSLR=0.003,  # [mm/yr]
+             RSLR=0.003,  # [m/yr]
              alongshore_domain_boundary_min=500,  # [m]
              alongshore_domain_boundary_max=1000,  # [m]
          )
@@ -71,4 +90,4 @@ conditions and the inherent randomness of natural phenomena
         plt.matshow(meeb.topo, cmap='terrain', vmin=-1, vmax=6)
         plt.show()
 
-Refer to the provided run scripts referenced above for additional complexity.
+Refer to the Notebook tutorials and provided run scripts referenced above for additional complexity.
