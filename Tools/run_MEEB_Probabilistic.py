@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 18 September 2024
+IRBR 27 September 2024
 """
 
 import os
@@ -110,7 +110,7 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
 
     # Create classified map
     elevation_classification = classify_topo_change(meeb.topo_TS.shape[2], topo_change_sim_TS)
-    inundation_classification = classify_inundation(meeb.topo_TS.shape[2], meeb.storm_inundation_TS, meeb.topo_TS, meeb.MHW_init, meeb.RSLR)
+    inundation_classification = classify_overwash_frequency(meeb.topo_TS.shape[2], meeb.storm_inundation_TS, meeb.topo_TS, meeb.MHW_init, meeb.RSLR)
     habitat_state_classification = classify_ecogeomorphic_habitat_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.veg_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.25)
 
     classes = [elevation_classification, habitat_state_classification, inundation_classification]
@@ -272,6 +272,12 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, ve
         x_s = routine.ocean_shoreline(topo, MHW)
         toe_elev = topo[np.arange(longshore), dune_toeline]
         beach_width = (dune_toeline - x_s) * cellsize
+        for ls in range(longshore):
+            if beach_width[ls] <= cellsize:
+                if ls == 0:
+                    beach_width[ls] = cellsize * 2
+                else:
+                    beach_width[ls] = beach_width[ls - 1]
         beach_slopes = (toe_elev - MHW) / beach_width
 
         # Make boolean maps of locations landward and seaward of dune lines
@@ -375,6 +381,8 @@ def classify_inundation(TS, inundation_TS, topo, mhw_init, rslr):
 
     inundation = np.zeros([num_saves, longshore, crossshore], dtype=np.float32)
 
+    inundation_TS = inundation_TS > 0  # Convert to bool
+
     for ts in range(TS):
         MHW = mhw_init + rslr * ts * save_frequency
         if ts == 0:
@@ -392,6 +400,23 @@ def classify_inundation(TS, inundation_TS, topo, mhw_init, rslr):
             inundation[ts, :, :] = np.logical_or(inundation_next, inundation_prev)
 
     return inundation
+
+
+def classify_overwash_frequency(TS, inundation_TS, topo, mhw_init, rslr):
+    """Classify according to number of times inundated from storm overwash."""
+
+    overwash = np.zeros([num_saves, longshore, crossshore], dtype=np.float32)
+
+    for ts in range(TS):
+        MHW = mhw_init + rslr * ts * save_frequency
+        storm_inun = inundation_TS[:, :, ts]
+        storm_inun[topo[:, :, ts] < MHW] = 0
+        if ts == 0:
+            overwash[ts, :, :] += storm_inun
+        else:
+            overwash[ts, :, :] += storm_inun + overwash[ts - 1, :, :]  # Cumulative
+
+    return overwash
 
 
 def intrinsic_probability():
@@ -598,6 +623,45 @@ def plot_class_probability(class_probabilities, it, class_label, orientation='ve
     plt.tight_layout()
 
 
+def plot_class_frequency(class_probabilities, it, class_label, orientation='vertical'):
+    """Plots the frequency of a class (e.g., overwash inundation) across the domain at a particular time step.
+
+    Parameters
+    ----------
+    class_probabilities : ndarray
+        Probabilities of a class over space and time.
+    it : int
+        Iteration to draw probabilities from.
+    class_label : str
+        Name/description of class for labeling colorbar.
+    orientation : str
+        ['vertical' or 'horizontal'] Orientation to plot domain: vertical will plot ocean along left edge of domain, 'horizontal' along bottom.
+    """
+
+    inun_prob = class_probabilities[it, :, :]
+
+    if orientation == 'vertical':
+        Fig = plt.figure(figsize=(8, 10))
+        ax1 = Fig.add_subplot(111)
+    elif orientation == 'horizontal':
+        inun_prob = np.rot90(inun_prob, k=1)
+        Fig = plt.figure(figsize=(14, 10))
+        ax1 = Fig.add_subplot(111)
+    else:
+        raise ValueError("plot_most_probable_class: orientation invalid, must use 'vertical' or 'horizontal'")
+
+    cmap_class_freq = plt.get_cmap('inferno', int(np.max(inun_prob)))
+
+    im_ratio = inun_prob.shape[0] / inun_prob.shape[1]
+    cax1 = ax1.matshow(inun_prob, cmap=cmap_class_freq, norm=colors.LogNorm())  # Log colorbar
+    cb_label = 'Number of ' + class_label
+    Fig.colorbar(cax1, label=cb_label, fraction=0.046 * im_ratio)
+    plt.xlabel('Meters Alongshore')
+    plt.ylabel('Meters Cross-Shore')
+
+    plt.tight_layout()
+
+
 def plot_class_area_change_over_time(class_probabilities, class_labels):
 
     num_classes = class_probabilities.shape[0]
@@ -618,7 +682,7 @@ def plot_class_area_change_over_time(class_probabilities, class_labels):
     plt.xlabel('Forecast Year')
 
 
-def plot_transitions_area_matrix(class_probabilities, class_labels):
+def plot_transitions_area_matrix(class_probabilities, class_labels, norm='class'):
 
     num_classes = class_probabilities.shape[0]
     transition_matrix = np.zeros([num_classes, num_classes])
@@ -626,16 +690,26 @@ def plot_transitions_area_matrix(class_probabilities, class_labels):
     start_class = np.argmax(class_probabilities[:, 0, :, :], axis=0)  # Bin of most probable outcome
     end_class = np.argmax(class_probabilities[:, -1, :, :], axis=0)  # Bin of most probable outcome
 
-    for class_from in range(num_classes):
-        for class_to in range(num_classes):
-            if class_from == class_to:
-                transition_matrix[class_from, class_to] = 0
-            else:
-                transition_matrix[class_from, class_to] = np.sum(np.logical_and(start_class == class_from, end_class == class_to))
-
-    sum_all_transition = np.sum(transition_matrix)
-
-    transition_matrix = transition_matrix / sum_all_transition
+    if norm == 'total':  # Area normalized by total change in area of all classes
+        for class_from in range(num_classes):
+            for class_to in range(num_classes):
+                if class_from == class_to:
+                    transition_matrix[class_from, class_to] = 0
+                else:
+                    transition_matrix[class_from, class_to] = np.sum(np.logical_and(start_class == class_from, end_class == class_to))
+        sum_all_transition = np.sum(transition_matrix)
+        transition_matrix = transition_matrix / sum_all_transition
+        cbar_label = 'Proportion of Net Change in Area From State Transitions'
+    elif norm == 'class':  # Area normalized based on initial area of from class
+        for class_from in range(num_classes):
+            for class_to in range(num_classes):
+                if class_from == class_to:
+                    transition_matrix[class_from, class_to] = 0
+                else:
+                    transition_matrix[class_from, class_to] = np.sum(np.logical_and(start_class == class_from, end_class == class_to)) / np.sum(start_class == class_from)
+        cbar_label = 'Proportional Net Change in Area of From Class'
+    else:
+        raise ValueError("Invalid entry in norm field: must use 'class' or 'total'")
 
     fig, ax = plt.subplots()
     cax = ax.matshow(transition_matrix, cmap='binary')
@@ -645,7 +719,7 @@ def plot_transitions_area_matrix(class_probabilities, class_labels):
     plt.ylabel('From Class')
     plt.xlabel('To Class')
     plt.title('Ecogeomorphic State Transitions')
-    fig.colorbar(cax, label='Normalized Net Change in Area (m^2)')
+    fig.colorbar(cax, label=cbar_label)
 
 
 def plot_most_likely_transition_maps(class_probabilities):
@@ -968,7 +1042,7 @@ def class_probability_animation(class_probabilities, orientation='vertical'):
         ax1 = Fig.add_subplot(111)
         text1 = plt.text(2, crossshore - 2, timestr, c='black')
     else:
-        raise ValueError("plot_most_probable_class: orientation invalid, must use 'vertical' or 'horizontal'")
+        raise ValueError("class_probability_animation: orientation invalid, must use 'vertical' or 'horizontal'")
 
     im_ratio = inun_prob.shape[0] / inun_prob.shape[1]
     cax1 = ax1.matshow(inun_prob, cmap=cmap_class_prob, vmin=0, vmax=1)
@@ -982,6 +1056,44 @@ def class_probability_animation(class_probabilities, orientation='vertical'):
     while os.path.exists("Output/Animation/meeb_class_probability_" + str(c) + ".gif"):
         c += 1
     ani4.save("Output/Animation/meeb_class_probability_" + str(c) + ".gif", dpi=150, writer="imagemagick")
+
+
+def class_frequency_animation(class_probabilities, orientation='vertical'):
+
+    vmax = np.max(class_probabilities)
+    vmin = np.min(class_probabilities[class_probabilities > 0])
+
+    inun_prob = class_probabilities[0, :, :]
+    timestr = "Year " + str(0)
+
+    if orientation == 'vertical':
+        Fig = plt.figure(figsize=(8, 10.5))
+        plt.tight_layout()
+        ax1 = Fig.add_subplot(111)
+        text1 = plt.text(2, longshore - 2, timestr, c='black')
+    elif orientation == 'horizontal':
+        inun_prob = np.rot90(inun_prob, k=1)
+        Fig = plt.figure(figsize=(16, 6))
+        plt.tight_layout()
+        ax1 = Fig.add_subplot(111)
+        text1 = plt.text(2, crossshore - 2, timestr, c='black')
+    else:
+        raise ValueError("class_frequency_animation: orientation invalid, must use 'vertical' or 'horizontal'")
+
+    cmap_class_freq = plt.get_cmap('inferno', int(vmax))
+
+    im_ratio = inun_prob.shape[0] / inun_prob.shape[1]
+    cax1 = ax1.matshow(inun_prob, cmap=cmap_class_freq, norm=colors.LogNorm(vmin=vmin, vmax=vmax))
+    Fig.colorbar(cax1, label='Number of Occurences', fraction=0.046 * im_ratio)
+    plt.xlabel('Meters Alongshore')
+    plt.ylabel('Meters Cross-Shore')
+
+    # Create and save animation
+    ani5 = animation.FuncAnimation(Fig, ani_frame_class_probability, frames=num_saves, fargs=(class_probabilities, cax1, text1, orientation), interval=300, blit=True)
+    c = 1
+    while os.path.exists("Output/Animation/meeb_class_frequency_" + str(c) + ".gif"):
+        c += 1
+    ani5.save("Output/Animation/meeb_class_frequency_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
 # __________________________________________________________________________________________________________________________________
@@ -1111,7 +1223,7 @@ if plot:
     plot_class_maps(habitat_state_class_probabilities, habitat_state_class_labels, it=-1)
     plot_most_probable_class(elev_class_probabilities, elev_class_cmap, elev_class_labels, it=-1, orientation='horizontal')
     plot_most_probable_class(habitat_state_class_probabilities, habitat_state_class_cmap, habitat_state_class_labels, it=-1, orientation='horizontal')
-    plot_class_probability(inundation_class_probabilities, it=-1, class_label='Inundation', orientation='horizontal')
+    plot_class_frequency(inundation_class_probabilities, it=-1, class_label='Overwash Events', orientation='horizontal')
     plot_class_area_change_over_time(habitat_state_class_probabilities, habitat_state_class_labels)
     plot_most_likely_transition_maps(habitat_state_class_probabilities)
     plot_transitions_area_matrix(habitat_state_class_probabilities, habitat_state_class_labels)
@@ -1120,7 +1232,7 @@ if animate:
     bins_animation(habitat_state_class_probabilities, habitat_state_class_labels)
     most_likely_animation(elev_class_probabilities, elev_class_cmap, elev_class_labels, orientation='horizontal')
     most_likely_animation(habitat_state_class_probabilities, habitat_state_class_cmap, habitat_state_class_labels, orientation='horizontal')
-    class_probability_animation(inundation_class_probabilities, orientation='horizontal')
+    class_frequency_animation(inundation_class_probabilities, orientation='horizontal')
 plt.show()
 
 
