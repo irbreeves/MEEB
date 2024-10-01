@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 16 September 2024
+Last update: 27 September 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -348,8 +348,8 @@ class MEEB:
         self._spec2_TS[:, :, 0] = self._spec2
         self._veg_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each veg map at specified frequency
         self._veg_TS[:, :, 0] = self._veg
-        self._storm_inundation_TS = np.zeros([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=bool)  # Array for saving each veg map at specified frequency
-        self._inundated_output_aggregate = np.empty([self._longshore, self._crossshore], dtype=bool)
+        self._storm_inundation_TS = np.zeros([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each veg map at specified frequency
+        self._inundated_output_aggregate = np.zeros([self._longshore, self._crossshore], dtype=np.float32)
 
         if init_by_file:
             del Init
@@ -448,12 +448,13 @@ class MEEB:
                 )
 
                 # Update vegetation from storm effects
-                self._spec1[inundated] = 0  # Remove species where beach is inundated
-                self._spec2[inundated] = 0  # Remove species where beach is inundated
+                inundated = np.round(scipy.ndimage.gaussian_filter(inundated.astype(float), 2 / self._cellsize, mode='reflect'))
+                self._spec1[inundated > 0] = 0  # Remove species where beach is inundated
+                self._spec2[inundated > 0] = 0  # Remove species where beach is inundated
                 self._veg = self._spec1 + self._spec2  # Update
 
                 # Aggregate inundation [boolean] for the period between the previous and next time step at which output is saved (save_frequency)
-                self._inundated_output_aggregate = np.logical_or(inundated, self._inundated_output_aggregate)
+                self._inundated_output_aggregate += inundated
 
                 # Check for nans in topo
                 if np.isnan(np.sum(self._topo)):
