@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 9 September 2024
+Last update: 30 September 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -767,8 +767,10 @@ def foredune_crest(topo, MHW, cellsize, buffer=25, window_XL=150, window_large=7
         Boolean array of alongshore length where True represents cross-shore profiles where a dune crest is present, and False where no dune crest is present (i.e., dune gap)
     """
 
-    x_s_min = np.min(ocean_shoreline(topo, MHW))
-    x_b_max = np.max(backbarrier_shoreline(topo, MHW))
+    x_s = ocean_shoreline(topo, MHW)
+    x_b = backbarrier_shoreline(topo, MHW)
+    x_s_min = np.min(x_s)
+    x_b_max = np.max(x_b)
 
     topo = topo[:, x_s_min: x_b_max]
 
@@ -784,7 +786,7 @@ def foredune_crest(topo, MHW, cellsize, buffer=25, window_XL=150, window_large=7
 
     # Step 1: Find cross-shore location of maximum elevation for each cell alongshore of averaged topography
     moving_avg_elevation = scipy.ndimage.uniform_filter1d(topo.copy(), axis=0, size=window_XL)  # Rolling average in alongshore direction
-    crestline = np.argmax(moving_avg_elevation, axis=1)  # Cross-shore location of maximum elevation of averaged topography
+    crestline = find_max_elev(moving_avg_elevation, x_s, x_s_min, x_b, cellsize)
 
     # Step 2: Broad smoothing of maximum-elevation line. This gives a rough area of where the dunes are or should be
     crestline = np.round(signal.savgol_filter(crestline, window_large, 1)).astype(int)
@@ -799,6 +801,25 @@ def foredune_crest(topo, MHW, cellsize, buffer=25, window_XL=150, window_large=7
     crestline += x_s_min
 
     return crestline.astype(int), not_gap
+
+
+@njit
+def find_max_elev(topo_avg, x_s, x_s_min, x_b, cellsize, threshold_width=300):
+    """Finds cross-shore location of maximum elevation of averaged topography, with cross-shore search boundaries specified by barrier width."""
+
+    x_s -= x_s_min
+    x_b -= x_s_min
+    barrier_width = (x_b - x_s)
+    crestline = np.zeros(topo_avg.shape[0])
+    for ls in range(topo_avg.shape[0]):
+        if barrier_width[ls] < threshold_width / cellsize:
+            xmax = int(max(x_s[ls] + 100, x_b[ls]))  # If barrier narrower than threshold, search in first fraction of barrier, with fraction increasing to 1 (whole barrier) at 100 m width)
+            crestline[ls] = np.argmax(topo_avg[ls, x_s[ls]: xmax])
+        else:
+            crestline[ls] = np.argmax(topo_avg[ls, x_s[ls]: x_s[ls] + int(barrier_width[ls] * 0.3)])  # If barrier wider than threshold, search only in first third of barrier
+    crestline += x_s
+
+    return crestline
 
 
 @njit
