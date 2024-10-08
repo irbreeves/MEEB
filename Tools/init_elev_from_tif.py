@@ -2,7 +2,7 @@
     use in MEEB (Mesoscale Explicit Ecogeomorphic Barrier model).
 
     IRB Reeves
-    Last update: 27 June 2024
+    Last update: 7 October 2024
 """
 
 import matplotlib.pyplot as plt
@@ -150,6 +150,8 @@ def densityVeg(veggie, den):
     s2[den == 2] *= 0.8
     s2[den == 3] *= 1.0
 
+    s1[np.logical_and(np.logical_and(s1 == 0, s2 == 0), den > 0)] = 0.4
+
     # Add +/- 10% density random noise to vegetated cells
     randNoise = np.random.uniform(-0.1, 0.1, s1.shape) * (s1 > 0)
     s1 += randNoise
@@ -172,7 +174,7 @@ def densityVeg(veggie, den):
 # SPECIFICATIONS
 
 # Elevation (NAVD88)
-tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/PostFlorence_20181007_USGS_FullNCB.tif"  # Input with 1 m resolution
+tif_file = ""  # Path to raw input tif file with 1 m resolution
 MHW = 0.39  # [m initial datum] Mean high water, for finding ocean shoreline
 BB_thresh = 0.08  # [m initial datum] Threshold elevation for finding back-barrier marsh shoreline
 BB_depth = 1.5 - MHW  # [m MHW] Back-barrier bay depth
@@ -194,13 +196,13 @@ cellsize = 1  # [m] Cell dimensions; if greater than 1, script resizes arrays to
 Veggie = True  # [bool] Whether or not to load & convert a contemporaneous init veg raster
 VeggiePop = False  # [bool] Whether or not to use stoachstic population of vegetation or init veg density raster
 Thin = True  # [bool] Whether to artificiallly and randomly thin out vegetation cover
-veg_tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/VegCover_Plover_NAIP_2018.tif"
-vegden_tif_file = "/Users/ireeves/OneDrive - DOI/Documents/MEEB/Raw_Init_Files/VegDensity_Plover_NAIP_2018.tif"
+veg_tif_file = ""  # Path to raw input tif file with 1 m resolution
+vegden_tif_file = ""  # Path to raw input tif file with 1 m resolution
 veg_min = 0.5  # [m] Minimum elevation for vegetation
 
 # Save
 save = False  # [bool] Whether or not to save finished arrays
-savename = "NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover"
+savename = "NCB-NewDrum-Ocracoke_2018_PostFlorence"
 
 
 # ================================================================================================================
@@ -275,7 +277,7 @@ vegden = np.rot90(vegden, 3)
 veg[dem < veg_min] = 0  # Remove veg below minimum elevation threshold
 vegden[dem < veg_min] = 0  # Remove veg below minimum elevation threshold
 
-dune_crest = routine.foredune_crest(dem, MHW, cellsize=1)
+dune_crest, not_gap = routine.foredune_crest(dem, MHW, cellsize=cellsize)
 
 if VeggiePop:
     spec1, spec2 = populateVeg(dem,
