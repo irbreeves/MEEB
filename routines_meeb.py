@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 30 September 2024
+Last update: 16 October 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -1780,7 +1780,7 @@ def route_overwash(
     return Discharge, SedFluxIn, SedFluxOut
 
 
-def init_AST_environment(wave_asymetry,
+def init_AST_environment(wave_asymmetry,
                          wave_high_angle_fraction,
                          mean_wave_height,
                          mean_wave_period,
@@ -1794,7 +1794,7 @@ def init_AST_environment(wave_asymetry,
 
     Parameters
     ----------
-    wave_asymetry: float
+    wave_asymmetry: float
         Fraction of waves approaching from the left (when looking offshore).
     wave_high_angle_fraction: float
         Fraction of waves approaching at angles higher than 45 degrees from shore normal.
@@ -1829,7 +1829,7 @@ def init_AST_environment(wave_asymetry,
 
     k = calc_alongshore_transport_k()
 
-    angles = WaveAngleGenerator(asymmetry=wave_asymetry, high_fraction=wave_high_angle_fraction)  # Wave angle generator for each time step for calculating Qs_in
+    angles = WaveAngleGenerator(asymmetry=wave_asymmetry, high_fraction=wave_high_angle_fraction)  # Wave angle generator for each time step for calculating Qs_in
 
     wave_pdf = angles.pdf(angle_array) * step  # Wave climate PDF
 

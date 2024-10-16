@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 27 September 2024
+Last update: 16 October 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -76,7 +76,7 @@ class MEEB:
             shoreface_equilibrium_slope=0.02,  # Equilibrium slope of the shoreface
             shoreface_depth=10,  # [m] Depth to shoreface toe (i.e. depth of ‘closure’)
             shoreface_length_init=500,  # [m] Initial length of shoreface
-            wave_asymetry=0.6,  # [0-1] Fraction of waves approaching from the left (when looking offshore)
+            wave_asymmetry=0.6,  # [0-1] Fraction of waves approaching from the left (when looking offshore)
             wave_high_angle_fraction=0.39,  # Fraction of waves approaching at angles higher than 45 degrees from shore normal
             mean_wave_height=0.98,  # [m] Mean offshore significant wave height
             mean_wave_period=6.6,  # [s] Mean wave period
@@ -194,7 +194,7 @@ class MEEB:
         self._s_sf_eq = shoreface_equilibrium_slope
         self._DShoreface = shoreface_depth
         self._LShoreface = shoreface_length_init
-        self._wave_asymetry = wave_asymetry
+        self._wave_asymmetry = wave_asymmetry
         self._wave_high_angle_fraction = wave_high_angle_fraction
         self._mean_wave_height = mean_wave_height
         self._mean_wave_period = mean_wave_period
@@ -295,7 +295,7 @@ class MEEB:
         self._x_s = routine.init_ocean_shoreline(self._topo, self._MHW, self._alongshore_section_length)  # [m] Start locations of shoreline according to initial topography and MHW
         self._x_t = self._x_s - self._LShoreface  # [m] Start locations of shoreface toe
 
-        self._coast_diffusivity, self._di, self._dj, self._ny = routine.init_AST_environment(self._wave_asymetry,
+        self._coast_diffusivity, self._di, self._dj, self._ny = routine.init_AST_environment(self._wave_asymmetry,
                                                                                              self._wave_high_angle_fraction,
                                                                                              self._mean_wave_height,
                                                                                              self._mean_wave_period,
