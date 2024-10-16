@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 27 September 2024
+IRBR 16 October 2024
 """
 
 import os
@@ -78,7 +78,7 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         flow_reduction_max_spec1=0.02,
         flow_reduction_max_spec2=0.05,
         # --- Shoreline --- #
-        wave_asymetry=0.6,
+        wave_asymmetry=0.6,
         wave_high_angle_fraction=0.39,
         mean_wave_height=0.98,
         mean_wave_period=6.6,
