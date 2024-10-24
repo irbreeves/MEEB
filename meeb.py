@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 16 October 2024
+Last update: 18 October 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -57,6 +57,7 @@ class MEEB:
             slabheight=0.02,  # Height of slabs for aeolian transport, proportion of cell dimension (0.02, Teixeira et al. 2023)
             saltation_length=5,  # [cells] Hop length for saltating slabs of sand (5 m, Teixeira et al. 2023); note units of cells (e.g., if cellsize = 2 m and saltation_length = 5 cells, slabs will hop 10 m)
             saltation_length_rand_deviation=2,  # [cells] Deviation around saltation_length for random uniform distribution of saltation lengths. Must be at lest 1 cell smaller than saltation_length.
+            saltation_slope_limit=20,  # [deg] Surface slope at and beyond which saltation of sand slabs cannot occur (i.e., too steep)
             groundwater_depth=0.4,  # Proportion of the smoothed topography used to set groundwater profile
             wind_rose=(0.81, 0.04, 0.06, 0.09),  # Proportion of wind TOWARDS (right, down, left, up)
             p_dep_sand=0.22,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
@@ -66,8 +67,8 @@ class MEEB:
             entrainment_veg_limit=0.10,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible
             saltation_veg_limit=0.35,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
             shadowangle=12,  # [deg]
-            repose_bare=20,  # [deg]
-            repose_veg=30,  # [deg]
+            repose_bare=20,  # [deg] Angle of repose for unvegetated cells
+            repose_veg=30,  # [deg] Angle of repose for vegetation cells
             repose_threshold=0.3,  # [0-1] Vegetation threshold for applying repose_veg
             eq_backbarrier_depth=1.5,  # [m] Equilibrium depth of back-barrier bay/lagoon
 
@@ -187,6 +188,7 @@ class MEEB:
         self._saltation_veg_limit = saltation_veg_limit
         self._saltation_length = saltation_length
         self._saltation_length_rand_deviation = saltation_length_rand_deviation
+        self._saltation_slope_limit = saltation_slope_limit
         self._beach_equilibrium_slope = beach_equilibrium_slope
         self._swash_erosive_timescale = swash_erosive_timescale
         self._beach_substeps = beach_substeps
@@ -384,10 +386,20 @@ class MEEB:
         aeolian_deposition_prob = routine.depprobs(self._effective_veg, wind_shadows, subaerial, self._p_dep_base, self._p_dep_sand, self._p_dep_sand_VegMax, self._topo, self._groundwater_elevation)  # Returns map of deposition probabilities
 
         # Move sand slabs
-        if self._wind_direction[it] == 1 or self._wind_direction[it] == 3:  # Left or Right wind direction
-            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._saltation_length, self._saltation_length_rand_deviation, self._effective_veg, self._saltation_veg_limit, int(self._wind_direction[it]), True, self._topo, self._MHW, self._RNG)  # Returns map of height changes in units of slabs
-        else:  # Up or Down wind direction
-            aeolian_elevation_change = routine.shiftslabs(aeolian_erosion_prob, aeolian_deposition_prob, self._saltation_length, self._saltation_length_rand_deviation, self._effective_veg, self._saltation_veg_limit, int(self._wind_direction[it]), True, self._topo, self._MHW, self._RNG)  # Returns map of height changes in units of slabs
+        aeolian_elevation_change = routine.shiftslabs(
+            aeolian_erosion_prob,
+            aeolian_deposition_prob,
+            self._saltation_length,
+            self._saltation_length_rand_deviation,
+            self._effective_veg,
+            self._saltation_veg_limit,
+            int(self._wind_direction[it]),
+            True,
+            self._topo,
+            self._saltation_slope_limit,
+            self._MHW,
+            self._cellsize,
+            self._RNG)  # Returns map of height changes in units of slabs
 
         # Apply changes, make calculations
         self._topo += aeolian_elevation_change * self._slabheight  # [m NAVD88] Changes applied to the topography; convert aeolian_elevation_change from slabs to meters
