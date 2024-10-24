@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 16 October 2024
+Last update: 23 October 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -164,7 +164,7 @@ def depprobs(vegf, shade, sand, dep_base, dep_sand, dep_sand_MaxVeg, topof, grou
     return Pd
 
 
-def shiftslabs(Pe, Pd, hop_avg, hop_rand_deviation, vegf, vegf_lim, direction, random_hoplength, topo, MHW, RNG):
+def shiftslabs(Pe, Pd, hop_avg, hop_rand_deviation, vegf, vegf_lim, direction, random_hoplength, topo, saltation_slope_limit, MHW, cellsize, RNG):
     """Shifts the sand from wind. Returns a map of surface elevation change. Open boundaries, no feeding from the sea side.
 
     Follows modifications by Teixeira et al. (2023) that allow larger hop lengths while still accounting for vegetation interactions
@@ -193,8 +193,12 @@ def shiftslabs(Pe, Pd, hop_avg, hop_rand_deviation, vegf, vegf_lim, direction, r
         When True, hop length varies randomly +/- 2 around the average hop length.
     topo : ndarray
         [m NAV88] Topography.
+    saltation_slope_limit : float
+        [deg] Surface slope at and beyond which saltation transport of sand slabs cannot occur (i.e., too steep)
     MHW : float
         [m NAVD88] Mean high water.
+    cellsize : float
+        [m] Horizontal cell dimensions.
     RNG
         Random Number Generator object.
 
@@ -209,6 +213,7 @@ def shiftslabs(Pe, Pd, hop_avg, hop_rand_deviation, vegf, vegf_lim, direction, r
     Pe = Pe[:, x_s_min: x_b_max]
     Pd = Pd[:, x_s_min: x_b_max]
     vegf = vegf[:, x_s_min: x_b_max]
+    topof = topo.copy()[:, x_s_min: x_b_max]
 
     longshore, crossshore = vegf.shape
 
@@ -225,38 +230,44 @@ def shiftslabs(Pe, Pd, hop_avg, hop_rand_deviation, vegf, vegf_lim, direction, r
     inmotion = copy.deepcopy(pickedup)  # Make copy of original erosion map
     transportdist = 0  # [cell length] Transport distance counter
 
+    slope_transport_limit = np.tan(saltation_slope_limit * np.pi / 180) * cellsize  # Height difference beyond which slab transport does not occur
+
     while np.sum(inmotion) > 0:  # While still any slabs moving
         transportdist += 1  # Every time in the loop the slaps are transported one slab length
         if direction == 1:
             inmotion = np.roll(inmotion, shift, axis=1)  # Shift the moving slabs one hop length to the right
+            topo_offset = np.roll(topof.copy(), -transportdist, axis=1) - topof.copy()
             if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
-                depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
+                depocells = np.logical_or(RNG.random((longshore, crossshore)) < Pd, topo_offset > slope_transport_limit * transportdist)  # True where slab should be deposited
             else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
-                depocells = np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim)  # True where slab should be deposited
+                depocells = np.logical_or(np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim), topo_offset > slope_transport_limit * transportdist)  # True where slab should be deposited
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[:, 0: hop] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 2:
             inmotion = np.roll(inmotion, shift, axis=0)  # Shift the moving slabs one hop length to the down
+            topo_offset = np.roll(topof.copy(), -transportdist, axis=0) - topof.copy()
             if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
-                depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
+                depocells = np.logical_or(RNG.random((longshore, crossshore)) < Pd, topo_offset > slope_transport_limit * transportdist)  # True where slab should be deposited
             else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
-                depocells = np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim)  # True where slab should be deposited
+                depocells = np.logical_or(np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim), topo_offset > slope_transport_limit * transportdist)  # True where slab should be deposited
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[0: hop, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         elif direction == 3:
             inmotion = np.roll(inmotion, -shift, axis=1)  # Shift the moving slabs one hop length to the left
+            topo_offset = np.roll(topof.copy(), transportdist, axis=1) - topof.copy()
             if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
-                depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
+                depocells = np.logical_or(RNG.random((longshore, crossshore)) < Pd, topo_offset > slope_transport_limit * transportdist)  # True where slab should be deposited
             else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
-                depocells = np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim)  # True where slab should be deposited
+                depocells = np.logical_or(np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim), topo_offset > slope_transport_limit * transportdist)  # True where slab should be deposited
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[:, -1 - hop: -1] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
         else:
             inmotion = np.roll(inmotion, -shift, axis=0)  # Shift the moving slabs one hop length to the up
+            topo_offset = np.roll(topof.copy(), transportdist, axis=0) - topof.copy()
             if transportdist % hop == 0:  # If cell is at hop target, poll for deposition
-                depocells = RNG.random((longshore, crossshore)) < Pd  # True where slab should be deposited
+                depocells = np.logical_or(RNG.random((longshore, crossshore)) < Pd, topo_offset > slope_transport_limit * transportdist)  # True where slab should be deposited
             else:  # If cell is inbetween slab origin and hop target (i.e., on its saltation path), only poll for deposition if vegetation (above a threshold density) is present
-                depocells = np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim)  # True where slab should be deposited
+                depocells = np.logical_or(np.logical_and(RNG.random((longshore, crossshore)) < Pd, vegf >= vegf_lim), topo_offset > slope_transport_limit * transportdist)  # True where slab should be deposited
             deposited = inmotion * depocells  # True where a slab is available and should be deposited
             deposited[-1 - hop: -1, :] = 0  # Remove all slabs that are transported from the landward side to the seaward side (this changes the periodic boundaries into open ones)
 
@@ -1688,14 +1699,20 @@ def route_overwash(
                     # Save Discharge
                     # Cell 1
                     if i > 0:
-                        if spec1[i - 1, d] > 0:
+                        if spec1[i - 1, d] > 0 and spec2[i - 1, d] > 0:
+                            flow_reduction_max_proportional = flow_reduction_max_spec1 * spec1[i - 1, d] / (spec1[i - 1, d] + spec2[i - 1, d]) + flow_reduction_max_spec2 * spec2[i - 1, d] / (spec1[i - 1, d] + spec2[i - 1, d])
+                            Q1 = Q1 * (1 - (flow_reduction_max_proportional * (spec1[i - 1, d] + spec2[i - 1, d])))
+                        elif spec1[i - 1, d] > 0:
                             Q1 = Q1 * (1 - (flow_reduction_max_spec1 * spec1[i - 1, d]))
                         else:
                             Q1 = Q1 * (1 - (flow_reduction_max_spec2 * spec2[i - 1, d]))
                         Discharge[i - 1, d + 1] += Q1
 
                     # Cell 2
-                    if spec1[i, d] > 0:
+                    if spec1[i, d] > 0 and spec2[i, d] > 0:
+                        flow_reduction_max_proportional = flow_reduction_max_spec1 * spec1[i, d] / (spec1[i, d] + spec2[i, d]) + flow_reduction_max_spec2 * spec2[i, d] / (spec1[i, d] + spec2[i, d])
+                        Q1 = Q1 * (1 - (flow_reduction_max_proportional * (spec1[i, d] + spec2[i, d])))
+                    elif spec1[i, d] > 0:
                         Q2 = Q2 * (1 - (flow_reduction_max_spec1 * spec1[i, d]))
                     else:
                         Q2 = Q2 * (1 - (flow_reduction_max_spec2 * spec2[i, d]))
@@ -1703,7 +1720,10 @@ def route_overwash(
 
                     # Cell 3
                     if i < (longshore - 1):
-                        if spec1[i + 1, d] > 0:
+                        if spec1[i + 1, d] > 0 and spec2[i + 1, d] > 0:
+                            flow_reduction_max_proportional = flow_reduction_max_spec1 * spec1[i + 1, d] / (spec1[i + 1, d] + spec2[i + 1, d]) + flow_reduction_max_spec2 * spec2[i + 1, d] / (spec1[i + 1, d] + spec2[i + 1, d])
+                            Q1 = Q1 * (1 - (flow_reduction_max_proportional * (spec1[i + 1, d] + spec2[i + 1, d])))
+                        elif spec1[i + 1, d] > 0:
                             Q3 = Q3 * (1 - (flow_reduction_max_spec1 * spec1[i + 1, d]))
                         else:
                             Q3 = Q3 * (1 - (flow_reduction_max_spec2 * spec2[i + 1, d]))
