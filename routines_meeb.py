@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 23 October 2024
+Last update: 1 November 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -454,7 +454,7 @@ def growthfunction1_sens(species, sed, A1, B1, C1, D1, E1, P1):
     return species
 
 
-def growthfunction2_sens(species, sed, A2, B2, D2, E2, P2):
+def growthfunction2_sens(species, sed, A2, B2, C2, D2, E2, P2):
     """Grows (or reduces) vegetation by updating the vegetation effectiveness. Growth/reduction is based on sedimentation balance and growth curve.
 
     For Buckthorn-like woody vegetation.
@@ -467,6 +467,7 @@ def growthfunction2_sens(species, sed, A2, B2, D2, E2, P2):
         [m] Map of sedimentation balance (i.e., aggregate change in elevation) from last vegetation iteration.
     A2
     B2
+    C2
     D2
     E2
     P2
@@ -484,7 +485,7 @@ def growthfunction2_sens(species, sed, A2, B2, D2, E2, P2):
     # Vertices (these need to be specified)
     x1 = A2  # was x1 = -1.3
     x2 = B2  # was x2 = -0.65
-    x3 = 0  # was x3 = 0
+    x3 = C2  # was x3 = 0
     x4 = D2  # was x4 = 0.2
     x5 = E2  # was x5 = 2.2
     y1 = -1.0  # y1 = -1.0
@@ -612,6 +613,38 @@ def establish_new_vegetation(topof, MHW, prob, RNG):
     pioneer_established = RNG.random((width, length)) < pioneer_establish_prob
 
     return pioneer_established
+
+
+def spec2_zonation(spec2, topo, min_elev, max_elev, dune_threshold, MHW, cellsize):
+    """Determines where across the model domain species2 can establish, based on elevation,
+    dune crestline, and elevation of fronting dune."""
+
+    dune_crestline, not_gap = foredune_crest(topo, MHW, cellsize)
+    longshore, crossshore = spec2.shape
+
+    # ---------
+    # Must be landward of the foredune crest
+    landward_of_dunecrest = np.zeros(topo.shape, dtype=bool)
+    for ls in range(longshore):
+        landward_of_dunecrest[ls, dune_crestline[ls]:] = True
+
+    # ---------
+    # Must be within elevation range
+    elevation = np.logical_and(topo - MHW > min_elev, topo - MHW <= max_elev)
+
+    # ---------
+    # Must be fronted by sufficiently tall dune
+    index = np.argmax(topo - MHW > dune_threshold, axis=1)
+    index[index == 0] = -1
+    fronting_low_dune = np.zeros(topo.shape, dtype=bool)
+    for ls in range(longshore):
+        fronting_low_dune[ls, :index[ls]] = True
+
+    # ---------
+    # Determine where spec2 can establish
+    shrub_allowed = landward_of_dunecrest * elevation * ~fronting_low_dune
+
+    return shrub_allowed
 
 
 def shoreline_change_from_CST(

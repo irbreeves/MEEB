@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 18 October 2024
+Last update: 1 November 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -57,7 +57,6 @@ class MEEB:
             slabheight=0.02,  # Height of slabs for aeolian transport, proportion of cell dimension (0.02, Teixeira et al. 2023)
             saltation_length=5,  # [cells] Hop length for saltating slabs of sand (5 m, Teixeira et al. 2023); note units of cells (e.g., if cellsize = 2 m and saltation_length = 5 cells, slabs will hop 10 m)
             saltation_length_rand_deviation=2,  # [cells] Deviation around saltation_length for random uniform distribution of saltation lengths. Must be at lest 1 cell smaller than saltation_length.
-            saltation_slope_limit=20,  # [deg] Surface slope at and beyond which saltation of sand slabs cannot occur (i.e., too steep)
             groundwater_depth=0.4,  # Proportion of the smoothed topography used to set groundwater profile
             wind_rose=(0.81, 0.04, 0.06, 0.09),  # Proportion of wind TOWARDS (right, down, left, up)
             p_dep_sand=0.22,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
@@ -188,7 +187,6 @@ class MEEB:
         self._saltation_veg_limit = saltation_veg_limit
         self._saltation_length = saltation_length
         self._saltation_length_rand_deviation = saltation_length_rand_deviation
-        self._saltation_slope_limit = saltation_slope_limit
         self._beach_equilibrium_slope = beach_equilibrium_slope
         self._swash_erosive_timescale = swash_erosive_timescale
         self._beach_substeps = beach_substeps
@@ -396,7 +394,7 @@ class MEEB:
             int(self._wind_direction[it]),
             True,
             self._topo,
-            self._saltation_slope_limit,
+            self._repose_bare,
             self._MHW,
             self._cellsize,
             self._RNG)  # Returns map of height changes in units of slabs
@@ -423,8 +421,8 @@ class MEEB:
                 storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, beach_slopes, self._longshore, self._MHW, self._RNG_storm)  # [m NAVD88]
 
                 # # Account for change in mean sea-level on synthetic storm elevations by adding aggregate RSLR since simulation start, and any linear storm climate shift in intensity
-                # TWL_climate_shift = self._mean_stochastic_storm_TWL * ((self._shift_mean_storm_intensity / 100) * (it / self._aeolian_iterations_per_year))  # This version shifts TWL of all storms equally
-                TWL_climate_shift = Rhigh * ((self._shift_mean_storm_intensity / 100) * (it / self._aeolian_iterations_per_year))  # This version shifts TWL more for bigger storms
+                # TWL_climate_shift = self._mean_stochastic_storm_TWL * ((self._shift_mean_storm_intensity / 100) * (it / self._iterations))  # This version shifts TWL of all storms equally
+                TWL_climate_shift = Rhigh * ((self._shift_mean_storm_intensity / 100) * (it / self._iterations))  # This version shifts TWL more for bigger storms
                 Rhigh += (self._MHW - self._MHW_init) + TWL_climate_shift  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level, and shift intensity
                 Rlow += (self._MHW - self._MHW_init) + TWL_climate_shift  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level, and shift intensity
 
@@ -460,13 +458,14 @@ class MEEB:
                 )
 
                 # Update vegetation from storm effects
-                inundated = np.round(scipy.ndimage.gaussian_filter(inundated.astype(float), 2 / self._cellsize, mode='reflect'))
-                self._spec1[inundated > 0] = 0  # Remove species where beach is inundated
-                self._spec2[inundated > 0] = 0  # Remove species where beach is inundated
+                inundated = scipy.ndimage.gaussian_filter(inundated.astype(float), 2 / self._cellsize, mode='reflect')
+                inundation_mortality = inundated >= self._RNG.random((self._longshore, self._crossshore))  # Stochastic mortality effect along edges of inundation
+                self._spec1[inundation_mortality] = 0  # Remove species where inundated
+                self._spec2[inundation_mortality] = 0  # Remove species where inundated
                 self._veg = self._spec1 + self._spec2  # Update
 
                 # Aggregate inundation [boolean] for the period between the previous and next time step at which output is saved (save_frequency)
-                self._inundated_output_aggregate += inundated
+                self._inundated_output_aggregate += np.round(inundated)
 
                 # Check for nans in topo
                 if np.isnan(np.sum(self._topo)):
@@ -549,19 +548,28 @@ class MEEB:
             spec1_prev = copy.deepcopy(self._spec1)
             spec2_prev = copy.deepcopy(self._spec2)
             self._spec1 = routine.growthfunction1_sens(self._spec1, self._sedimentation_balance, self._sp1_a, self._sp1_b, self._sp1_c, self._sp1_d, self._sp1_e, self._sp1_peak)
-            self._spec2 = routine.growthfunction2_sens(self._spec2, self._sedimentation_balance, self._sp2_a, self._sp2_b, self._sp2_d, self._sp2_e, self._sp2_peak)
+            self._spec2 = routine.growthfunction2_sens(self._spec2, self._sedimentation_balance, self._sp2_a, self._sp2_b, self._sp2_c, self._sp2_d, self._sp2_e, self._sp2_peak)
 
             # Lateral Expansion
-            lateral1 = routine.lateral_expansion(spec1_prev, 1, self._sp1_lateral_probability * veg_multiplier, self._RNG)
-            lateral2 = routine.lateral_expansion(spec2_prev, 1, self._sp2_lateral_probability * veg_multiplier, self._RNG)
+            lateral1 = routine.lateral_expansion(spec1_prev, 1, self._sp1_lateral_probability * veg_multiplier, self._RNG) * (spec2_prev <= 0)
+            lateral2 = routine.lateral_expansion(spec2_prev, 1, self._sp2_lateral_probability * veg_multiplier, self._RNG) * (spec1_prev <= 0)
             lateral1[self._topo <= self._MHW] = False  # Constrain to subaerial
             lateral2[self._topo <= self._MHW] = False
 
             # Pioneer Establishment
-            pioneer1 = routine.establish_new_vegetation(self._topo, self._MHW, self._sp1_pioneer_probability * veg_multiplier, self._RNG) * (spec1_prev <= 0)
-            pioneer2 = routine.establish_new_vegetation(self._topo, self._MHW, self._sp2_pioneer_probability * veg_multiplier, self._RNG) * (spec2_prev <= 0) * (self._topographic_change == 0)
+            pioneer1 = routine.establish_new_vegetation(self._topo, self._MHW, self._sp1_pioneer_probability * veg_multiplier, self._RNG) * (spec1_prev <= 0) * (spec2_prev <= 0)
+            pioneer2 = routine.establish_new_vegetation(self._topo, self._MHW, self._sp2_pioneer_probability * veg_multiplier, self._RNG) * (spec2_prev <= 0) * (spec1_prev <= 0) * (self._topographic_change == 0)
             pioneer1[self._topo <= self._MHW] = False  # Constrain to subaerial
             pioneer2[self._topo <= self._MHW] = False
+
+            # Determine Where Spec2 is Allowed to Establish
+            spec2_allowed = routine.spec2_zonation(self._spec2, self._topo, 0.75, 1.85, 2.3, self._MHW, self._cellsize)  # (does not impact already established plants)
+            lateral2 *= spec2_allowed
+            pioneer2 *= spec2_allowed
+
+            # Species Competition in Lateral and Pioneer Expansion
+            lateral1[lateral2] = 0  # Spec2 outcompetes spec1 in lateral expansion
+            pioneer1[pioneer2] = 0  # Spec2 outcompetes spec1 in pioneer expansion
 
             # Update Vegetation Cover
             spec1_diff = self._spec1 - spec1_prev  # Determine changes in vegetation cover
