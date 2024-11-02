@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 16 October 2024
+IRBR 1 November 2024
 """
 
 import os
@@ -54,26 +54,27 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         # --- Aeolian --- #
         saltation_length=2,
         saltation_length_rand_deviation=1,
-        p_dep_sand=0.22,
-        p_dep_sand_VegMax=0.54,
-        p_ero_sand=0.10,
-        entrainment_veg_limit=0.10,
-        saltation_veg_limit=0.35,
+        p_dep_sand=0.09,  # Q = hs * L * n * pe/pd
+        p_dep_sand_VegMax=0.17,
+        p_ero_sand=0.08,
+        entrainment_veg_limit=0.09,
+        saltation_veg_limit=0.37,
+        repose_threshold=0.37,
         shadowangle=12,
         repose_bare=20,
         repose_veg=30,
-        wind_rose=(0.81, 0.04, 0.06, 0.09),  # (right, down, left, up)
+        wind_rose=(0.91, 0.04, 0.01, 0.04),  # (right, down, left, up)
         groundwater_depth=0.4,
         # --- Storms --- #
-        Rin=249,
-        Cs=0.0283,
+        Rin=229,
+        Cs=0.0197,
         MaxUpSlope=1.5,
         marine_flux_limit=1,
-        Kow=0.0001684,
-        mm=1.04,
+        Kow=0.0005080,
+        mm=1.03,
         overwash_substeps=25,
-        beach_equilibrium_slope=0.022,
-        swash_erosive_timescale=1.48,
+        beach_equilibrium_slope=0.019,
+        swash_erosive_timescale=1.29,
         beach_substeps=25,
         flow_reduction_max_spec1=0.02,
         flow_reduction_max_spec2=0.05,
@@ -88,7 +89,21 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         sp1_lateral_probability=0.2,
         sp2_lateral_probability=0.2,
         sp1_pioneer_probability=0.05,
-        sp2_pioneer_probability=0.05,
+        sp2_pioneer_probability=0.03,
+        # MY GRASS
+        sp1_a=-1.2,
+        sp1_b=-0.2,  # Mullins et al. (2019)
+        sp1_c=0.5,
+        sp1_d=1.2,
+        sp1_e=2.1,
+        sp1_peak=0.2,
+        # MY SHRUB
+        sp2_a=-1.0,
+        sp2_b=-0.2,  # Conn and Day (1993)
+        sp2_c=0.0,
+        sp2_d=0.2,
+        sp2_e=2.1,
+        sp2_peak=0.05,
     )
 
     # Loop through time
@@ -111,7 +126,7 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
     # Create classified map
     elevation_classification = classify_topo_change(meeb.topo_TS.shape[2], topo_change_sim_TS)
     inundation_classification = classify_overwash_frequency(meeb.topo_TS.shape[2], meeb.storm_inundation_TS, meeb.topo_TS, meeb.MHW_init, meeb.RSLR)
-    habitat_state_classification = classify_ecogeomorphic_habitat_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.veg_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.25)
+    habitat_state_classification = classify_ecogeomorphic_habitat_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.veg_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.37)
 
     classes = [elevation_classification, habitat_state_classification, inundation_classification]
 
@@ -248,7 +263,7 @@ def classify_ecogeomorphic_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_
     return state_classes
 
 
-def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_threshold):
+def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_threshold, beach_slope_threshold=0.019):
     """Classify by ecogeomorphic state using topography and vegetatio, with focus on bird and turtle habitat."""
 
     habitat_state_classes = np.zeros([habitat_state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
@@ -328,20 +343,8 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, ve
         for ls in range(longshore):
             dune_crestheight[ls] = topo[ls, dune_crestline[ls]]  # [m NAVD88]
 
-        # Make boolean maps of locations fronted by low dunes (quite similar to fronting_dune_gaps)
-        fronting_low_dune = np.zeros(topo.shape, dtype=bool)
-        for ls in range(longshore):
-            if dune_crestheight[ls] - MHW < 2.7:
-                crest_loc = dune_crestline[ls]
-                temp = np.ones([crossshore - crest_loc, longshore], dtype=np.float32)
-                right_diag = np.tril(temp, k=ls)
-                left_diag = np.fliplr(np.tril(temp, k=len(dune_crestline) - ls - 1))
-                spread = np.rot90(right_diag * left_diag, 1)
-                fronting_low_dune[:, crest_loc:] = np.flipud(np.logical_or(fronting_low_dune[:, crest_loc:], spread))
-
         # Make boolean maps of areas alongshore with beach slope greater than threshold (i.e., turtle habitat)
-        steep_beach_threshold = 0.02
-        steep_beach_slope = np.rot90(np.array([beach_slopes > steep_beach_threshold] * crossshore), -1)
+        steep_beach_slope = np.rot90(np.array([beach_slopes > beach_slope_threshold] * crossshore), -1)
 
         # Smooth vegetation to remove small-scale variability
         veg = scipy.ndimage.gaussian_filter(veg_TS[:, :, ts], 5, mode='constant')
@@ -357,20 +360,20 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, ve
         dune_class_TS = landward_of_dunetoe * seaward_of_duneheel * ~fronting_dune_gap_simple * ~subaqueous_class_TS
         habitat_state_classes[3, ts, :, :] += dune_class_TS
 
-        # Beach-Steep: seaward of dune crest, not dune or subaqueous, beach slope > threshold
-        beach_class_steep_TS = seaward_of_dunecrest * ~dune_class_TS * ~subaqueous_class_TS * steep_beach_slope
-        habitat_state_classes[1, ts, :, :] += beach_class_steep_TS
-
         # Beach-Shallow: seaward of dune crest, and not dune or subaqueous, , beach slope >= threshold
         beach_class_shallow_TS = seaward_of_dunecrest * ~dune_class_TS * ~subaqueous_class_TS * ~steep_beach_slope
-        habitat_state_classes[2, ts, :, :] += beach_class_shallow_TS
+        habitat_state_classes[1, ts, :, :] += beach_class_shallow_TS
 
-        # Washover: landward of dune crest, unvegetated, and fronting dune gap
-        washover_class_TS = landward_of_dunecrest * unvegetated * fronting_dune_gap * ~dune_class_TS * ~beach_class_steep_TS * ~beach_class_shallow_TS * ~subaqueous_class_TS
-        habitat_state_classes[4, ts, :, :] += washover_class_TS
+        # Beach-Steep: seaward of dune crest, not dune or subaqueous, beach slope > threshold
+        beach_class_steep_TS = seaward_of_dunecrest * ~dune_class_TS * ~subaqueous_class_TS * steep_beach_slope
+        habitat_state_classes[2, ts, :, :] += beach_class_steep_TS
 
-        # Interior: all other cells landward of dune crest
-        interior_class_TS = landward_of_dunecrest * ~washover_class_TS * ~dune_class_TS * ~beach_class_steep_TS * ~beach_class_shallow_TS * ~subaqueous_class_TS
+        # Unvegetated Interior: landward of dune crest and unvegetated
+        unveg_interior_class_TS = landward_of_dunecrest * unvegetated * ~dune_class_TS * ~beach_class_steep_TS * ~beach_class_shallow_TS * ~subaqueous_class_TS
+        habitat_state_classes[4, ts, :, :] += unveg_interior_class_TS
+
+        # Vegetated Interior: all other cells landward of dune crest
+        interior_class_TS = landward_of_dunecrest * ~unveg_interior_class_TS * ~dune_class_TS * ~beach_class_steep_TS * ~beach_class_shallow_TS * ~subaqueous_class_TS
         habitat_state_classes[5, ts, :, :] += interior_class_TS
 
     return habitat_state_classes
@@ -441,9 +444,9 @@ def intrinsic_probability():
         class_duplicates = Parallel(n_jobs=core_num)(delayed(run_individual_sim)(ExSE_A_bins[sims[0, i]], ExSE_B_bins[sims[1, i]]) for i in num_sims)
 
     # Unpack resulting data
-    elev_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), elev_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
-    habitat_state_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), habitat_state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
-    inundation_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_A_bins), num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
+    elev_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_B_bins), elev_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
+    habitat_state_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_B_bins), habitat_state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
+    inundation_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_B_bins), num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
 
     for ts in range(num_saves):
         for b in range(elev_num_classes):
@@ -675,7 +678,7 @@ def plot_class_area_change_over_time(class_probabilities, class_labels):
         for ts in range(1, num_saves):
             class_change_TS[ts] = (np.sum(class_probabilities[n, ts, :, plot_xmin: plot_xmax]) - class_0)
 
-        plt.plot(xx, class_change_TS)
+        plt.plot(xx, class_change_TS, c=habitat_state_class_colors[n])
 
     plt.legend(class_labels)
     plt.ylabel('Change in Area')
@@ -739,8 +742,8 @@ def plot_most_likely_transition_maps(class_probabilities):
     subaqueous_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 0)] = 5
     subaqueous_to[np.logical_and(most_likely_ts == 5, prev_most_likely == 0)] = 6
 
-    s_to_ticks = ['', 'No Change', 'Beach-Steep Beach', 'Beach-Shallow', 'Dune', 'Washover', 'Interior']
-    cmap1 = colors.ListedColormap(['white', 'black', 'gold', 'tan', 'saddlebrown', 'red', 'green'])
+    s_to_ticks = ['', 'No Change', 'Beach-Shallow', 'Beach-Steep Beach', 'Dune', 'Unvegetated Interior', 'Interior']
+    cmap1 = colors.ListedColormap(['white', 'black', 'tan', 'gold', 'saddlebrown', 'red', 'green'])
     ax_1 = Fig.add_subplot(231)
     cax_1 = ax_1.matshow(subaqueous_to[:, plot_xmin: plot_xmax], cmap=cmap1, vmin=0, vmax=len(s_to_ticks) - 1)
     tic = np.linspace(start=((len(s_to_ticks) - 1) / len(s_to_ticks)) / 2, stop=len(s_to_ticks) - 1 - ((len(s_to_ticks) - 1) / len(s_to_ticks)) / 2, num=len(s_to_ticks))
@@ -748,7 +751,7 @@ def plot_most_likely_transition_maps(class_probabilities):
     mcbar.ax.set_yticklabels(s_to_ticks)
     plt.title('From Subaqueous to...')
 
-    # Beach-Steep to..
+    # Beach-Shallow to..
     beach_to = np.zeros([longshore, crossshore])
     beach_to[np.logical_and(most_likely_ts == 1, prev_most_likely == 1)] = 1
     beach_to[np.logical_and(most_likely_ts == 0, prev_most_likely == 1)] = 2
@@ -757,16 +760,16 @@ def plot_most_likely_transition_maps(class_probabilities):
     beach_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 1)] = 5
     beach_to[np.logical_and(most_likely_ts == 5, prev_most_likely == 1)] = 6
 
-    b_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Shallow', 'Dune', 'Washover', 'Interior']
-    cmap2 = colors.ListedColormap(['white', 'black', 'blue', 'tan', 'saddlebrown', 'red', 'green'])
+    b_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Steep', 'Dune', 'Unvegetated Interior', 'Interior']
+    cmap2 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'saddlebrown', 'red', 'green'])
     ax_2 = Fig.add_subplot(232)
     cax_2 = ax_2.matshow(beach_to[:, plot_xmin: plot_xmax], cmap=cmap2, vmin=0, vmax=len(b_to_ticks) - 1)
     tic = np.linspace(start=((len(b_to_ticks) - 1) / len(b_to_ticks)) / 2, stop=len(b_to_ticks) - 1 - ((len(b_to_ticks) - 1) / len(b_to_ticks)) / 2, num=len(b_to_ticks))
     mcbar = Fig.colorbar(cax_2, ticks=tic)
     mcbar.ax.set_yticklabels(b_to_ticks)
-    plt.title('From Beach-Steep to...')
+    plt.title('From Beach-Shallow to...')
 
-    # Beach-Shallow to..
+    # Beach-Steep to..
     dune_to = np.zeros([longshore, crossshore])
     dune_to[np.logical_and(most_likely_ts == 2, prev_most_likely == 2)] = 1
     dune_to[np.logical_and(most_likely_ts == 0, prev_most_likely == 2)] = 2
@@ -775,14 +778,14 @@ def plot_most_likely_transition_maps(class_probabilities):
     dune_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 2)] = 5
     dune_to[np.logical_and(most_likely_ts == 5, prev_most_likely == 2)] = 6
 
-    d_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Steep', 'Dune', 'Washover', 'Interior']
-    cmap3 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'saddlebrown', 'red', 'green'])
+    d_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Shallow', 'Dune', 'Unvegetated Interior', 'Interior']
+    cmap3 = colors.ListedColormap(['white', 'black', 'blue', 'tan', 'saddlebrown', 'red', 'green'])
     ax_3 = Fig.add_subplot(233)
     cax_3 = ax_3.matshow(dune_to[:, plot_xmin: plot_xmax], cmap=cmap3, vmin=0, vmax=len(d_to_ticks) - 1)
     tic = np.linspace(start=((len(d_to_ticks) - 1) / len(d_to_ticks)) / 2, stop=len(d_to_ticks) - 1 - ((len(d_to_ticks) - 1) / len(d_to_ticks)) / 2, num=len(d_to_ticks))
     mcbar = Fig.colorbar(cax_3, ticks=tic)
     mcbar.ax.set_yticklabels(d_to_ticks)
-    plt.title('From Beach-Shallow to...')
+    plt.title('From Beach-Steep to...')
 
     # Dune to..
     washover_to = np.zeros([longshore, crossshore])
@@ -793,8 +796,8 @@ def plot_most_likely_transition_maps(class_probabilities):
     washover_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 3)] = 5
     washover_to[np.logical_and(most_likely_ts == 5, prev_most_likely == 3)] = 6
 
-    w_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Steep', 'Beach-Shallow', 'Washover', 'Interior']
-    cmap4 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'tan', 'red', 'green'])
+    w_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Shallow', 'Beach-Steep', 'Unvegetated Interior', 'Interior']
+    cmap4 = colors.ListedColormap(['white', 'black', 'blue', 'tan', 'gold', 'red', 'green'])
     ax_4 = Fig.add_subplot(234)
     cax_4 = ax_4.matshow(washover_to[:, plot_xmin: plot_xmax], cmap=cmap4, vmin=0, vmax=len(w_to_ticks) - 1)
     tic = np.linspace(start=((len(w_to_ticks) - 1) / len(w_to_ticks)) / 2, stop=len(w_to_ticks) - 1 - ((len(w_to_ticks) - 1) / len(w_to_ticks)) / 2, num=len(w_to_ticks))
@@ -802,7 +805,7 @@ def plot_most_likely_transition_maps(class_probabilities):
     mcbar.ax.set_yticklabels(w_to_ticks)
     plt.title('From Dune to...')
 
-    # Washover to..
+    # Unvegetated Interior to..
     washover_to = np.zeros([longshore, crossshore])
     washover_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 4)] = 1
     washover_to[np.logical_and(most_likely_ts == 0, prev_most_likely == 4)] = 2
@@ -811,14 +814,14 @@ def plot_most_likely_transition_maps(class_probabilities):
     washover_to[np.logical_and(most_likely_ts == 3, prev_most_likely == 4)] = 5
     washover_to[np.logical_and(most_likely_ts == 5, prev_most_likely == 4)] = 6
 
-    w_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Steep', 'Beach-Shallow', 'Dune', 'Interior']
-    cmap4 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'tan', 'saddlebrown', 'green'])
+    w_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Shallow', 'Beach-Steep', 'Dune', 'Interior']
+    cmap4 = colors.ListedColormap(['white', 'black', 'blue', 'tan', 'gold', 'saddlebrown', 'green'])
     ax_4 = Fig.add_subplot(235)
     cax_4 = ax_4.matshow(washover_to[:, plot_xmin: plot_xmax], cmap=cmap4, vmin=0, vmax=len(w_to_ticks) - 1)
     tic = np.linspace(start=((len(w_to_ticks) - 1) / len(w_to_ticks)) / 2, stop=len(w_to_ticks) - 1 - ((len(w_to_ticks) - 1) / len(w_to_ticks)) / 2, num=len(w_to_ticks))
     mcbar = Fig.colorbar(cax_4, ticks=tic)
     mcbar.ax.set_yticklabels(w_to_ticks)
-    plt.title('From Washover to...')
+    plt.title('From Unvegetated Interior to...')
 
     # Interior to..
     interior_to = np.zeros([longshore, crossshore])
@@ -829,8 +832,8 @@ def plot_most_likely_transition_maps(class_probabilities):
     interior_to[np.logical_and(most_likely_ts == 3, prev_most_likely == 5)] = 5
     interior_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 5)] = 6
 
-    i_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Steep', 'Beach-Shallow', 'Dune', 'Washover']
-    cmap5 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'tan', 'saddlebrown', 'red'])
+    i_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Shallow', 'Beach-Steep', 'Dune', 'Unvegetated Interior']
+    cmap5 = colors.ListedColormap(['white', 'black', 'blue', 'tan', 'gold', 'saddlebrown', 'red'])
     ax_5 = Fig.add_subplot(236)
     cax_5 = ax_5.matshow(interior_to[:, plot_xmin: plot_xmax], cmap=cmap5, vmin=0, vmax=len(i_to_ticks) - 1)
     tic = np.linspace(start=((len(i_to_ticks) - 1) / len(i_to_ticks)) / 2, stop=len(i_to_ticks) - 1 - ((len(i_to_ticks) - 1) / len(i_to_ticks)) / 2, num=len(i_to_ticks))
@@ -1104,8 +1107,8 @@ def class_frequency_animation(class_probabilities, orientation='vertical'):
 # startdate = '20140406'
 
 # 2018
-start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover_2m.npy"
-startdate = '20181007'
+start = "Init_NCB-2200-34200_2018_USACE_PostFlorence_2m.npy"
+startdate = '20181015'
 
 # _____________________
 # EXTERNAL STOCHASTIC ELEMENTS (ExSE)
@@ -1114,9 +1117,8 @@ startdate = '20181007'
 ExSE_A_bins = [0.0068, 0.0096, 0.0124]  # [m/yr] Bins of future RSLR rates up to 2050
 ExSE_A_prob = [0.26, 0.55, 0.19]  # Probability of future RSLR bins (must sum to 1.0)
 
-# Mean Storm Intensity
-ExSE_B_bins = [0]  # [0.005, 0.135, 0.266]  # [%/yr] Bins of yearly percent shift in mean storm intensity up to 2050
-ExSE_B_prob = [1]  # [0.296, 0.526, 0.178]  # Probability of future storm intensity bins (must sum to 1.0)
+ExSE_B_bins = [0.167, 4.199, 8.231]  # [%/yr] Bins of yearly percent shift in mean storm intensity up to 2050
+ExSE_B_prob = [0.297, 0.525, 0.178]  # Probability of future storm intensity bins (must sum to 1.0)
 
 # _____________________
 # CLASSIFICATION SCHEME SPECIFICATIONS
@@ -1132,8 +1134,9 @@ state_class_cmap = colors.ListedColormap(['blue', 'gold', 'saddlebrown', 'red', 
 
 habitat_state_classification_label = 'Habitat-Ecogeomorphic State'  # Axes labels on figures
 habitat_state_class_edges = [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5]  # [m] State change
-habitat_state_class_labels = ['Subaqueous', 'Beach-Steep', 'Beach-Shallow', 'Dune', 'Washover', 'Interior']
-habitat_state_class_cmap = colors.ListedColormap(['blue', 'gold', 'tan', 'saddlebrown', 'red', 'green'])
+habitat_state_class_labels = ['Subaqueous', 'Beach-Shallow', 'Beach-Steep', 'Dune', 'Unvegetated Interior', 'Vegetated Interior']
+habitat_state_class_colors = ['blue', 'tan', 'gold', 'saddlebrown', 'red', 'green']
+habitat_state_class_cmap = colors.ListedColormap(habitat_state_class_colors)
 
 # Class Probability
 cmap_class_prob = plt.get_cmap('cividis', 5)
@@ -1147,28 +1150,28 @@ cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 1  # [yr] Time step for probability calculations
 
-duplicates = 25  # To account for intrinsic stochasticity (e.g., storms, aeolian)
+duplicates = 24  # To account for intrinsic stochasticity (e.g., storms, aeolian)
 
 # Number of cores to use in the parallelization
 core_num = int(os.environ['SLURM_CPUS_PER_TASK'])  # --> Use this if running on HPC
-# core_num = 12  # --> Use this if running on local machine
+# core_num = 108  # --> Use this if running on local machine
 
 # Define Horizontal and Vertical References of Domain
-ymin = 13000  # [m] Alongshore coordinate
-ymax = 21000  # [m] Alongshore coordinate
-xmin = 900  # [m] Cross-shore coordinate
-xmax = 1700  # [m] Cross-shore coordinate
+ymin = 16000  # [m] Alongshore coordinate
+ymax = 24000  # [m] Alongshore coordinate
+xmin = 0  # [m] Cross-shore coordinate
+xmax = 1500  # [m] Cross-shore coordinate
 plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
-plot_xmax = 800  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
+plot_xmax = 1500  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 cellsize = 2  # [m]
 
-name = '16Sep24, 13000-21000, 2018-2050, n=25'  # Name of simulation suite
+name = '1Nov24, 16000-24000, 2018-2050, n=24'  # Name of simulation suite
 
 plot = False  # [bool]
 animate = False  # [bool]
 save_data = True  # [bool]
-savename = '16Sep24_13000-21000'
+savename = '1Nov24_16000-24000_meeb1'
 
 # _____________________
 # INITIAL CONDITIONS

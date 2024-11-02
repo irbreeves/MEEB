@@ -1,7 +1,7 @@
 """
 Script for plotting output from datafiles of probabilistic MEEB simulation.
 
-IRBR 27 September 2024
+IRBR 1 November 2024
 """
 
 import numpy as np
@@ -188,7 +188,7 @@ def plot_class_area_change_over_time(class_probabilities, class_labels):
         for ts in range(1, num_saves):
             class_change_TS[ts] = (np.sum(class_probabilities[n, ts, :, plot_xmin: plot_xmax]) - class_0)
 
-        plt.plot(xx, class_change_TS)
+        plt.plot(xx, class_change_TS, c=state_class_colors[n])
 
     plt.legend(class_labels)
     plt.ylabel('Change in Area')
@@ -252,8 +252,8 @@ def plot_most_likely_transition_maps(class_probabilities):
     subaqueous_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 0)] = 5
     subaqueous_to[np.logical_and(most_likely_ts == 5, prev_most_likely == 0)] = 6
 
-    s_to_ticks = ['', 'No Change', 'Beach-Steep Beach', 'Beach-Shallow', 'Dune', 'Washover', 'Interior']
-    cmap1 = colors.ListedColormap(['white', 'black', 'gold', 'tan', 'saddlebrown', 'red', 'green'])
+    s_to_ticks = ['', 'No Change', 'Beach-Shallow', 'Beach-Steep Beach', 'Dune', 'Unvegetated Interior', 'Interior']
+    cmap1 = colors.ListedColormap(['white', 'black', 'tan', 'gold', 'saddlebrown', 'red', 'green'])
     ax_1 = Fig.add_subplot(231)
     cax_1 = ax_1.matshow(subaqueous_to[:, plot_xmin: plot_xmax], cmap=cmap1, vmin=0, vmax=len(s_to_ticks) - 1)
     tic = np.linspace(start=((len(s_to_ticks) - 1) / len(s_to_ticks)) / 2, stop=len(s_to_ticks) - 1 - ((len(s_to_ticks) - 1) / len(s_to_ticks)) / 2, num=len(s_to_ticks))
@@ -261,7 +261,7 @@ def plot_most_likely_transition_maps(class_probabilities):
     mcbar.ax.set_yticklabels(s_to_ticks)
     plt.title('From Subaqueous to...')
 
-    # Beach-Steep to..
+    # Beach-Shallow to..
     beach_to = np.zeros([longshore, crossshore])
     beach_to[np.logical_and(most_likely_ts == 1, prev_most_likely == 1)] = 1
     beach_to[np.logical_and(most_likely_ts == 0, prev_most_likely == 1)] = 2
@@ -270,16 +270,16 @@ def plot_most_likely_transition_maps(class_probabilities):
     beach_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 1)] = 5
     beach_to[np.logical_and(most_likely_ts == 5, prev_most_likely == 1)] = 6
 
-    b_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Shallow', 'Dune', 'Washover', 'Interior']
-    cmap2 = colors.ListedColormap(['white', 'black', 'blue', 'tan', 'saddlebrown', 'red', 'green'])
+    b_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Steep', 'Dune', 'Unvegetated Interior', 'Interior']
+    cmap2 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'saddlebrown', 'red', 'green'])
     ax_2 = Fig.add_subplot(232)
     cax_2 = ax_2.matshow(beach_to[:, plot_xmin: plot_xmax], cmap=cmap2, vmin=0, vmax=len(b_to_ticks) - 1)
     tic = np.linspace(start=((len(b_to_ticks) - 1) / len(b_to_ticks)) / 2, stop=len(b_to_ticks) - 1 - ((len(b_to_ticks) - 1) / len(b_to_ticks)) / 2, num=len(b_to_ticks))
     mcbar = Fig.colorbar(cax_2, ticks=tic)
     mcbar.ax.set_yticklabels(b_to_ticks)
-    plt.title('From Beach-Steep to...')
+    plt.title('From Beach-Shallow to...')
 
-    # Beach-Shallow to..
+    # Beach-Steep to..
     dune_to = np.zeros([longshore, crossshore])
     dune_to[np.logical_and(most_likely_ts == 2, prev_most_likely == 2)] = 1
     dune_to[np.logical_and(most_likely_ts == 0, prev_most_likely == 2)] = 2
@@ -288,14 +288,14 @@ def plot_most_likely_transition_maps(class_probabilities):
     dune_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 2)] = 5
     dune_to[np.logical_and(most_likely_ts == 5, prev_most_likely == 2)] = 6
 
-    d_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Steep', 'Dune', 'Washover', 'Interior']
-    cmap3 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'saddlebrown', 'red', 'green'])
+    d_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Shallow', 'Dune', 'Unvegetated Interior', 'Interior']
+    cmap3 = colors.ListedColormap(['white', 'black', 'blue', 'tan', 'saddlebrown', 'red', 'green'])
     ax_3 = Fig.add_subplot(233)
     cax_3 = ax_3.matshow(dune_to[:, plot_xmin: plot_xmax], cmap=cmap3, vmin=0, vmax=len(d_to_ticks) - 1)
     tic = np.linspace(start=((len(d_to_ticks) - 1) / len(d_to_ticks)) / 2, stop=len(d_to_ticks) - 1 - ((len(d_to_ticks) - 1) / len(d_to_ticks)) / 2, num=len(d_to_ticks))
     mcbar = Fig.colorbar(cax_3, ticks=tic)
     mcbar.ax.set_yticklabels(d_to_ticks)
-    plt.title('From Beach-Shallow to...')
+    plt.title('From Beach-Steep to...')
 
     # Dune to..
     washover_to = np.zeros([longshore, crossshore])
@@ -306,8 +306,8 @@ def plot_most_likely_transition_maps(class_probabilities):
     washover_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 3)] = 5
     washover_to[np.logical_and(most_likely_ts == 5, prev_most_likely == 3)] = 6
 
-    w_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Steep', 'Beach-Shallow', 'Washover', 'Interior']
-    cmap4 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'tan', 'red', 'green'])
+    w_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Shallow', 'Beach-Steep', 'Unvegetated Interior', 'Interior']
+    cmap4 = colors.ListedColormap(['white', 'black', 'blue', 'tan', 'gold', 'red', 'green'])
     ax_4 = Fig.add_subplot(234)
     cax_4 = ax_4.matshow(washover_to[:, plot_xmin: plot_xmax], cmap=cmap4, vmin=0, vmax=len(w_to_ticks) - 1)
     tic = np.linspace(start=((len(w_to_ticks) - 1) / len(w_to_ticks)) / 2, stop=len(w_to_ticks) - 1 - ((len(w_to_ticks) - 1) / len(w_to_ticks)) / 2, num=len(w_to_ticks))
@@ -315,7 +315,7 @@ def plot_most_likely_transition_maps(class_probabilities):
     mcbar.ax.set_yticklabels(w_to_ticks)
     plt.title('From Dune to...')
 
-    # Washover to..
+    # Unvegetated Interior to..
     washover_to = np.zeros([longshore, crossshore])
     washover_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 4)] = 1
     washover_to[np.logical_and(most_likely_ts == 0, prev_most_likely == 4)] = 2
@@ -324,14 +324,14 @@ def plot_most_likely_transition_maps(class_probabilities):
     washover_to[np.logical_and(most_likely_ts == 3, prev_most_likely == 4)] = 5
     washover_to[np.logical_and(most_likely_ts == 5, prev_most_likely == 4)] = 6
 
-    w_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Steep', 'Beach-Shallow', 'Dune', 'Interior']
-    cmap4 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'tan', 'saddlebrown', 'green'])
+    w_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Shallow', 'Beach-Steep', 'Dune', 'Interior']
+    cmap4 = colors.ListedColormap(['white', 'black', 'blue', 'tan', 'gold', 'saddlebrown', 'green'])
     ax_4 = Fig.add_subplot(235)
     cax_4 = ax_4.matshow(washover_to[:, plot_xmin: plot_xmax], cmap=cmap4, vmin=0, vmax=len(w_to_ticks) - 1)
     tic = np.linspace(start=((len(w_to_ticks) - 1) / len(w_to_ticks)) / 2, stop=len(w_to_ticks) - 1 - ((len(w_to_ticks) - 1) / len(w_to_ticks)) / 2, num=len(w_to_ticks))
     mcbar = Fig.colorbar(cax_4, ticks=tic)
     mcbar.ax.set_yticklabels(w_to_ticks)
-    plt.title('From Washover to...')
+    plt.title('From Unvegetated Interior to...')
 
     # Interior to..
     interior_to = np.zeros([longshore, crossshore])
@@ -342,8 +342,8 @@ def plot_most_likely_transition_maps(class_probabilities):
     interior_to[np.logical_and(most_likely_ts == 3, prev_most_likely == 5)] = 5
     interior_to[np.logical_and(most_likely_ts == 4, prev_most_likely == 5)] = 6
 
-    i_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Steep', 'Beach-Shallow', 'Dune', 'Washover']
-    cmap5 = colors.ListedColormap(['white', 'black', 'blue', 'gold', 'tan', 'saddlebrown', 'red'])
+    i_to_ticks = ['', 'No Change', 'Subaqueous', 'Beach-Shallow', 'Beach-Steep', 'Dune', 'Unvegetated Interior']
+    cmap5 = colors.ListedColormap(['white', 'black', 'blue', 'tan', 'gold', 'saddlebrown', 'red'])
     ax_5 = Fig.add_subplot(236)
     cax_5 = ax_5.matshow(interior_to[:, plot_xmin: plot_xmax], cmap=cmap5, vmin=0, vmax=len(i_to_ticks) - 1)
     tic = np.linspace(start=((len(i_to_ticks) - 1) / len(i_to_ticks)) / 2, stop=len(i_to_ticks) - 1 - ((len(i_to_ticks) - 1) / len(i_to_ticks)) / 2, num=len(i_to_ticks))
@@ -613,11 +613,11 @@ def class_frequency_animation(class_probabilities, orientation='vertical'):
 # LOAD PROBABILISTIC SIM DATA
 
 # Specify filenames
-elev_class_probabilities_filename = ["ElevClassProbabilities_16Sep24_13000-21000.npy"]
+elev_class_probabilities_filename = ["ElevClassProbabilities_1Nov24_16000-24000_meeb1.npy"]
 
-state_class_probabilities_filename = ["HabitatStateClassProbabilities_16Sep24_13000-21000.npy"]
+state_class_probabilities_filename = ["HabitatStateClassProbabilities_1Nov24_16000-24000_meeb1.npy"]
 
-inundation_class_probabilities_filename = ["InundationClassProbabilities_16Sep24_13000-21000.npy"]
+inundation_class_probabilities_filename = ["InundationClassProbabilities_1Nov24_16000-24000_meeb1.npy"]
 
 # Load
 elev_class_probabilities = np.load("Output/SimData/" + elev_class_probabilities_filename[0])
@@ -643,8 +643,9 @@ elev_class_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5'
 elev_class_cmap = colors.ListedColormap(['#ca0020', '#f4a582', '#f7f7f7', '#92c5de', '#0571b0'])
 
 # Habitat State
-state_class_labels = ['Subaqueous', 'Beach-Steep', 'Beach-Shallow', 'Dune', 'Washover', 'Interior']
-state_class_cmap = colors.ListedColormap(['blue', 'gold', 'tan', 'saddlebrown', 'red', 'green'])
+state_class_labels = ['Subaqueous', 'Beach-Shallow', 'Beach-Steep', 'Dune', 'Unveg. Interior', 'Veg. Interior']
+state_class_colors = ['blue', 'tan', 'gold', 'saddlebrown', 'red', 'green']
+state_class_cmap = colors.ListedColormap(state_class_colors)
 
 # Class Probability
 cmap_class_prob = plt.get_cmap('cividis', 5)
@@ -655,12 +656,12 @@ cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 # __________________________________________________________________________________________________________________________________
 # SIM SPECIFICATIONS
 
-name = '13000-21000, 16Sep24'  # Name of simulation suite
+name = '13000-21000, 7Oct24'  # Name of simulation suite
 sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
 save_frequency = 1  # [yr] Time step for probability calculations
 cellsize = 2  # [m]
 plot_xmin = 0  # [m] Cross-shore min coordinate for plotting
-plot_xmax = plot_xmin + 600  # [m] Cross-shore max coordinate for plotting
+plot_xmax = plot_xmin + 1500  # [m] Cross-shore max coordinate for plotting
 
 plot = True
 animate = False
