@@ -1,8 +1,12 @@
 # *MEEB*
 Mesoscale Explicit Ecogeomorphic Barrier model v1.0
 
-Reeves, I. R. B., Ashton, A. D., Lentz, E. L., Sherwood, C. R., Passeri, D. L., & Zeigler., S. L. (in review). Projecting 
-management-relevant change of undeveloped coastal barriers with the Mesoscale Explicit Ecogeomorphic Barrier model (MEEB) v1.0. 
+## Recommended Citation
+
+Journal Article: *Reeves, I. R. B., Ashton, A. D., Lentz, E. L., Sherwood, C. R., Passeri, D. L., & Zeigler., S. L. (in review). Projecting 
+management-relevant change of undeveloped coastal barriers with the Mesoscale Explicit Ecogeomorphic Barrier model (MEEB) v1.0.*
+
+Software Package: *Reeves, I.R.B., 2024, Mesoscale Explicit Ecogeomorphic Barrier Model (MEEB) v1.0: U.S. Geological Survey software release.*
 
 ## About
 The Mesoscale Explicit Ecogeomorphic Barrier model (*MEEB*) resolves cross-shore and alongshore changes in topography and ecology 
