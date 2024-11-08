@@ -1017,13 +1017,13 @@ def find_crests(profile, MHW, threshold, crest_pct):
     if len(pks_idx) > 0:
         pks_idx = pks_idx[profile[pks_idx] > MHW]
 
+    peak_found = False
+
     # If there aren't any peaks, return NaN
     if len(pks_idx) == 0:
         idx = np.nan
 
     else:
-
-        peak_found = False
 
         # Loop through the peaks
         for idx in pks_idx:
@@ -2043,7 +2043,8 @@ def adjust_ocean_shoreline(
         MHW,
         shoreface_slope,
         RSLR,
-        storm_iterations_per_year
+        storm_iterations_per_year,
+        cellsize,
 ):
     """Adjust topography domain to according to amount of shoreline change.
 
@@ -2063,6 +2064,8 @@ def adjust_ocean_shoreline(
         [m/yr] Relative sea-level rise rate.
     storm_iterations_per_year : int
         Number of storm/shoreline change iterations in a model year.
+    cellsize : float
+        [m] Horizontal cell dimensions.
 
     Returns
     ----------
@@ -2087,10 +2090,10 @@ def adjust_ocean_shoreline(
                 # Adjust shoreline
                 topo[ls, target] = min(MHW - ((MHW - topo[ls, prev]) / 2), MHW - RSLR)  # [m NAVD88]  # Old beach cell elevations set halfway between first subaqeuous cell MHW or to RSLR below MHW, whichever's lowest
                 # Adjust shoreface
-                shoreface = np.arange(-target, 0) * shoreface_slope[ls] + topo[ls, target]  # New shoreface cells
+                shoreface = np.arange(-target, 0) * (shoreface_slope[ls] * cellsize) + topo[ls, target]  # New shoreface cells
                 topo[ls, :target] = shoreface  # Insert into domain
             else:  # Shoreline is outside model domain
-                shoreface = np.arange(-target, 0) * shoreface_slope[ls] + MHW  # New shoreface cells
+                shoreface = np.arange(-target, 0) * (shoreface_slope[ls] * cellsize) + MHW  # New shoreface cells
                 shoreface = shoreface[-topo.shape[1]:]  # Trim to size of model domain
                 topo[ls, :] = shoreface
         elif accretion[ls]:  # Prograde the shoreline
@@ -2098,7 +2101,7 @@ def adjust_ocean_shoreline(
                 # Adjust shoreline  TODO: Account for case where shoreline previously beyond domain progrades back into domain
                 topo[ls, target: prev] = np.mean(topo[ls, prev: prev + 5]) + RSLR  # [m NAVD88]  # New beach cell elevations set to average of previous 5 most-oceanward beach cells
                 # Adjust shoreface
-                shoreface = np.arange(-target, 0) * shoreface_slope[ls] + MHW  # New shoreface cells
+                shoreface = np.arange(-target, 0) * (shoreface_slope[ls] * cellsize) + MHW  # New shoreface cells
                 topo[ls, :target] = shoreface  # Insert into domain
             elif target < 0:
                 raise ValueError("Out-Of-Bounds: Ocean shoreline prograded beyond simulation domain boundary.")

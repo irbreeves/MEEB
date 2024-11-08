@@ -518,6 +518,7 @@ class MEEB:
                 shoreface_slope,
                 self._RSLR,
                 self._storm_iterations_per_year,
+                self._cellsize,
             )
 
             # Enforce angles of repose
