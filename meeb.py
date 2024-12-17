@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 1 November 2024
+Last update: 17 December 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -131,6 +131,7 @@ class MEEB:
             swash_erosive_timescale=1.48,  # Non-dimensional erosive timescale coefficient for beach/duneface sediment transport (Duran Vinent & Moore, 2015)
             beach_substeps=25,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
             shift_mean_storm_intensity=0,  # [%/yr] Linear yearly percent shift in mean storm TWL (as proxy for intensity) in stochastic storm model; use 0 for no shift
+            storm_twl_duration_correlation=0,  # Correlation factor (slope of linear regression) between observed/modeled storm total water levels and storm durations
     ):
         """MEEB: Mesoscale Explicit Ecogeomorphic Barrier model.
 
@@ -236,6 +237,7 @@ class MEEB:
         self._overwash_min_subaqueous_discharge = overwash_min_subaqueous_discharge
         self._overwash_substeps = overwash_substeps
         self._shift_mean_storm_intensity = shift_mean_storm_intensity
+        self._storm_twl_duration_correlation = storm_twl_duration_correlation
 
         # __________________________________________________________________________________________________________________________________
         # SET INITIAL CONDITIONS
@@ -423,8 +425,10 @@ class MEEB:
                 # # Account for change in mean sea-level on synthetic storm elevations by adding aggregate RSLR since simulation start, and any linear storm climate shift in intensity
                 # TWL_climate_shift = self._mean_stochastic_storm_TWL * ((self._shift_mean_storm_intensity / 100) * (it / self._iterations))  # This version shifts TWL of all storms equally
                 TWL_climate_shift = Rhigh * ((self._shift_mean_storm_intensity / 100) * (it / self._iterations))  # This version shifts TWL more for bigger storms
+                Dur_climate_shift = np.round(np.mean(TWL_climate_shift * self._storm_twl_duration_correlation))
                 Rhigh += (self._MHW - self._MHW_init) + TWL_climate_shift  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level, and shift intensity
                 Rlow += (self._MHW - self._MHW_init) + TWL_climate_shift  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level, and shift intensity
+                dur = int(dur + Dur_climate_shift)  # [hr] Modify duration from climate shift
 
             if storm:
 
