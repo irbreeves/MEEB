@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 1 November 2024
+Last update: 20 November 2024
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -844,6 +844,10 @@ def foredune_crest(topo, MHW, cellsize, buffer=25, window_XL=150, window_large=7
     # Step 5: Add back x-coordinate removed from original domain (to speed up function)
     crestline += x_s_min
 
+    # Step 6: Ensure crestline is landward of ocean shoreline
+    crestline[crestline <= 0] = 1
+    crestline[crestline <= x_s] = x_s[crestline <= x_s] + 1
+
     return crestline.astype(int), not_gap
 
 
@@ -958,15 +962,19 @@ def foredune_toe(topo, dune_crest_loc, MHW, not_gap, cellsize, window_small=11):
         crest_idx = dune_crest_loc[ls]
         shoreline_idx = shoreline_loc[ls]
 
-        # Make a reference copy of the profile with a straight line from the Shoreline to Crest
-        z_ref = z.copy()
-        z_ref[shoreline_idx:crest_idx] = np.linspace(start=z[shoreline_idx],
-                                                     stop=z[crest_idx],
-                                                     num=crest_idx - shoreline_idx)
+        if crest_idx > shoreline_idx:
 
-        # Subtract the reference from the original profile and idenitfy the maximum point
-        z_diff = z_ref - z
-        toe_idx = np.argmax(z_diff)
+            # Make a reference copy of the profile with a straight line from the Shoreline to Crest
+            z_ref = z.copy()
+            z_ref[shoreline_idx:crest_idx] = np.linspace(start=z[shoreline_idx],
+                                                         stop=z[crest_idx],
+                                                         num=crest_idx - shoreline_idx)
+
+            # Subtract the reference from the original profile and idenitfy the maximum point
+            z_diff = z_ref - z
+            toe_idx = np.argmax(z_diff)
+        else:
+            toe_idx = crest_idx
 
         # Store the toe location
         dune_toe_loc[ls] = toe_idx
@@ -1451,51 +1459,53 @@ def calc_beach_dune_change(topo,
             xStart = int(x_s[y])  # [m] Start loction
             xFinish = xD + 1
 
-            cont = True
             Qsize = xFinish - xStart
-            flux = np.zeros(Qsize)  # Array of sediment flux for this substep at cross-shore position y
 
-            wetMap[y, :xStart] = True  # All cells seaward of shoreline marked as inundated
+            if Qsize > 0:
+                cont = True
+                flux = np.zeros(Qsize)  # Array of sediment flux for this substep at cross-shore position y
 
-            # Loop through each cell in domain from ocean shoreline to back-barrier bay shoreline
-            for x in range(xStart, xFinish):
+                wetMap[y, :xStart] = True  # All cells seaward of shoreline marked as inundated
 
-                # Cell to operate on
-                zi = topo[y, x]
+                # Loop through each cell in domain from ocean shoreline to back-barrier bay shoreline
+                for x in range(xStart, xFinish):
 
-                # Definition of boundary conditions
-                if x == xStart:
-                    hprev = MHW
-                else:
-                    hprev = topo[y, x - 1]
+                    # Cell to operate on
+                    zi = topo[y, x]
 
-                if x == xFinish - 1:
-                    hnext = topo[y, xFinish]
-                else:
-                    hnext = topo[y, x + 1]
+                    # Definition of boundary conditions
+                    if x == xStart:
+                        hprev = MHW
+                    else:
+                        hprev = topo[y, x - 1]
 
-                if zi <= Rh < topo[y, x + 1]:
-                    hnext = Rh
-                    cont = False
+                    if x == xFinish - 1:
+                        hnext = topo[y, xFinish]
+                    else:
+                        hnext = topo[y, x + 1]
 
-                # Local topo gradient
-                Bl = 0.5 * (hnext - hprev) / dx
-                Rexcess = Rh - zi
+                    if zi <= Rh < topo[y, x + 1]:
+                        hnext = Rh
+                        cont = False
 
-                qs = (Beq - Bl) * Rexcess * Rexcess
+                    # Local topo gradient
+                    Bl = 0.5 * (hnext - hprev) / dx
+                    Rexcess = Rh - zi
 
-                # Store Sediment Flux
-                flux[x - xStart] = qs  # Update array of sediment flux for this substep at cross-shore position y
+                    qs = (Beq - Bl) * Rexcess * Rexcess
 
-                # Break if next cell is not inundated
-                if not cont:
-                    break
-                else:
-                    wetMap[y, x] = True  # Record cell as inundated
+                    # Store Sediment Flux
+                    flux[x - xStart] = qs  # Update array of sediment flux for this substep at cross-shore position y
 
-            divq = gradient(flux, dx)  # [m/s] Flux divergence
-            dzdt = divq * Q  # [m/substep] Change in elevation for this timestep
-            topo[y, xStart: xFinish] -= dzdt  # [m/substep] Update elevation for this substep with the flux multiplier
+                    # Break if next cell is not inundated
+                    if not cont:
+                        break
+                    else:
+                        wetMap[y, x] = True  # Record cell as inundated
+
+                divq = gradient(flux, dx)  # [m/s] Flux divergence
+                dzdt = divq * Q  # [m/substep] Change in elevation for this timestep
+                topo[y, xStart: xFinish] -= dzdt  # [m/substep] Update elevation for this substep with the flux multiplier
 
     # Determine topographic change for storm iteration
     topoChange = topo - topoPrestorm
