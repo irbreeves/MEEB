@@ -6,15 +6,14 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 17 December 2024
+Last update: 13 January 2025
 
 __________________________________________________________________________________________________________________________________"""
 
 import numpy as np
-import math
+from math import ceil, floor, sqrt, pi
 import matplotlib.pyplot as plt
-import scipy
-import copy
+from scipy.ndimage import gaussian_filter
 import gc
 from datetime import datetime, timedelta
 
@@ -116,20 +115,20 @@ class MEEB:
             # STORM OVERWASH AND BEACH-DUNE CHANGE
             storm_list_filename="SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy",
             storm_timeseries_filename="StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
-            Rin=249,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
-            Cs=0.0283,  # Constant for representing flow momentum for sediment transport in overwash
+            Rin=232,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
+            Cs=0.0235,  # Constant for representing flow momentum for sediment transport in overwash
             nn=0.5,  # Flow routing constant
             MaxUpSlope=1.5,  # Maximum slope water can flow uphill
             marine_flux_limit=1,  # [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
             overwash_min_discharge=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
-            Kow=0.0001684,  # Sediment transport coefficient for run-up overwash regime
-            mm=1.04,  # Inundation overwash constant
+            Kow=0.0003615,  # Sediment transport coefficient for run-up overwash regime
+            mm=1.05,  # Inundation overwash constant
             Cbb=0.7,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
             overwash_min_subaqueous_discharge=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
             overwash_substeps=25,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
-            beach_equilibrium_slope=0.022,  # Equilibrium slope of the beach
-            swash_erosive_timescale=1.48,  # Non-dimensional erosive timescale coefficient for beach/duneface sediment transport (Duran Vinent & Moore, 2015)
-            beach_substeps=25,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
+            beach_equilibrium_slope=0.021,  # Equilibrium slope of the beach
+            swash_erosive_timescale=1.51,  # Non-dimensional erosive timescale coefficient for beach/duneface sediment transport (Duran Vinent & Moore, 2015)
+            beach_substeps=1,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
             shift_mean_storm_intensity=0,  # [%/yr] Linear yearly percent shift in mean storm TWL (as proxy for intensity) in stochastic storm model; use 0 for no shift
             storm_twl_duration_correlation=0,  # Correlation factor (slope of linear regression) between observed/modeled storm total water levels and storm durations
     ):
@@ -244,11 +243,11 @@ class MEEB:
 
         # SEEDED RANDOM NUMBER GENERATOR
         if seeded_random_numbers:
-            self._RNG = np.random.default_rng(seed=13)  # Seeded random numbers for reproducibility (e.g., model development/testing)
-            self._RNG_storm = np.random.default_rng(seed=14)  # Separate seeded RNG for storms so that the storm sequence can always stay the same despite any parameterization changes
+            self._RNG = np.random.Generator(np.random.SFC64(seed=13))  # Seeded random numbers for reproducibility (e.g., model development/testing)
+            self._RNG_storm = np.random.Generator(np.random.SFC64(seed=14))   # Separate seeded RNG for storms so that the storm sequence can always stay the same despite any parameterization changes
         else:
-            self._RNG = np.random.default_rng()  # Non-seeded random numbers (e.g., model simulations)
-            self._RNG_storm = np.random.default_rng()
+            self._RNG = np.random.Generator(np.random.SFC64())  # Non-seeded random numbers (e.g., model simulations)
+            self._RNG_storm = np.random.Generator(np.random.SFC64())
 
         # TIME
         self._iterations_per_cycle = self._aeolian_iterations_per_year  # [iterations/year] Number of iterations in 1 model year
@@ -259,7 +258,7 @@ class MEEB:
         if hindcast:
             self._hindcast_timeseries_start_date = datetime.strptime(self._hindcast_timseries_start_date, '%Y%m%d').date()  # Convert to datetime
             self._simulation_start_iteration = (((self._simulation_start_date.year - self._hindcast_timeseries_start_date.year) * self._iterations_per_cycle) +
-                                                math.floor(self._simulation_start_date.timetuple().tm_yday / 365 * self._iterations_per_cycle))  # Iteration, realtive to timeseries start, from which to begin hindcast
+                                                floor(self._simulation_start_date.timetuple().tm_yday / 365 * self._iterations_per_cycle))  # Iteration, realtive to timeseries start, from which to begin hindcast
             if self._simulation_start_iteration % 2 != 0:
                 self._simulation_start_iteration -= 1  # Round simulation start iteration to even number
         else:
@@ -278,23 +277,23 @@ class MEEB:
             if np.logical_or(np.isnan(np.sum(init_elev_array)), np.logical_or(np.isnan(np.sum(init_spec1_array)), np.isnan(np.sum(init_spec2_array)))):
                 raise ValueError("Initial elevation and vegetation numpy arrays must be provided as input to MEEB object if init_by_file is False.")
             else:
-                self._topo = copy.deepcopy(init_elev_array)  # [m NAVD88] 2D array of initial topography
-                self._spec1 = copy.deepcopy(init_spec1_array)  # [0-1] 2D array of vegetation effectiveness for spec1
-                self._spec2 = copy.deepcopy(init_spec2_array)  # [0-1] 2D array of vegetation effectiveness for spec2
+                self._topo = init_elev_array.copy().astype(np.float32)  # [m NAVD88] 2D array of initial topography
+                self._spec1 = init_spec1_array.copy().astype(np.float32)  # [0-1] 2D array of vegetation effectiveness for spec1
+                self._spec2 = init_spec2_array.copy().astype(np.float32)  # [0-1] 2D array of vegetation effectiveness for spec2
         self._longshore, self._crossshore = self._topo.shape  # [cells] Cross-shore/alongshore size of domain
-        self._groundwater_elevation = np.zeros(self._topo.shape)  # [m NAVD88] Initialize
+        self._groundwater_elevation = np.zeros(self._topo.shape, dtype=np.float32)  # [m NAVD88] Initialize
 
         # SHOREFACE & SHORELINE
         if estimate_shoreface_parameters:  # Option to estimate shoreface parameter values from wave and sediment charactersitics; Follows Nienhuis & Lorenzo-Trueba (2019)
             w_s = (specific_gravity_submerged_sed * 9.81 * shoreface_grain_size ** 2) / ((18 * 1e-6) + np.sqrt(0.75 * specific_gravity_submerged_sed * 9.81 * (shoreface_grain_size ** 3)))  # [m/s] Settling velocity (Church & Ferguson, 2004)
             z0 = 2 * self._mean_wave_height / 0.78  # [m] Minimum depth of integration (simple approximation of breaking wave depth based on offshore wave height)
-            self._DShoreface = 0.018 * self._mean_wave_height * self._mean_wave_period * math.sqrt(9.81 / (specific_gravity_submerged_sed * shoreface_grain_size))  # [m] Shoreface depth
+            self._DShoreface = 0.018 * self._mean_wave_height * self._mean_wave_period * sqrt(9.81 / (specific_gravity_submerged_sed * shoreface_grain_size))  # [m] Shoreface depth
             self._s_sf_eq = (3 * w_s / 4 / np.sqrt(self._DShoreface * 9.81) * (5 + 3 * self._mean_wave_period ** 2 * 9.81 / 4 / (np.pi ** 2) / self._DShoreface))  # Equilibrium shoreface slope
-            self._k_sf = ((3600 * 24 * 365) * ((shoreface_transport_efficiency * shoreface_friction * 9.81 ** (11 / 4) * self._mean_wave_height ** 5 * self._mean_wave_period ** (5 / 2)) / (960 * specific_gravity_submerged_sed * math.pi ** (7 / 2) * w_s ** 2)) *
+            self._k_sf = ((3600 * 24 * 365) * ((shoreface_transport_efficiency * shoreface_friction * 9.81 ** (11 / 4) * self._mean_wave_height ** 5 * self._mean_wave_period ** (5 / 2)) / (960 * specific_gravity_submerged_sed * pi ** (7 / 2) * w_s ** 2)) *
                           (((1 / (11 / 4 * z0 ** (11 / 4))) - (1 / (11 / 4 * self._DShoreface ** (11 / 4)))) / (self._DShoreface - z0)))  # [m^3/m/yr] Shoreface response rate
             self._LShoreface = int(self._DShoreface / self._s_sf_eq)  # [m] Initialize length of shoreface such that initial shoreface slope equals equilibrium shoreface slope
         self._alongshore_section_length = int(self._alongshore_section_length / self._cellsize)  # [cells]
-        self._x_s = routine.init_ocean_shoreline(self._topo, self._MHW, self._alongshore_section_length)  # [m] Start locations of shoreline according to initial topography and MHW
+        self._x_s = routine.init_ocean_shoreline(self._topo, self._MHW, self._alongshore_section_length).astype(np.float32)  # [m] Start locations of shoreline according to initial topography and MHW
         self._x_t = self._x_s - self._LShoreface  # [m] Start locations of shoreface toe
 
         self._coast_diffusivity, self._di, self._dj, self._ny = routine.init_AST_environment(self._wave_asymmetry,
@@ -304,18 +303,19 @@ class MEEB:
                                                                                              self._DShoreface,
                                                                                              self._alongshore_section_length,
                                                                                              self._longshore)
+        self._coast_diffusivity = self._coast_diffusivity.astype(np.float32)
 
         # VEGETATION
         self._veg = self._spec1 + self._spec2  # Determine the initial cumulative vegetation effectiveness
         self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Cumulative vegetation effectiveness cannot be negative or larger than one
         self._veg[self._veg < 0] = 0
-        self._effective_veg = scipy.ndimage.gaussian_filter(self._veg, [self._effective_veg_sigma / self._cellsize, self._effective_veg_sigma / self._cellsize], mode='constant')  # Effective vegetation cover represents effect of nearby vegetation on local wind
-        self._growth_reduction_timeseries = np.linspace(0, self._VGR / 100, int(np.ceil(self._simulation_time_yr)))
+        self._effective_veg = gaussian_filter(self._veg, [self._effective_veg_sigma / self._cellsize, self._effective_veg_sigma / self._cellsize], mode='constant')  # Effective vegetation cover represents effect of nearby vegetation on local wind
+        self._growth_reduction_timeseries = np.float32(np.linspace(0, self._VGR / 100, int(np.ceil(self._simulation_time_yr))))
 
         # STORMS
         self._StormList = np.float32(np.load(inputloc + storm_list_filename))
         self._mean_stochastic_storm_TWL = np.mean(self._StormList[:, 2])  # np.mean(self._StormList[:, 2][self._StormList[:, 2] >= self._average_dune_toe_height])
-        self._storm_timeseries = np.load(inputloc + storm_timeseries_filename)
+        self._storm_timeseries = np.float32(np.load(inputloc + storm_timeseries_filename))
         self._pstorm = [0.333, 0.333, 0.167, 0.310, 0.381, 0.310, 0.310, 0.310, 0.286, 0, 0.119, 0.024, 0.048, 0.048, 0.048, 0.071, 0.333, 0.286, 0.214,
                         0.190, 0.190, 0.262, 0.214, 0.262, 0.238]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 NCB storm record (1.78 m NAVD88 Berm Elev.)
         # self._pstorm = [0.738, 0.667, 0.571, 0.786, 0.833, 0.643, 0.643, 0.762, 0.476, 0.167, 0.238, 0.095, 0.214, 0.167, 0.119, 0.119, 0.357, 0.476, 0.357,
@@ -325,19 +325,19 @@ class MEEB:
             raise ValueError("Simulation length is greater than hindcast timeSeries length.")
 
         # MODEL PARAMETERS
-        self._MHW_init = copy.deepcopy(self._MHW)
-        self._wind_direction = np.zeros([self._iterations], dtype=int)
+        self._MHW_init = self._MHW
+        self._wind_direction = np.zeros([self._iterations], dtype=np.int32)
         self._slabheight = round(self._slabheight, 2)  # Round slabheight to 2 decimals
         self._sedimentation_balance = np.zeros(self._topo.shape, dtype=np.float32)  # [m] Initialize map of the sedimentation balance: difference between erosion and deposition for 1 model year; (+) = net deposition, (-) = net erosion
         self._topographic_change = self._topo * 0  # [m] Map of the absolute value of topographic change over 1 model year (i.e., a measure of if the topography is changing or stable)
         self._x_s_TS = [self._x_s]  # Initialize storage array for shoreline position
         self._x_t_TS = [self._x_t]  # Initialize storage array for shoreface toe position
-        self._sp1_peak_at0 = copy.deepcopy(self._sp1_peak)  # Store initial peak growth of sp. 1
-        self._sp2_peak_at0 = copy.deepcopy(self._sp2_peak)  # Store initial peak growth of sp. 2
+        self._sp1_peak_at0 = self._sp1_peak  # Store initial peak growth of sp. 1
+        self._sp2_peak_at0 = self._sp2_peak  # Store initial peak growth of sp. 2
         self._vegcount = 0
-        self._shoreline_change_aggregate = np.zeros([self._longshore])
-        self._OWflux = np.zeros([self._longshore])  # [m^3]
-        self._StormRecord = np.zeros([5])  # Record of each storm that occurs in model: Year, iteration, Rhigh, Rlow, duration
+        self._shoreline_change_aggregate = np.zeros([self._longshore], dtype=np.float32)
+        self._OWflux = np.zeros([self._longshore], dtype=np.float32)  # [m^3]
+        self._StormRecord = np.zeros([5], dtype=np.float32)  # Record of each storm that occurs in model: Year, iteration, Rhigh, Rlow, duration
 
         # __________________________________________________________________________________________________________________________________
         # MODEL OUPUT CONFIGURATION
@@ -356,6 +356,9 @@ class MEEB:
         if init_by_file:
             del Init
             gc.collect()
+        else:
+            del init_elev_array, init_spec1_array, init_spec2_array
+            gc.collect()
 
     # __________________________________________________________________________________________________________________________________
     # MAIN ITERATION LOOP
@@ -363,7 +366,7 @@ class MEEB:
     def update(self, it):
         """Update MEEB by a single time step"""
 
-        year = math.ceil(it / self._iterations_per_cycle)
+        year = ceil(it / self._iterations_per_cycle)
 
         # Update sea level for this iteration
         self._MHW += self._RSLR / self._iterations_per_cycle  # [m NAVD88]
@@ -371,10 +374,10 @@ class MEEB:
         # --------------------------------------
         # AEOLIAN
         self._wind_direction[it] = self._RNG.choice(np.arange(1, 5), p=self._wind_rose).astype(int)  # Randomly select and record wind direction for this iteration
-        topo_iteration_start = copy.deepcopy(self._topo)
+        topo_copy_pre = self._topo.copy()
 
         # Get present groundwater elevations
-        self._groundwater_elevation = (scipy.ndimage.gaussian_filter(self._topo, sigma=12 / self._cellsize) - self._MHW) * self._groundwater_depth + self._MHW  # [m NAVD88] Groundwater elevation based on smoothed topographic height above SL
+        self._groundwater_elevation = (gaussian_filter(self._topo, sigma=12 / self._cellsize) - self._MHW) * self._groundwater_depth + self._MHW  # [m NAVD88] Groundwater elevation based on smoothed topographic height above SL
         self._groundwater_elevation[self._groundwater_elevation < self._MHW] = self._MHW  # [m NAVD88]
 
         # Find subaerial and shadow cells
@@ -403,8 +406,8 @@ class MEEB:
 
         # Apply changes, make calculations
         self._topo += aeolian_elevation_change * self._slabheight  # [m NAVD88] Changes applied to the topography; convert aeolian_elevation_change from slabs to meters
-        self._sedimentation_balance = self._sedimentation_balance + (self._topo - topo_iteration_start)  # [m] Update the sedimentation balance map
-        self._topographic_change = self._topographic_change + abs(self._topo - topo_iteration_start)  # [m]
+        self._sedimentation_balance = self._sedimentation_balance + (self._topo - topo_copy_pre)  # [m] Update the sedimentation balance map
+        self._topographic_change = self._topographic_change + abs(self._topo - topo_copy_pre)  # [m]
 
         # --------------------------------------
         # STORMS
@@ -433,7 +436,7 @@ class MEEB:
             if storm:
 
                 # Storm Processes: Beach/duneface change, overwash
-                self._StormRecord = np.vstack((self._StormRecord, [year, iteration_year, np.max(Rhigh), np.max(Rlow), dur]))
+                self._StormRecord = np.vstack((self._StormRecord, np.array([year, iteration_year, np.max(Rhigh), np.max(Rlow), dur], dtype=np.float32)))
                 self._topo, topo_change, self._OWflux, inundated, Qbe = routine.storm_processes(
                     topof=self._topo,
                     Rhigh=Rhigh,
@@ -462,8 +465,8 @@ class MEEB:
                 )
 
                 # Update vegetation from storm effects
-                inundated = scipy.ndimage.gaussian_filter(inundated.astype(float), 2 / self._cellsize, mode='reflect')
-                inundation_mortality = inundated >= self._RNG.random((self._longshore, self._crossshore))  # Stochastic mortality effect along edges of inundation
+                inundated = gaussian_filter(inundated.astype(np.float32), 2 / self._cellsize, mode='reflect')
+                inundation_mortality = inundated >= self._RNG.random((self._longshore, self._crossshore), dtype=np.float32)  # Stochastic mortality effect along edges of inundation
                 self._spec1[inundation_mortality] = 0  # Remove species where inundated
                 self._spec2[inundation_mortality] = 0  # Remove species where inundated
                 self._veg = self._spec1 + self._spec2  # Update
@@ -476,9 +479,9 @@ class MEEB:
                     self._topo = routine.replace_nans_infs(self._topo)
 
             else:
-                self._OWflux = np.zeros([self._longshore])  # [m^3] No overwash if no storm
-                topo_change = np.zeros(self._topo.shape)  # [m NAVD88]
-                Qbe = np.zeros([self._longshore])  # [m^3] No overwash if no storm
+                self._OWflux = np.zeros([self._longshore], dtype=np.float32)  # [m^3] No overwash if no storm
+                topo_change = np.zeros(self._topo.shape, dtype=np.float32)  # [m NAVD88]
+                Qbe = np.zeros([self._longshore], dtype=np.float32)  # [m^3] No overwash if no storm
 
             self._sedimentation_balance += topo_change  # [m]
             self._topographic_change += abs(topo_change)  # [m]
@@ -513,7 +516,7 @@ class MEEB:
             prev_shoreline = self._x_s_TS[-1]  # Shoreline positions from previous time step
 
             # Adjust topography domain to according to shoreline change
-            topo_pre_shoreline_change = self._topo.copy()
+            topo_copy_pre = self._topo.copy()
             self._topo = routine.adjust_ocean_shoreline(
                 self._topo,
                 self._x_s,
@@ -531,8 +534,8 @@ class MEEB:
             self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._cellsize, self._RNG)[0]  # [m NAVD88]
 
             # Update sedimentation balance after adjusting the shoreline and enforcing AOR
-            self._sedimentation_balance += self._topo - topo_pre_shoreline_change  # [m] Update the sedimentation balance map
-            self._topographic_change += abs(self._topo - topo_pre_shoreline_change)
+            self._sedimentation_balance += self._topo - topo_copy_pre  # [m] Update the sedimentation balance map
+            self._topographic_change += abs(self._topo - topo_copy_pre)
 
             # Store shoreline and shoreface toe locations
             self._x_s_TS = np.vstack((self._x_s_TS, self._x_s))  # Store
@@ -550,8 +553,8 @@ class MEEB:
             veg_multiplier = (1 + self._growth_reduction_timeseries[self._vegcount])  # For the long term reduction
             self._sp1_peak = self._sp1_peak_at0 * veg_multiplier
             self._sp2_peak = self._sp2_peak_at0 * veg_multiplier
-            spec1_prev = copy.deepcopy(self._spec1)
-            spec2_prev = copy.deepcopy(self._spec2)
+            spec1_prev = self._spec1.copy()
+            spec2_prev = self._spec2.copy()
             self._spec1 = routine.growthfunction1_sens(self._spec1, self._sedimentation_balance, self._sp1_a, self._sp1_b, self._sp1_c, self._sp1_d, self._sp1_e, self._sp1_peak)
             self._spec2 = routine.growthfunction2_sens(self._spec2, self._sedimentation_balance, self._sp2_a, self._sp2_b, self._sp2_c, self._sp2_d, self._sp2_e, self._sp2_peak)
 
@@ -594,19 +597,12 @@ class MEEB:
             self._spec1[self._topo <= Spec1_elev_min_mhw] = 0  # Remove species where below elevation minimum
             self._spec2[self._topo <= Spec2_elev_min_mhw] = 0  # Remove species where below elevation minimum
 
-            # Limit to geomorphological range
-            spec1_geom = copy.deepcopy(self._spec1)
-            spec1_geom[self._spec1 < 0] = 0
-            spec1_geom[self._spec1 > 1] = 1
-            spec2_geom = copy.deepcopy(self._spec2)
-            spec2_geom[self._spec2 < 0] = 0
-            spec2_geom[self._spec2 > 1] = 1
-            self._veg = spec1_geom + spec2_geom  # Update vegmap
+            self._veg = self._spec1 + self._spec2  # Update vegmap
             self._veg[self._veg > self._maxvegeff] = self._maxvegeff  # Limit to effective range
             self._veg[self._veg < 0] = 0
 
             # Determine effective vegetation cover by smoothing; represents effect of nearby vegetation on local wind
-            self._effective_veg = scipy.ndimage.gaussian_filter(self._veg, [self._effective_veg_sigma / self._cellsize, self._effective_veg_sigma / self._cellsize], mode='constant')
+            self._effective_veg = gaussian_filter(self._veg, [self._effective_veg_sigma / self._cellsize, self._effective_veg_sigma / self._cellsize], mode='constant')
 
             self._vegcount = self._vegcount + 1  # Update counter
 
