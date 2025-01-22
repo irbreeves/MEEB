@@ -1,8 +1,8 @@
 """
-Probabilistic framework for running MEEB simulations using MPI parallelism on super computers. Generates probabilistic projections
+Probabilistic framework for running MEEB simulations using MPI distributed memory parallelism on super computers. Generates probabilistic projections
 of future change.
 
-IRBR 16 January 2025
+IRBR 21 January 2025
 """
 
 import os
@@ -11,8 +11,8 @@ import numpy as np
 import time
 import gc
 import scipy
+from tqdm import tqdm
 from mpi4py import MPI
-
 
 sys.path.append(os.getcwd())
 
@@ -26,8 +26,6 @@ from meeb import MEEB
 
 def run_individual_sim(rslr, shift_mean_storm_intensity):
     """Runs uniqe individual MEEB simulation."""
-
-    start_time = time.time()  # Record time at start of simulation
 
     # Create an instance of the MEEB class
     meeb = MEEB(
@@ -133,9 +131,6 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
 
     del elevation_classification, inundation_classification, habitat_state_classification, meeb, topo_change_sim_TS
     gc.collect()
-
-    SimDuration = time.time() - start_time
-    print("   >> Elapsed Time: ", SimDuration)
 
     return classes
 
@@ -294,29 +289,46 @@ def run_parallel_sims(sims):
 
     comm = MPI.COMM_WORLD
     rank = comm.rank  # Number of local processor
-    size = comm.size  # Total number of processes   <<< Should be same number as
+    size = comm.size
+
+    total_sims = sims.shape[1]
+    local_sim_num = int(total_sims / size)  # Number of sims to complete on this processor
+    local_results = []
+
+    if rank == 0:
+        print()
+        print(name)
+        print("Total simulations:", total_sims)
+        print("Processors assigned:", size)
+        print()
+
+    if total_sims % size != 0:
+        raise ValueError('The number of simulations must be divisible by number of processors.')
 
     # Local parameter values
-    rslr = ExSE_A_bins[sims[0, rank]]
-    shift_mean_storm_intensity = ExSE_B_bins[sims[1, rank]]
+    for i in tqdm(range(local_sim_num), desc=f"Processor {rank}", position=rank):
 
-    # Run simulation with local parameter values
-    local_result = run_individual_sim(rslr, shift_mean_storm_intensity)
+        rslr = ExSE_A_bins[sims[0, rank * local_sim_num + i]]
+        shift_mean_storm_intensity = ExSE_B_bins[sims[1, rank * local_sim_num + i]]
+
+        # Run simulation with local parameter values
+        local_results.append(run_individual_sim(rslr, shift_mean_storm_intensity))
 
     # Gather results from all processes
-    all_results = comm.gather(local_result, root=0)
+    all_results = comm.gather(local_results, root=0)
 
-    return all_results
+    if rank == 0:
+        return all_results
 
 
-def intrinsic_probability():
+def probabilistic_simulation():
     """Runs a batch of duplicate simulations, for a range of scenarios for external forcing, to find the classification probability from stochastic processes intrinsic to the system, particularly storm
     occurence & intensity, aeolian dynamics, and vegetation dynamics."""
 
     # Create array of simulations of all parameter combinations and duplicates
     sims = np.zeros([2, len(ExSE_A_bins) * len(ExSE_B_bins)])
     col = 0
-    for a in reversed(range(len(ExSE_A_bins))):  # Run likely longest simulations (i.e., largest RSLR and storm intensity) first
+    for a in range(len(ExSE_A_bins)):
         for b in reversed(range(len(ExSE_B_bins))):
             sims[0, col] = a
             sims[1, col] = b
@@ -326,71 +338,92 @@ def intrinsic_probability():
     sims = sims.astype(int)
     num_sims = np.arange(sims.shape[1])
 
+    # ----------------------------------------------
+    # INTRINSIC PROBABILITY
+    """Runs a batch of duplicate simulations, for a range of scenarios for external forcing, to find the classification probability from stochastic processes intrinsic to the system, particularly storm
+    occurence & intensity, aeolian dynamics, and vegetation dynamics."""
+    # ----------------------------------------------
+
     # Run through simulations in parallel using MPI parallelism
     class_duplicates = run_parallel_sims(sims)
 
-    print()
-    print(" >>> class_duplicates length:", len(class_duplicates))
-    print(" >>> class_duplicates shape:", class_duplicates.shape())
-    print()
+    if class_duplicates is not None:  # Gathered results from master rank
 
-    # Unpack resulting data
-    elev_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_B_bins), elev_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
-    habitat_state_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_B_bins), habitat_state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
-    inundation_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_B_bins), num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
+        class_duplicates = [item for t in class_duplicates for item in t]
 
-    for ts in range(num_saves):
-        for b in range(elev_num_classes):
+        # Unpack resulting data
+        elev_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_B_bins), elev_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
+        habitat_state_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_B_bins), habitat_state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
+        inundation_intrinsic_prob = np.zeros([len(ExSE_A_bins), len(ExSE_B_bins), num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
+
+        for ts in range(num_saves):
+            for b in range(elev_num_classes):
+                for n in range(len(num_sims)):
+                    exse_a = sims[0, n]
+                    exse_b = sims[1, n]
+                    elev_intrinsic_prob[exse_a, exse_b, b, ts, :, :] += class_duplicates[n][0][b, ts, :, :]
+            for b in range(habitat_state_num_classes):
+                for n in range(len(num_sims)):
+                    exse_a = sims[0, n]
+                    exse_b = sims[1, n]
+                    habitat_state_intrinsic_prob[exse_a, exse_b, b, ts, :, :] += class_duplicates[n][1][b, ts, :, :]
             for n in range(len(num_sims)):
                 exse_a = sims[0, n]
                 exse_b = sims[1, n]
-                elev_intrinsic_prob[exse_a, exse_b, b, ts, :, :] += class_duplicates[n][0][b, ts, :, :]
-        for b in range(habitat_state_num_classes):
-            for n in range(len(num_sims)):
-                exse_a = sims[0, n]
-                exse_b = sims[1, n]
-                habitat_state_intrinsic_prob[exse_a, exse_b, b, ts, :, :] += class_duplicates[n][1][b, ts, :, :]
-        for n in range(len(num_sims)):
-            exse_a = sims[0, n]
-            exse_b = sims[1, n]
-            inundation_intrinsic_prob[exse_a, exse_b, ts, :, :] += class_duplicates[n][2][ts, :, :]
+                inundation_intrinsic_prob[exse_a, exse_b, ts, :, :] += class_duplicates[n][2][ts, :, :]
 
-    del class_duplicates
-    gc.collect()
+        del class_duplicates
+        gc.collect()
 
-    # Find average of duplicates
-    elev_intrinsic_prob /= duplicates
-    habitat_state_intrinsic_prob /= duplicates
-    inundation_intrinsic_prob /= duplicates
+        # Find average of duplicates
+        elev_intrinsic_prob /= duplicates
+        habitat_state_intrinsic_prob /= duplicates
+        inundation_intrinsic_prob /= duplicates
 
-    return elev_intrinsic_prob, inundation_intrinsic_prob, habitat_state_intrinsic_prob
+        # ----------------------------------------------
+        # JOINT PROBABILITY
+        """Finds the joint external-intrinsic probabilistic classification. Runs a range of probabilistic scenarios to find the classification probability from
+        stochastic processes external to the system (e.g., RSLR, atmospheric temperature) and and duplicates of each scenario to find the classification probability
+        from stochastic processes intrinsic to the system (i.e., the inherent randomness of natural phenomena)."""
+        # ----------------------------------------------
 
+        # Create storage array for joint probability
+        elev_joint_prob = np.zeros([elev_num_classes, num_saves, longshore, crossshore], dtype=np.float32)
+        habitat_state_joint_prob = np.zeros([habitat_state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)
+        inundation_joint_prob = np.zeros([num_saves, longshore, crossshore], dtype=np.float32)
 
-def joint_probability():
-    """Finds the joint external-intrinsic probabilistic classification. Runs a range of probabilistic scenarios to find the classification probability from
-    stochastic processes external to the system (e.g., RSLR, atmospheric temperature) and and duplicates of each scenario to find the classification probability
-    from stochastic processes intrinsic to the system (i.e., the inherent randomness of natural phenomena).
-    """
+        # Apply external probability to get joint probability
+        for a in range(len(ExSE_A_bins)):
+            for b in range(len(ExSE_B_bins)):
+                elev_external_prob = elev_intrinsic_prob[a, b, :, :, :, :] * ExSE_A_prob[a] * ExSE_B_prob[b]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
+                habitat_state_external_prob = habitat_state_intrinsic_prob[a, b, :, :, :, :] * ExSE_A_prob[a] * ExSE_B_prob[b]
+                inundation_external_prob = inundation_intrinsic_prob[a, b, :, :, :] * ExSE_A_prob[a] * ExSE_B_prob[b]
+                elev_joint_prob += elev_external_prob
+                habitat_state_joint_prob += habitat_state_external_prob
+                inundation_joint_prob += inundation_external_prob
 
-    # Find intrinsic probability (run all simulations, in parallel)
-    elev_intrinsic_prob, inundation_intrinsic_prob, habitat_state_intrinsic_prob = intrinsic_probability()
+        # Print Elapsed Time of Probabilistic Simulation
+        SimDuration_total = time.time() - start_time_total
+        print()
+        print("Total Elapsed Time: ", SimDuration_total, "sec")
+        print()
 
-    # Create storage array for joint probability
-    elev_joint_prob = np.zeros([elev_num_classes, num_saves, longshore, crossshore], dtype=np.float32)
-    habitat_state_joint_prob = np.zeros([habitat_state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)
-    inundation_joint_prob = np.zeros([num_saves, longshore, crossshore], dtype=np.float32)
-
-    # Apply external probability to get joint probability
-    for a in range(len(ExSE_A_bins)):
-        for b in range(len(ExSE_B_bins)):
-            elev_external_prob = elev_intrinsic_prob[a, b, :, :, :, :] * ExSE_A_prob[a] * ExSE_B_prob[b]  # To add more external drivers: add nested for loop and multiply here, e.g. * temp_prob[t]
-            habitat_state_external_prob = habitat_state_intrinsic_prob[a, b, :, :, :, :] * ExSE_A_prob[a] * ExSE_B_prob[b]
-            inundation_external_prob = inundation_intrinsic_prob[a, b, :, :, :] * ExSE_A_prob[a] * ExSE_B_prob[b]
-            elev_joint_prob += elev_external_prob
-            habitat_state_joint_prob += habitat_state_external_prob
-            inundation_joint_prob += inundation_external_prob
-
-    return elev_joint_prob, inundation_joint_prob, habitat_state_joint_prob
+        # ----------------------------------------------
+        # SAVE DATA
+        # ----------------------------------------------
+        if save_data:
+            # Elevation
+            elev_name = "ElevClassProbabilities_" + savename
+            elev_outloc = "Output/SimData/" + elev_name
+            np.save(elev_outloc, elev_joint_prob)
+            # State
+            state_name = "HabitatStateClassProbabilities_" + savename
+            state_outloc = "Output/SimData/" + state_name
+            np.save(state_outloc, habitat_state_joint_prob)
+            # Inundation
+            inun_name = "InundationClassProbabilities_" + savename
+            inun_outloc = "Output/SimData/" + inun_name
+            np.save(inun_outloc, inundation_joint_prob)
 
 
 # __________________________________________________________________________________________________________________________________
@@ -401,8 +434,8 @@ if __name__ == '__main__':
     # EXTERNAL STOCHASTIC ELEMENTS (ExSE)
 
     # RSLR
-    ExSE_A_bins = [0.0096]  # [0.0068, 0.0096, 0.0124]  # [m/yr] Bins of future RSLR rates up to 2050
-    ExSE_A_prob = [1]  # [0.26, 0.55, 0.19]  # Probability of future RSLR bins (must sum to 1.0)
+    ExSE_A_bins = [0.0068, 0.0096, 0.0124]  # [m/yr] Bins of future RSLR rates up to 2050
+    ExSE_A_prob = [0.26, 0.55, 0.19]  # Probability of future RSLR bins (must sum to 1.0)
 
     ExSE_B_bins = [4.199]  # [0.167, 4.199, 8.231]  # [%/yr] Bins of yearly percent shift in mean storm intensity up to 2050
     ExSE_B_prob = [1]  # [0.297, 0.525, 0.178]  # Probability of future storm intensity bins (must sum to 1.0)
@@ -424,21 +457,21 @@ if __name__ == '__main__':
     start = "Init_NCB-2200-34200_2018_USACE_PostFlorence_2m.npy"
     startdate = '20181015'
 
-    sim_duration = 3  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
+    sim_duration = 20  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
     save_frequency = 1  # [yr] Time step for probability calculations
 
     # Define Horizontal and Vertical References of Domain
     ymin = 21000  # [m] Alongshore coordinate
-    ymax = 21250  # [m] Alongshore coordinate
+    ymax = 21400  # [m] Alongshore coordinate
     xmin = 700  # [m] Cross-shore coordinate
     xmax = 1500  # [m] Cross-shore coordinate
     MHW_init = 0.39  # [m NAVD88] Initial mean high water
     cellsize = 2  # [m]
 
-    name = '16Jan25, 21000-21250, 2018-2021, n=4, MPI Test'  # Name of simulation suite
+    name = '21Jan25, 21000-21400, 2018-2038, MPI Test'  # Name of simulation suite
 
     save_data = False  # [bool]
-    savename = '16Jan25_MPI-test'
+    savename = '21Jan25_MPI-Test'
 
     # _____________________
     # INITIAL CONDITIONS
@@ -467,34 +500,7 @@ if __name__ == '__main__':
     # __________________________________________________________________________________________________________________________________
     # RUN MODEL
 
-    print()
-    print(name)
-    print()
-
-    # start_time = time.time()  # Record time at start of simulation
+    start_time_total = time.time()  # Record time at start of simulation
 
     # Determine classification probabilities cross space and time for joint intrinsic-external stochastic elements
-    elev_class_probabilities, inundation_class_probabilities, habitat_state_class_probabilities = joint_probability()
-
-    # # Print elapsed time of simulation
-    # print()
-    # SimDuration = time.time() - start_time
-    # print()
-    # print("Elapsed Time: ", SimDuration, "sec")
-
-    # __________________________________________________________________________________________________________________________________
-    # SAVE DATA
-
-    if save_data:
-        # Elevation
-        elev_name = "ElevClassProbabilities_" + savename
-        elev_outloc = "Output/SimData/" + elev_name
-        np.save(elev_outloc, elev_class_probabilities)
-        # State
-        state_name = "HabitatStateClassProbabilities_" + savename
-        state_outloc = "Output/SimData/" + state_name
-        np.save(state_outloc, habitat_state_class_probabilities)
-        # Inundation
-        inun_name = "InundationClassProbabilities_" + savename
-        inun_outloc = "Output/SimData/" + inun_name
-        np.save(inun_outloc, inundation_class_probabilities)
+    probabilistic_simulation()
