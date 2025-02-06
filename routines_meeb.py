@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 13 January 2025
+Last update: 5 February 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -766,7 +766,41 @@ def backbarrier_shoreline(topof, MHW):
         Cross-shore location of the back-barrier shoreline for each row alongshore.
     """
 
-    BBshoreline = topof.shape[1] - np.argmax(np.fliplr(topof) >= MHW, axis=1) - 1
+    # BBshoreline = topof.shape[1] - np.argmax(np.fliplr(topof) >= MHW, axis=1) - 1
+
+    water = topof < MHW
+    BBshoreline = np.zeros(topof.shape[0], dtype=np.int32)
+
+    # Finds the first continous section of N subaqeuous cells landward of the ocean shoreline, and takes the first cell of that section as the back-barrier shoreline
+    N = 25  # [cells] Threshold number of cells for subaqueous section; assumes any subaqeuous cells < N is interior pond
+    for ls in range(topof.shape[0]):
+        x_s = np.argwhere(water[ls, :] < 1)[0][0]
+        bb_water = np.argwhere(water[ls, x_s:] > 0)
+        x_bb = topof.shape[1] - 1
+        if len(bb_water) > 0:
+            for q in range(len(bb_water)):
+                x_bb_temp = bb_water[q][0] + x_s - 1
+
+                if x_bb_temp + N <= topof.shape[1]:
+                    if np.all(water[ls, x_bb_temp: x_bb_temp + N] > 0):
+                        x_bb = x_bb_temp
+                        break
+                else:
+                    if np.all(water[ls, x_bb_temp: topof.shape[1]] > 0):
+                        x_bb = x_bb_temp
+                        break
+
+        BBshoreline[ls] = np.int32(x_bb)
+
+    # # Simple version: Takes first subaqueous cell landward of ocean shoreline as back-barrier shoreline
+    # for ls in range(topof.shape[0]):
+    #     x_s = np.argwhere(water[ls, :] < 1)[0][0]
+    #     if x_s + 10 < topof.shape[1]:
+    #         bb_water = np.argwhere(water[ls, x_s + 10:] > 0)
+    #     else:
+    #         bb_water = np.argwhere(water[ls, x_s:] > 0)
+    #     x_bb = min(bb_water[0][0] + x_s - 1 if len(bb_water) > 0 else topof.shape[1] - 1, topof.shape[1])
+    #     BBshoreline[ls] = x_bb
 
     return BBshoreline
 
@@ -843,12 +877,12 @@ def foredune_crest(topo, MHW, cellsize, buffer=25, window_XL=150, window_large=7
     # Step 4: Narrow smoothing of peak-buffer line
     crestline = np.round(savgol_filter(crestline, window_small, 1)).astype(int)
 
-    # Step 5: Add back x-coordinate removed from original domain (to speed up function)
-    crestline += x_s_min
-
-    # Step 6: Ensure crestline is landward of ocean shoreline
+    # Step 5: Ensure crestline is landward of ocean shoreline
     crestline[crestline <= 0] = 1
-    crestline[crestline <= x_s] = x_s[crestline <= x_s] + 1
+    crestline[crestline <= x_s + (8 / cellsize)] = x_s[crestline <= x_s + (8 / cellsize)] + (8 / cellsize)  # Dune crestline has to be at least 8 m landward of ocean shoreline
+
+    # Step 6: Add back x-coordinate removed from original domain (to speed up function)
+    crestline += x_s_min
 
     return crestline.astype(int), not_gap
 
@@ -863,10 +897,22 @@ def find_max_elev(topo_avg, x_s, x_s_min, x_b, cellsize, threshold_width=300):
     crestline = np.zeros(topo_avg.shape[0])
     for ls in range(topo_avg.shape[0]):
         if barrier_width[ls] < threshold_width / cellsize:
-            xmax = int(max(x_s[ls] + 100, x_b[ls]))  # If barrier narrower than threshold, search in first fraction of barrier, with fraction increasing to 1 (whole barrier) at 100 m width)
-            crestline[ls] = np.argmax(topo_avg[ls, x_s[ls]: xmax])
+            xmax = int(max(x_s[ls] + 100, x_b[ls]))  # If barrier narrower than threshold, search in first 100 m (or up to back-barrier shoreline)
+            if topo_avg[ls, x_s[ls]: xmax].size > 0:
+                crestline[ls] = np.argmax(topo_avg[ls, x_s[ls]: xmax])
+            else:
+                if ls > 0:
+                    crestline[ls] = crestline[ls - 1]
+                else:
+                    crestline[ls] = int(min(x_s[ls] + 20 / cellsize, topo_avg.shape[1]))
         else:
-            crestline[ls] = np.argmax(topo_avg[ls, x_s[ls]: x_s[ls] + int(barrier_width[ls] * 0.3)])  # If barrier wider than threshold, search only in first third of barrier
+            if topo_avg[ls, x_s[ls]: x_s[ls] + int(barrier_width[ls] / 3)].size > 0:
+                crestline[ls] = np.argmax(topo_avg[ls, x_s[ls]: x_s[ls] + int(barrier_width[ls] / 3)])  # If barrier wider than threshold, search only in first third of barrier
+            else:
+                if ls > 0:
+                    crestline[ls] = crestline[ls - 1]
+                else:
+                    crestline[ls] = int(min(x_s[ls] + 20 / cellsize, topo_avg.shape[1]))
     crestline += x_s
 
     return crestline
@@ -881,6 +927,7 @@ def find_crest_buffer(topo, line_init, crestline, buffer, MHW):
 
     not_gap = np.ones(line_init.shape, dtype=np.float32)  # Array indicating which cells in crestline returned an index for an actual peak (i.e., not gap, [1]) and which cells for which no peak was found (i.e., gap, [0])
 
+    last_peak_idx = 0
     for r in range(len(topo)):
         if line_init[r] > 0:
             mini = max(0, line_init[r] - buffer)
@@ -894,6 +941,11 @@ def find_crest_buffer(topo, line_init, crestline, buffer, MHW):
                     crestline[r] = int(mini + loc)
             else:
                 crestline[r] = int(mini + loc)
+                if r - last_peak_idx > 1:  # Linear interpolation between bookending peaks across peakless sections
+                    offset = crestline[r] - crestline[last_peak_idx]
+                    newline = np.round((np.arange(r - last_peak_idx) * offset / (r - last_peak_idx)) + crestline[last_peak_idx])
+                    crestline[last_peak_idx: r] = newline.astype(np.int32)
+                last_peak_idx = r
         else:
             crestline[r] = int(np.argmax(topo[r, :]))
 
@@ -2179,15 +2231,13 @@ def replace_nans_infs(arr):
 
 
 @njit(cache=True)
-def calculate_beach_slope(topof, x_s, dune_crest_loc, average_dune_toe_height, MHW, cellsize):
+def calculate_beach_slope(topof, dune_crest_loc, average_dune_toe_height, MHW, cellsize):
     """Finds the beach slope for each cell alongshore. Slope is calculated using the average dune toe height.
 
     Parameters
     ----------
     topof : ndarray
         [m] Elevation grid.
-    x_s : ndarray
-        [m] Cross-shore position of the ocean shoreline for each cell alongshore.
     dune_crest_loc : ndarray
         [m] Cross-shore position of the foredune crest for each cell alongshore.
     average_dune_toe_height : float
@@ -2202,14 +2252,20 @@ def calculate_beach_slope(topof, x_s, dune_crest_loc, average_dune_toe_height, M
     beach_slopes
         Slope of the beach for each cell alongshore.
     """
+
+    x_s = ocean_shoreline(topof, MHW)
     beach_slopes = np.zeros(topof.shape[0], dtype=np.float32)  # Initialize
-    toe_locs = np.zeros(topof.shape[0], dtype=np.float32)  # Initialize
 
     # Find local active beach slope
     for ls in range(topof.shape[0]):
         toe_loc = dune_crest_loc[ls] - np.argmax(np.flip(topof[ls, :dune_crest_loc[ls]]) <= MHW + average_dune_toe_height)
-        toe_locs[ls] = toe_loc
-        beach_slopes[ls] = topof[ls, toe_loc] / ((toe_loc - x_s[ls]) * cellsize)
+        slope = topof[ls, toe_loc] / ((toe_loc - x_s[ls]) * cellsize)
+        if np.logical_or(np.isnan(slope), np.isinf(slope)):
+            if ls > 0:
+                slope = beach_slopes[ls - 1]
+            else:
+                slope = 0.03
+        beach_slopes[ls] = slope
 
     return beach_slopes
 

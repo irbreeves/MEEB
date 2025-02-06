@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 13 January 2025
+Last update: 2 February 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -129,7 +129,8 @@ class MEEB:
             beach_equilibrium_slope=0.021,  # Equilibrium slope of the beach
             swash_erosive_timescale=1.51,  # Non-dimensional erosive timescale coefficient for beach/duneface sediment transport (Duran Vinent & Moore, 2015)
             beach_substeps=1,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
-            shift_mean_storm_intensity=0,  # [%/yr] Linear yearly percent shift in mean storm TWL (as proxy for intensity) in stochastic storm model; use 0 for no shift
+            shift_mean_storm_intensity_end=0,  # [%/yr] Linear yearly percent shift in mean storm TWL (as proxy for intensity) in stochastic storm model; use 0 for no shift
+            shift_mean_storm_intensity_start=0,  # [%] Percent change in storm intensity at start of simulation
             storm_twl_duration_correlation=0,  # Correlation factor (slope of linear regression) between observed/modeled storm total water levels and storm durations
     ):
         """MEEB: Mesoscale Explicit Ecogeomorphic Barrier model.
@@ -235,7 +236,8 @@ class MEEB:
         self._Cbb = Cbb
         self._overwash_min_subaqueous_discharge = overwash_min_subaqueous_discharge
         self._overwash_substeps = overwash_substeps
-        self._shift_mean_storm_intensity = shift_mean_storm_intensity
+        self._shift_mean_storm_intensity_end = shift_mean_storm_intensity_end / 100
+        self._shift_mean_storm_intensity_start = shift_mean_storm_intensity_start / 100
         self._storm_twl_duration_correlation = storm_twl_duration_correlation
 
         # __________________________________________________________________________________________________________________________________
@@ -295,7 +297,6 @@ class MEEB:
         self._alongshore_section_length = int(self._alongshore_section_length / self._cellsize)  # [cells]
         self._x_s = routine.init_ocean_shoreline(self._topo, self._MHW, self._alongshore_section_length).astype(np.float32)  # [m] Start locations of shoreline according to initial topography and MHW
         self._x_t = self._x_s - self._LShoreface  # [m] Start locations of shoreface toe
-
         self._coast_diffusivity, self._di, self._dj, self._ny = routine.init_AST_environment(self._wave_asymmetry,
                                                                                              self._wave_high_angle_fraction,
                                                                                              self._mean_wave_height,
@@ -332,6 +333,7 @@ class MEEB:
         self._topographic_change = self._topo * 0  # [m] Map of the absolute value of topographic change over 1 model year (i.e., a measure of if the topography is changing or stable)
         self._x_s_TS = [self._x_s]  # Initialize storage array for shoreline position
         self._x_t_TS = [self._x_t]  # Initialize storage array for shoreface toe position
+        self._x_bb_TS = [routine.backbarrier_shoreline(self._topo, self._MHW)]  # Initialize storage array for back-barrier shoreline position
         self._sp1_peak_at0 = self._sp1_peak  # Store initial peak growth of sp. 1
         self._sp2_peak_at0 = self._sp2_peak  # Store initial peak growth of sp. 2
         self._vegcount = 0
@@ -415,19 +417,18 @@ class MEEB:
         if it % self._storm_update_frequency == 0:
             iteration_year = np.floor(it % self._iterations_per_cycle / 2).astype(int)  # Iteration of the year (e.g., if there's 50 iterations per year, this represents the week of the year)
 
-            # Beach slopes
-            foredune_crest_loc, not_gap = routine.foredune_crest(self._topo, self._MHW, self._cellsize)
-            beach_slopes = routine.calculate_beach_slope(self._topo, self._x_s, foredune_crest_loc, self._average_dune_toe_height, self._MHW, self._cellsize)
-
             # Generate Storms Stats
             if self._hindcast:  # Empirical storm time series
                 storm, Rhigh, Rlow, dur = routine.get_storm_timeseries(self._storm_timeseries, it, self._longshore, self._MHW, self._simulation_start_iteration)  # [m NAVD88]
             else:  # Stochastic storm model
+                # Calculate current beach slopes
+                foredune_crest_loc, not_gap = routine.foredune_crest(self._topo, self._MHW, self._cellsize)
+                beach_slopes = routine.calculate_beach_slope(self._topo, foredune_crest_loc, self._average_dune_toe_height, self._MHW, self._cellsize)
+
                 storm, Rhigh, Rlow, dur = routine.stochastic_storm(self._pstorm, iteration_year, self._StormList, beach_slopes, self._longshore, self._MHW, self._RNG_storm)  # [m NAVD88]
 
                 # # Account for change in mean sea-level on synthetic storm elevations by adding aggregate RSLR since simulation start, and any linear storm climate shift in intensity
-                # TWL_climate_shift = self._mean_stochastic_storm_TWL * ((self._shift_mean_storm_intensity / 100) * (it / self._iterations))  # This version shifts TWL of all storms equally
-                TWL_climate_shift = Rhigh * ((self._shift_mean_storm_intensity / 100) * (it / self._iterations))  # This version shifts TWL more for bigger storms
+                TWL_climate_shift = Rhigh * (self._shift_mean_storm_intensity_start + ((self._shift_mean_storm_intensity_end - self._shift_mean_storm_intensity_start) * (it / self._iterations)))  # This version shifts TWL more for bigger storms
                 Dur_climate_shift = np.round(np.mean(TWL_climate_shift * self._storm_twl_duration_correlation))
                 Rhigh += (self._MHW - self._MHW_init) + TWL_climate_shift  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level, and shift intensity
                 Rlow += (self._MHW - self._MHW_init) + TWL_climate_shift  # [m NAVD88] Add change in sea level to storm water levels, which were in elevation relative to initial sea level, and shift intensity
@@ -540,6 +541,7 @@ class MEEB:
             # Store shoreline and shoreface toe locations
             self._x_s_TS = np.vstack((self._x_s_TS, self._x_s))  # Store
             self._x_t_TS = np.vstack((self._x_t_TS, self._x_t))  # Store
+            self._x_bb_TS = np.vstack((self._x_bb_TS, routine.backbarrier_shoreline(self._topo, self._MHW)))  # Store
 
             # Maintain equilibrium back-barrier depth
             self._topo = routine.maintain_equilibrium_backbarrier_depth(self._topo, self._eq_backbarrier_depth, self._MHW)
@@ -711,6 +713,10 @@ class MEEB:
     @property
     def x_s_TS(self):
         return self._x_s_TS
+
+    @property
+    def x_bb_TS(self):
+        return self._x_bb_TS
 
     @property
     def storm_iterations_per_year(self):
