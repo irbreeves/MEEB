@@ -2,7 +2,7 @@
 Probabilistic framework for running MEEB simulations using MPI distributed memory parallelism on super computers. Generates probabilistic projections
 of future change.
 
-IRBR 21 January 2025
+IRBR 12 February 2025
 """
 
 import os
@@ -37,7 +37,8 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         crossshore_domain_boundary_max=xmax,
         cellsize=cellsize,
         RSLR=rslr,
-        shift_mean_storm_intensity=shift_mean_storm_intensity,
+        shift_mean_storm_intensity_start=shift_mean_storm_intensity[0],
+        shift_mean_storm_intensity_end=shift_mean_storm_intensity[1],
         MHW=MHW_init,
         init_filename=start,
         hindcast=False,
@@ -437,7 +438,7 @@ if __name__ == '__main__':
     ExSE_A_bins = [0.0068, 0.0096, 0.0124]  # [m/yr] Bins of future RSLR rates up to 2050
     ExSE_A_prob = [0.26, 0.55, 0.19]  # Probability of future RSLR bins (must sum to 1.0)
 
-    ExSE_B_bins = [4.199]  # [0.167, 4.199, 8.231]  # [%/yr] Bins of yearly percent shift in mean storm intensity up to 2050
+    ExSE_B_bins = [(1.485, 4.199)]  # [(0.059, 0.167), (1.485, 4.199), (2.910, 8.231)]  # [%] Bins of percent shift in mean storm intensity at simulation start ([0]) and end ([1])
     ExSE_B_prob = [1]  # [0.297, 0.525, 0.178]  # Probability of future storm intensity bins (must sum to 1.0)
 
     # _____________________
@@ -468,10 +469,10 @@ if __name__ == '__main__':
     MHW_init = 0.39  # [m NAVD88] Initial mean high water
     cellsize = 2  # [m]
 
-    name = '21Jan25, 21000-21400, 2018-2038, MPI Test'  # Name of simulation suite
+    name = '21Jan25, 21000-21400, 2018-2038, MPI Test 1'  # Name of simulation suite
 
-    save_data = False  # [bool]
-    savename = '21Jan25_MPI-Test'
+    save_data = True  # [bool]
+    savename = '21Jan25_MPI-Test-1'
 
     # _____________________
     # INITIAL CONDITIONS

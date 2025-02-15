@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 1 November 2024
+IRBR 29 January 2025
 """
 
 import os
@@ -38,7 +38,8 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         crossshore_domain_boundary_max=xmax,
         cellsize=cellsize,
         RSLR=rslr,
-        shift_mean_storm_intensity=shift_mean_storm_intensity,
+        shift_mean_storm_intensity_start=shift_mean_storm_intensity[0],
+        shift_mean_storm_intensity_end=shift_mean_storm_intensity[1],
         MHW=MHW_init,
         init_filename=start,
         hindcast=False,
@@ -66,16 +67,16 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         wind_rose=(0.91, 0.04, 0.01, 0.04),  # (right, down, left, up)
         groundwater_depth=0.4,
         # --- Storms --- #
-        Rin=229,
-        Cs=0.0197,
+        Rin=232,
+        Cs=0.0235,
         MaxUpSlope=1.5,
         marine_flux_limit=1,
-        Kow=0.0005080,
-        mm=1.03,
+        Kow=0.0003615,
+        mm=1.05,
         overwash_substeps=25,
-        beach_equilibrium_slope=0.019,
-        swash_erosive_timescale=1.29,
-        beach_substeps=25,
+        beach_equilibrium_slope=0.021,
+        swash_erosive_timescale=1.51,
+        beach_substeps=1,
         flow_reduction_max_spec1=0.02,
         flow_reduction_max_spec2=0.05,
         # --- Shoreline --- #
@@ -427,10 +428,10 @@ def intrinsic_probability():
     occurence & intensity, aeolian dynamics, and vegetation dynamics."""
 
     # Create array of simulations of all parameter combinations and duplicates
-    sims = np.zeros([2, len(ExSE_A_bins) * len(ExSE_B_bins)])
+    sims = np.zeros([2, len(ExSE_A_bins) * len(ExSE_B_bins)], dtype=np.float32)
     col = 0
-    for a in range(len(ExSE_A_bins)):
-        for b in range(len(ExSE_B_bins)):
+    for a in reversed(range(len(ExSE_A_bins))):  # Run likely longest simulations (i.e., largest RSLR and storm intensity) first
+        for b in reversed(range(len(ExSE_B_bins))):
             sims[0, col] = a
             sims[1, col] = b
             col += 1
@@ -665,23 +666,24 @@ def plot_class_frequency(class_probabilities, it, class_label, orientation='vert
     plt.tight_layout()
 
 
-def plot_class_area_change_over_time(class_probabilities, class_labels):
+def plot_class_area_change_over_time(class_probabilities, class_labels, start_step=1):
 
     num_classes = class_probabilities.shape[0]
+    most_likely_class = np.argmax(class_probabilities[:, :, :, :], axis=0)
 
     plt.figure()
-    xx = np.arange(0, num_saves) * save_frequency
+    xx = np.arange(start_step, num_saves) * save_frequency
 
-    for n in range(num_classes):
-        class_change_TS = np.zeros([num_saves])  # Initialize
-        class_0 = np.sum(class_probabilities[n, 0, :, plot_xmin: plot_xmax])
-        for ts in range(1, num_saves):
-            class_change_TS[ts] = (np.sum(class_probabilities[n, ts, :, plot_xmin: plot_xmax]) - class_0)
+    for c in range(num_classes):
+        class_change_TS = np.zeros([num_saves - start_step])  # Initialize
+        class_0 = np.sum(most_likely_class[start_step, :, plot_xmin: plot_xmax] == c)
+        for ts in range(start_step, num_saves):
+            class_change_TS[ts - start_step] = (np.sum(most_likely_class[ts, :, plot_xmin: plot_xmax] == c) - class_0) * cellsize ** 2 / 1e6  # [km2]
 
-        plt.plot(xx, class_change_TS, c=habitat_state_class_colors[n])
+        plt.plot(xx, class_change_TS, c=habitat_state_class_colors[c])
 
     plt.legend(class_labels)
-    plt.ylabel('Change in Area')
+    plt.ylabel('Change in Area [km2]')
     plt.xlabel('Forecast Year')
 
 
@@ -1117,7 +1119,7 @@ startdate = '20181015'
 ExSE_A_bins = [0.0068, 0.0096, 0.0124]  # [m/yr] Bins of future RSLR rates up to 2050
 ExSE_A_prob = [0.26, 0.55, 0.19]  # Probability of future RSLR bins (must sum to 1.0)
 
-ExSE_B_bins = [0.167, 4.199, 8.231]  # [%/yr] Bins of yearly percent shift in mean storm intensity up to 2050
+ExSE_B_bins = [(0.059, 0.167), (1.485, 4.199), (2.910, 8.231)]  # [%] Bins of percent shift in mean storm intensity at simulation start, in tuples (start, end)
 ExSE_B_prob = [0.297, 0.525, 0.178]  # Probability of future storm intensity bins (must sum to 1.0)
 
 # _____________________
@@ -1148,30 +1150,30 @@ cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 # INITIAL PARAMETERS
 
 sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
-save_frequency = 1  # [yr] Time step for probability calculations
+save_frequency = 2  # [yr] Time step for probability calculations
 
-duplicates = 24  # To account for intrinsic stochasticity (e.g., storms, aeolian)
+duplicates = 16  # To account for intrinsic stochasticity (e.g., storms, aeolian)
 
 # Number of cores to use in the parallelization
 core_num = int(os.environ['SLURM_CPUS_PER_TASK'])  # --> Use this if running on HPC
-# core_num = 108  # --> Use this if running on local machine
+# core_num = 72  # --> Use this if running on local machine
 
 # Define Horizontal and Vertical References of Domain
-ymin = 16000  # [m] Alongshore coordinate
-ymax = 24000  # [m] Alongshore coordinate
-xmin = 0  # [m] Cross-shore coordinate
-xmax = 1500  # [m] Cross-shore coordinate
+ymin = 0  # [m] Alongshore coordinate
+ymax = 9500  # [m] Alongshore coordinate
+xmin = 450  # [m] Cross-shore coordinate
+xmax = 1250  # [m] Cross-shore coordinate
 plot_xmin = 0  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 plot_xmax = 1500  # [m] Cross-shore coordinate (for plotting), relative to trimmed domain
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 cellsize = 2  # [m]
 
-name = '1Nov24, 16000-24000, 2018-2050, n=24'  # Name of simulation suite
+name = '4Feb25, 0-9500, 2018-2050, meeb42'  # Name of simulation suite
 
 plot = False  # [bool]
 animate = False  # [bool]
 save_data = True  # [bool]
-savename = '1Nov24_16000-24000_meeb1'
+savename = '4Feb25_0-9500_meeb42'
 
 # _____________________
 # INITIAL CONDITIONS
@@ -1186,9 +1188,9 @@ plot_xmax = int(plot_xmax / cellsize)  # Cross-shore plotting
 
 # Load Initial Domains
 Init = np.load("Input/" + start)
-topo_start = Init[0, ymin: ymax, xmin: xmax]
-spec1_start = Init[1, ymin: ymax, xmin: xmax]
-spec2_start = Init[2, ymin: ymax, xmin: xmax]
+topo_start = Init[0, ymin: ymax, xmin: xmax].copy()
+spec1_start = Init[1, ymin: ymax, xmin: xmax].copy()
+spec2_start = Init[2, ymin: ymax, xmin: xmax].copy()
 longshore, crossshore = topo_start.shape
 
 elev_num_classes = len(elev_class_edges) - 1
