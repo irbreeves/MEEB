@@ -1,7 +1,7 @@
 """
 Script for plotting output from datafiles of probabilistic MEEB simulation.
 
-IRBR 1 November 2024
+IRBR 12 February 2025
 """
 
 import numpy as np
@@ -175,32 +175,204 @@ def plot_class_frequency(class_probabilities, it, class_label, orientation='vert
     plt.tight_layout()
 
 
-def plot_class_area_change_over_time(class_probabilities, class_labels):
+def plot_most_likely_ocean_shoreline(class_probabilities, start_step):
+
+    shorelines = np.zeros([num_saves, int(class_probabilities.shape[2] * cellsize)])
+    Fig = plt.figure()
+    plt.tight_layout()
+
+    # Shorelines over time
+    ax_1 = Fig.add_subplot(211)
+    plt.ylabel('Meters Cross-Shore')
+
+    color = iter(plt.cm.viridis(np.linspace(0, 1, num_saves)))
+
+    for it in range(start_step, num_saves):
+        most_likely_state_it = np.argmax(class_probabilities[:, it, :, plot_xmin: plot_xmax], axis=0)  # Bin of most probable outcome at t=it
+        shoreline_it = np.argmax(most_likely_state_it > 0, axis=1) * cellsize  # Find relative ocean shoreline positions and convert y-axis to meters
+        shoreline_it = np.repeat(shoreline_it, cellsize)  # Convert x-axis to meters
+        shorelines[it, :] = shoreline_it
+        if it == start_step:
+            ax_1.plot(shoreline_it, c=next(color), label='Start')
+        if it == num_saves - 1:
+            ax_1.plot(shoreline_it, c=next(color), label='End')
+        else:
+            ax_1.plot(shoreline_it, c=next(color), label='_')
+    plt.legend()
+
+    # Short and long-term shoreline change
+    ax_2 = Fig.add_subplot(212)
+    plt.xlabel('Meters Alongshore')
+    plt.ylabel('Shoreline Change Rate [m/yr]')
+    dur = shorelines[start_step:, :].shape[0] * save_frequency  # [yr]
+    long_term_shoreline_change_rate = (shorelines[-1, :] - shorelines[start_step, :]) / dur
+    short_term_shoreline_change_rate = (shorelines[start_step + int(10 / save_frequency), :] - shorelines[start_step, :]) / dur  # First decade
+    ax_2.plot(np.arange(shorelines.shape[1]), np.zeros([shorelines.shape[1]]), 'k--', alpha=0.3, label='_Zero Line')
+    ax_2.plot(short_term_shoreline_change_rate, 'cornflowerblue', label='Short-term Shoreline Change (First Decade)')
+    ax_2.plot(long_term_shoreline_change_rate, 'darkred', label='Long-term Shoreline Change (Full Simulation Duration)')
+    plt.legend()
+
+
+def plot_overwash_intensity_over_time(inun_class_probabilities, sta_class_probabilities, dy):
+    """"""
+
+    dy = int(dy / cellsize)
+    n_dy = int(longshore / dy)
+    ow_count = np.zeros([num_saves, n_dy])
+
+    for it in range(num_saves):
+        ow_domain = inun_class_probabilities[it, :, :]
+
+        state_num = np.argmax(sta_class_probabilities[:, it, :, :], axis=0)  # Bin of most probable outcome
+        interior = np.logical_or(state_num == 4, state_num == 5)
+        ow_domain[~interior] = 0
+        ow_domain = np.rot90(ow_domain, k=1)
+
+        for nn in range(n_dy):
+            ow_count[it, nn] = np.sum(ow_domain[:, nn * dy: nn * dy + dy])
+
+    total_overwash_time = np.sum(ow_count.copy(), axis=1)
+    total_overwash_alongshore = np.sum(ow_count.copy(), axis=0)
+    ow_count = np.repeat(ow_count, int(n_dy / 4 / num_saves), axis=0)
+
+    cmap_ow_intensity = plt.get_cmap('binary', int(np.max(ow_count)))
+    fig, ax = plt.subplots()
+    im_ratio = ow_count.shape[0] / ow_count.shape[1]
+    cax = ax.matshow(ow_count, cmap=cmap_ow_intensity)
+
+    t_loc = np.arange(0, num_saves, 2) * int(n_dy / 4 / num_saves) + int(n_dy / 4 / num_saves / 2)
+    t_lab = np.arange(0, num_saves, 2) * save_frequency
+    plt.yticks(t_loc, t_lab)
+
+    fig.colorbar(cax, fraction=0.046 * im_ratio, label='Overwash Intensity')
+    plt.xlabel('Meters Alongshore')
+    plt.ylabel('Forecast Year')
+    plt.tight_layout()
+
+    # Total overwash through time (whole domain)
+    plt.figure()
+    xx = np.arange(0, num_saves) * save_frequency
+    plt.plot(xx, total_overwash_time)
+    plt.xlabel('Forecast Year')
+    plt.ylabel('Overwash Intensity (Whole Domain)')
+
+    # Cumulative overwash alongshore
+    plt.figure()
+    plt.plot(total_overwash_alongshore)
+    plt.xlabel('Alongshore')
+    plt.ylabel('Overwash Intensity')
+
+
+def plot_class_area_change_over_time(class_probabilities, class_labels, start_step=1):
+
+    num_classes = class_probabilities.shape[0]
+    most_likely_class = np.argmax(class_probabilities[:, :, :, :], axis=0)
+
+    plt.figure()
+    xx = np.arange(start_step, num_saves) * save_frequency
+
+    for c in range(num_classes):
+        class_change_TS = np.zeros([num_saves - start_step])  # Initialize
+        class_0 = np.sum(most_likely_class[start_step, :, plot_xmin: plot_xmax] == c)
+        for ts in range(start_step, num_saves):
+            class_change_TS[ts - start_step] = (np.sum(most_likely_class[ts, :, plot_xmin: plot_xmax] == c) - class_0) * cellsize ** 2 / 1e6  # [km2]
+
+        plt.plot(xx, class_change_TS, c=state_class_colors[c])
+
+    plt.legend(class_labels)
+    plt.ylabel('Change in Area [km2]')
+    plt.xlabel('Forecast Year')
+
+
+def plot_probabilistic_class_area_change_over_time(class_probabilities, class_labels, norm='total', start_step=1):
 
     num_classes = class_probabilities.shape[0]
 
     plt.figure()
-    xx = np.arange(0, num_saves) * save_frequency
+    xx = np.arange(start_step, num_saves) * save_frequency
+    y_lab = 'Change in Area [km2]'
 
-    for n in range(num_classes):
-        class_change_TS = np.zeros([num_saves])  # Initialize
-        class_0 = np.sum(class_probabilities[n, 0, :, plot_xmin: plot_xmax])
-        for ts in range(1, num_saves):
-            class_change_TS[ts] = (np.sum(class_probabilities[n, ts, :, plot_xmin: plot_xmax]) - class_0)
+    for c in range(num_classes):
+        class_change_TS = np.zeros([num_saves - start_step])  # Initialize
+        class_0 = np.sum(class_probabilities[c, start_step, :, :])
 
-        plt.plot(xx, class_change_TS, c=state_class_colors[n])
+        if norm == 'total':
+            for ts in range(start_step, num_saves):
+                class_change_TS[ts - start_step] = (np.sum(class_probabilities[c, ts, :, :]) - class_0) * cellsize ** 2 / 1e6  # [km2]
+        elif norm == 'class':
+            for ts in range(start_step, num_saves):
+                class_change_TS[ts - start_step] = (np.sum(class_probabilities[c, ts, :, :]) - class_0) / class_0
+                y_lab = 'Area Proportional to Initial'
+        else:
+            raise ValueError("Invalid entry in norm field: must use 'class' or 'total'")
+        plt.plot(xx, class_change_TS, c=state_class_colors[c])
 
     plt.legend(class_labels)
-    plt.ylabel('Change in Area')
+    plt.ylabel(y_lab)
     plt.xlabel('Forecast Year')
 
 
-def plot_transitions_area_matrix(class_probabilities, class_labels, norm='class'):
+def plot_class_area_loss_gain_over_time(class_probabilities, class_labels, start_step=1):
+
+    num_classes = class_probabilities.shape[0]
+    most_likely_class = np.argmax(class_probabilities[:, :, :, :], axis=0)
+
+    plt.figure()
+    xx = np.arange(start_step, num_saves) * save_frequency
+
+    for c in range(num_classes):
+        class_loss_TS = np.zeros([num_saves - start_step])  # Initialize
+        class_gain_TS = np.zeros([num_saves - start_step])
+        for ts in range(max(1, start_step), num_saves):
+            class_loss_TS[ts - start_step] = np.sum(np.logical_and(most_likely_class[ts, :, plot_xmin: plot_xmax] != c,  most_likely_class[ts - 1, :, plot_xmin: plot_xmax] == c)) * cellsize ** 2 / 1e6  # [km2]
+            class_gain_TS[ts - start_step] = np.sum(np.logical_and(most_likely_class[ts, :, plot_xmin: plot_xmax] == c, most_likely_class[ts - 1, :, plot_xmin: plot_xmax] != c)) * cellsize ** 2 / 1e6  # [km2]
+
+        plt.plot(xx, class_loss_TS, c=state_class_colors[c], linestyle='--', label=(class_labels[c] + ' Loss'))
+        plt.plot(xx, class_gain_TS, c=state_class_colors[c], label=(class_labels[c] + ' Gain'))
+
+    plt.legend()
+    plt.ylabel('Area Gain/Loss [km2]')
+    plt.xlabel('Forecast Year')
+
+
+def plot_weighted_area_bar_over_time(class_probabilities, class_cmap, class_labels, start_step=0):
+
+    num_classes = class_probabilities.shape[0]
+    norm_class_area = np.ones([num_saves - start_step, 1000]) * num_classes
+    total_area = class_probabilities.shape[2] * class_probabilities.shape[3]
+
+    for ts in range(start_step, num_saves):
+        cumulative_count = 0
+        for c in range(num_classes):
+            class_area = np.sum(class_probabilities[c, ts, :, :]) / total_area * 1000
+
+            norm_class_area[ts - start_step, int(cumulative_count): int(cumulative_count + class_area)] = c
+            cumulative_count += class_area
+
+    # Plot
+    norm_class_area = np.repeat(norm_class_area, int(1000 / num_saves), axis=0)
+    fig, ax = plt.subplots()
+    im_ratio = norm_class_area.shape[0] / norm_class_area.shape[1]
+    cax = ax.matshow(norm_class_area, cmap=class_cmap)
+
+    t_loc = np.arange(0, num_saves - start_step, 2) * int(1000 / num_saves) + int(1000 / num_saves / 2)
+    t_lab = np.arange(start_step, num_saves, 2) * save_frequency
+    plt.xticks([0, 200, 400, 600, 800, 1000], ['0', '20', '40', '60', '80', '100'])
+    plt.yticks(t_loc, t_lab)
+    plt.ylabel('Forecast Year')
+    plt.xlabel('Percent of Total Area')
+
+    tic = np.linspace(start=((num_classes - 1) / num_classes) / 2, stop=num_classes - 1 - ((num_classes - 1) / num_classes) / 2, num=num_classes)
+    mcbar = fig.colorbar(cax, fraction=0.046 * im_ratio, ticks=tic)
+    mcbar.ax.set_yticklabels(class_labels)
+
+
+def plot_transitions_area_matrix(class_probabilities, class_labels, norm='class', start_step=0):
 
     num_classes = class_probabilities.shape[0]
     transition_matrix = np.zeros([num_classes, num_classes])
 
-    start_class = np.argmax(class_probabilities[:, 0, :, :], axis=0)  # Bin of most probable outcome
+    start_class = np.argmax(class_probabilities[:, start_step, :, :], axis=0)  # Bin of most probable outcome
     end_class = np.argmax(class_probabilities[:, -1, :, :], axis=0)  # Bin of most probable outcome
 
     if norm == 'total':  # Area normalized by total change in area of all classes
@@ -224,8 +396,10 @@ def plot_transitions_area_matrix(class_probabilities, class_labels, norm='class'
     else:
         raise ValueError("Invalid entry in norm field: must use 'class' or 'total'")
 
+    mat_max = np.max(transition_matrix)  # 0.5946182772744985#
+
     fig, ax = plt.subplots()
-    cax = ax.matshow(transition_matrix, cmap='binary')
+    cax = ax.matshow(transition_matrix, cmap='binary', vmin=0, vmax=mat_max)
     tic_locs = np.arange(len(class_labels))
     plt.xticks(tic_locs, class_labels)
     plt.yticks(tic_locs, class_labels)
@@ -378,6 +552,150 @@ def plot_class_maps(class_probabilities, class_labels, it):
     bFig.suptitle(name, fontsize=13)
     # cbar = Fig.colorbar(bcax5)
     plt.tight_layout()
+
+
+def plot_transitions_time_matrix(class_probabilities, start_step=1):
+
+    num_classes = class_probabilities.shape[0]
+    transition_domain = np.zeros([num_saves, class_probabilities.shape[2], class_probabilities.shape[3]])
+
+    for ts in range(1, num_saves):
+
+        start_class = np.argmax(class_probabilities[:, ts - 1, :, :], axis=0)  # Bin of most probable outcome
+        end_class = np.argmax(class_probabilities[:, ts, :, :], axis=0)  # Bin of most probable outcome
+
+        tnum = 1
+        for class_from in range(num_classes):
+            for class_to in range(num_classes):
+                if class_to != class_from:
+                    temp = np.logical_and(start_class == class_from, end_class == class_to)
+                    transition_domain[ts, :, :][temp] = tnum
+                tnum += 1
+
+    transitions = transition_domain > 0
+    sum_all_transitions_over_time = np.sum(np.sum(transitions, axis=2), axis=1)
+
+    plt.figure()
+    xx = np.arange(start_step, num_saves) * save_frequency
+    transition_nums = [9, 14, 25, 26, 27, 30, 35]
+    transition_labels = ['Shallow Beach to Steep Beach',
+                         'Steep Beach to Shallow Beach',
+                         'Unvegetated Interior to Subaqueous',
+                         'Unvegetated Interior to Shallow Beach',
+                         'Unvegetated Interior to Steep Beach',
+                         'Unvegetated Interior to Vegetated Interior',
+                         'Vegetated Interior to Unvegetated Interior']
+
+    for tnum in transition_nums:
+        transitions_count = np.zeros(xx.shape)
+        for ts in range(start_step, num_saves):
+            transitions_count[ts - start_step] = np.sum(transition_domain[ts, :, :] == tnum) * cellsize ** 2 / 1e6  # [km2]
+
+        plt.plot(xx, transitions_count)
+
+    plt.xlabel('Forecast Year')
+    plt.ylabel('Transitioned Area [km2]')
+    plt.legend(transition_labels)
+
+
+def plot_transitions_intensity_alongshore(class_probabilities, dy=100, start_step=1, end_step=-1):
+
+    dy = int(dy / cellsize)
+    n_dy = int(longshore / dy)
+
+    num_classes = class_probabilities.shape[0]
+    transition_domain = np.zeros([class_probabilities.shape[2], class_probabilities.shape[3]])
+
+    start_class = np.argmax(class_probabilities[:, start_step, :, :], axis=0)  # Bin of most probable outcome
+    end_class = np.argmax(class_probabilities[:, end_step, :, :], axis=0)  # Bin of most probable outcome
+
+    tnum = 1
+    for class_from in range(num_classes):
+        for class_to in range(num_classes):
+            if class_to != class_from:
+                temp = np.logical_and(start_class == class_from, end_class == class_to)
+                transition_domain[:, :][temp] = tnum
+            tnum += 1
+
+    # transition_nums = [13, 14, 21, 25, 26, 30, 31, 34, 35]
+    transition_nums = [25, 35, 21, 13, 14]
+
+    temp = np.zeros([n_dy, len(transition_nums)])
+    for num in range(len(transition_nums)):
+        summy = np.sum(transition_domain == transition_nums[num], axis=1) * cellsize ** 2 / (dy * cellsize)  # [m2/m]  #/ 1e6  # [km2]
+
+        for nn in range(n_dy):
+            temp[nn, num] = np.sum(summy[nn * dy: nn * dy + dy])
+
+    temp2 = np.fliplr(np.rot90(np.repeat(temp, int(n_dy / len(transition_nums)), axis=1), 3))
+    plt.matshow(temp2, cmap='Purples')
+    plt.colorbar()
+    plt.xlabel('Alongshore Extent')
+
+
+def plot_transition_succession(class_probabilities, transition_num, class_labels, transition_num_label='', start_step=1):
+
+    num_classes = class_probabilities.shape[0]
+    transition_domain = np.zeros([num_saves, class_probabilities.shape[2], class_probabilities.shape[3]])
+
+    for ts in range(start_step, num_saves):
+
+        start_class = np.argmax(class_probabilities[:, ts - 1, :, :], axis=0)  # Bin of most probable outcome
+        end_class = np.argmax(class_probabilities[:, ts, :, :], axis=0)  # Bin of most probable outcome
+
+        tnum = 1  # No transition cells will be 0
+        for class_from in range(num_classes):
+            for class_to in range(num_classes):
+                if class_to != class_from:
+                    temp = np.logical_and(start_class == class_from, end_class == class_to)
+                    transition_domain[ts, :, :][temp] = tnum
+                tnum += 1
+
+    N = transition_num  # Number of the transition in question
+    transition_num_label = transition_num_label + ' (' + str(N) + ')'  # 'Shallow Beach to Dune'
+
+    transition_counts = np.zeros([36])
+    for ts in reversed(range(start_step, num_saves)):
+
+        N_transitions = (transition_domain[ts, :, :] == N)  # Find cells where transition N took place at this time step
+
+        for t in reversed(range(start_step, ts)):  # Find preceding transition to transition N, if any
+            prev = transition_domain[t, :, :]
+            transition_nums, counts = np.unique(prev[N_transitions], return_counts=True)
+            N_transitions[np.logical_and(N_transitions > 0, prev > 0)] = False
+
+            for x in range(1, len(transition_nums)):
+                transition_counts[int(transition_nums[x])] += counts[x]
+
+    # Normalize
+    transition_counts /= np.sum(transition_counts)
+
+    # Plot count of transitions preceding transition N
+    transition_counts_matrix = np.roll(transition_counts, -1).reshape(num_classes, num_classes)
+    fig, ax = plt.subplots()
+    cax = ax.matshow(transition_counts_matrix, cmap='binary', vmin=0, vmax=np.max(transition_counts))
+    tic_locs = np.arange(len(class_labels))
+    plt.xticks(tic_locs, class_labels)
+    plt.yticks(tic_locs, class_labels)
+    plt.ylabel('From Class')
+    plt.xlabel('To Class')
+    plt.title(transition_num_label)
+    fig.colorbar(cax, label='Proportion of Preceding State Transitions')
+
+
+def plot_transect_history_most_likely_class(class_probabilities, lsx, start_step=1):
+
+    class_history = np.zeros([num_saves - start_step, crossshore])
+
+    for cs in range(crossshore):
+        for ts in range(num_saves - start_step):
+
+            class_history[ts, cs] = np.argmax(class_probabilities[:, ts + start_step, lsx, cs], axis=0)  # Bin of most probable outcome
+
+    plt.matshow(np.repeat(class_history, 10, axis=0), cmap=state_class_cmap, vmin=0, vmax=5)
+    plt.title('Most Likely State Class at X=' + str(lsx * cellsize) + ' (m alongshore)')
+    plt.ylabel('Forecast Year')
+    plt.xlabel('Cross-Shore Extent')
 
 
 def ani_frame_bins(timestep, class_probabilities, cax1, cax2, cax3, cax4, cax5, cax6, text1, text2, text3, text4, text5, text6):
@@ -613,11 +931,12 @@ def class_frequency_animation(class_probabilities, orientation='vertical'):
 # LOAD PROBABILISTIC SIM DATA
 
 # Specify filenames
-elev_class_probabilities_filename = ["ElevClassProbabilities_1Nov24_16000-24000_meeb1.npy"]
+elev_class_probabilities_filename = ["ElevClassProbabilities_4Feb25_9500-17000_meeb39.npy"]
 
-state_class_probabilities_filename = ["HabitatStateClassProbabilities_1Nov24_16000-24000_meeb1.npy"]
+state_class_probabilities_filename = ["HabitatStateClassProbabilities_4Feb25_9500-17000_meeb39.npy"]
 
-inundation_class_probabilities_filename = ["InundationClassProbabilities_1Nov24_16000-24000_meeb1.npy"]
+inundation_class_probabilities_filename = ["InundationClassProbabilities_4Feb25_9500-17000_meeb39.npy"]
+
 
 # Load
 elev_class_probabilities = np.load("Output/SimData/" + elev_class_probabilities_filename[0])
@@ -656,12 +975,13 @@ cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 # __________________________________________________________________________________________________________________________________
 # SIM SPECIFICATIONS
 
-name = '13000-21000, 7Oct24'  # Name of simulation suite
+name = ''  # Name of simulation suite
 sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
-save_frequency = 1  # [yr] Time step for probability calculations
+save_frequency = 2  # [yr] Time step for probability calculations
 cellsize = 2  # [m]
 plot_xmin = 0  # [m] Cross-shore min coordinate for plotting
 plot_xmax = plot_xmin + 1500  # [m] Cross-shore max coordinate for plotting
+plot_start_step = 3
 
 plot = True
 animate = False
@@ -673,15 +993,29 @@ num_saves = int(np.floor(sim_duration/save_frequency)) + 1
 # __________________________________________________________________________________________________________________________________
 # PLOT RESULTS
 
+print()
+print(name)
+
+
 if plot:
-    plot_class_maps(elev_class_probabilities, elev_class_labels, it=-1)
-    plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
-    plot_most_probable_class(elev_class_probabilities, elev_class_cmap, elev_class_labels, it=-1, orientation='horizontal')
-    plot_most_probable_class(state_class_probabilities, state_class_cmap, state_class_labels, it=-1, orientation='horizontal')
-    plot_class_frequency(inundation_class_probabilities, it=-1, class_label='Overwash Events', orientation='horizontal')
-    plot_class_area_change_over_time(state_class_probabilities, state_class_labels)
-    plot_most_likely_transition_maps(state_class_probabilities)
-    plot_transitions_area_matrix(state_class_probabilities, state_class_labels)
+    # # plot_class_maps(elev_class_probabilities, elev_class_labels, it=-1)
+    # # plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
+    # plot_most_probable_class(elev_class_probabilities, elev_class_cmap, elev_class_labels, it=-1, orientation='horizontal')
+    # plot_most_probable_class(state_class_probabilities, state_class_cmap, state_class_labels, it=-1, orientation='horizontal')
+    # plot_class_frequency(inundation_class_probabilities, it=-1, class_label='Overwash Events', orientation='horizontal')
+    # plot_probabilistic_class_area_change_over_time(state_class_probabilities, state_class_labels, norm='class', start_step=plot_start_step)
+    # plot_weighted_area_bar_over_time(state_class_probabilities, state_class_cmap, state_class_labels, start_step=plot_start_step)
+    # # plot_most_likely_transition_maps(state_class_probabilities)
+    # plot_transitions_area_matrix(state_class_probabilities, state_class_labels, norm='class', start_step=plot_start_step)
+    # plot_class_area_loss_gain_over_time(state_class_probabilities, state_class_labels, start_step=plot_start_step)
+    # plot_transitions_time_matrix(state_class_probabilities, start_step=plot_start_step)
+    # plot_overwash_intensity_over_time(inundation_class_probabilities, state_class_probabilities, dy=10)
+    # plot_transitions_intensity_alongshore(state_class_probabilities, dy=100, start_step=plot_start_step, end_step=-1)
+    plot_transition_succession(state_class_probabilities, 14, state_class_labels, 'Steep to Shallow Beach', start_step=plot_start_step)
+    # plot_most_likely_ocean_shoreline(state_class_probabilities, plot_start_step)
+    plot_most_probable_class(state_class_probabilities, state_class_cmap, state_class_labels, it=3, orientation='vertical')
+    plot_most_probable_class(state_class_probabilities, state_class_cmap, state_class_labels, it=-1, orientation='vertical')
+    plot_transect_history_most_likely_class(state_class_probabilities, 613, start_step=3)
 if animate:
     bins_animation(elev_class_probabilities, elev_class_labels)
     bins_animation(state_class_probabilities, state_class_labels)
