@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 2 February 2025
+Last update: 13 February 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -80,6 +80,7 @@ class MEEB:
             mean_wave_height=0.98,  # [m] Mean offshore significant wave height
             mean_wave_period=6.6,  # [s] Mean wave period
             alongshore_section_length=25,  # [m] Distance alongshore between shoreline positions used in the shoreline diffusion calculations
+            shoreline_diffusivity_coefficient=0.06,  # [m^(3/5) s^(-6/5)] Alongshore transport diffusion coefficient
             average_dune_toe_height=1.67,  # [m] Time- and space-averaged dune toe height above MHW
             estimate_shoreface_parameters=True,  # [bool] Turn on to estimate shoreface parameters as function of specific wave and sediment characteristics
             shoreface_grain_size=2e-4,  # [m] Median grain size (D50) of ocean shoreface; used for optional shoreface parameter estimations
@@ -200,6 +201,7 @@ class MEEB:
         self._mean_wave_height = mean_wave_height
         self._mean_wave_period = mean_wave_period
         self._alongshore_section_length = alongshore_section_length
+        self._shoreline_diffusivity_coefficient = shoreline_diffusivity_coefficient
         self._average_dune_toe_height = average_dune_toe_height
         self._eq_backbarrier_depth = eq_backbarrier_depth
         self._sp1_a = sp1_a
@@ -303,7 +305,8 @@ class MEEB:
                                                                                              self._mean_wave_period,
                                                                                              self._DShoreface,
                                                                                              self._alongshore_section_length,
-                                                                                             self._longshore)
+                                                                                             self._longshore,
+                                                                                             self._shoreline_diffusivity_coefficient)
         self._coast_diffusivity = self._coast_diffusivity.astype(np.float32)
 
         # VEGETATION

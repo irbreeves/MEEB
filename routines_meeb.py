@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 5 February 2025
+Last update: 13 February 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -1907,6 +1907,7 @@ def init_AST_environment(wave_asymmetry,
                          DShoreface,
                          dy,
                          alongshore,
+                         shoreline_diffusivity_coefficient,
                          n_bins=181,
                          ):
     """Initialize alongshore tranport environment, i.e. the average coastal diffusivity based on wave climate.
@@ -1928,6 +1929,8 @@ def init_AST_environment(wave_asymmetry,
         [m] Alongshore width of shoreline sections.
     alongshore: int
         [m] Alongshore dimension of model domain.
+    shoreline_diffusivity_coefficient: float
+        [m^(3/5) s^(-6/5)] Alongshore transport diffusion coefficient.
     n_bins: int, optional
         The number of bins used for the wave resolution: if 181 and [-90,90] in angle array, the wave angles are in the middle of the bins, symmetrical about zero, spaced by 1 degree
 
@@ -1947,7 +1950,8 @@ def init_AST_environment(wave_asymmetry,
 
     angle_array, step = np.linspace(-np.pi / 2.0, np.pi / 2.0, n_bins, retstep=True)  # Array of resolution angles for wave climate [radians]
 
-    k = calc_alongshore_transport_k()
+    # k = calc_alongshore_transport_k()
+    k = shoreline_diffusivity_coefficient
 
     angles = WaveAngleGenerator(asymmetry=wave_asymmetry, high_fraction=wave_high_angle_fraction)  # Wave angle generator for each time step for calculating Qs_in
 
