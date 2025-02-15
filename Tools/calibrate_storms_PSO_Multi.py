@@ -92,10 +92,10 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, s
         MHW=MHW,
         Cbb=0.7,
         Qs_bb_min=1,
-        substep=50,
+        substep=25,
         beach_equilibrium_slope=solution[3],
         swash_erosive_timescale=solution[4],
-        beach_substeps=25,
+        beach_substeps=1,
         x_s=x_s,
         cellsize=cellsize,
         spec1=spec1,
@@ -198,11 +198,11 @@ RNG = np.random.default_rng(seed=13)  # Seeded random numbers for reproducibilit
 # _____________________________________________
 # Define Variables
 MHW = 0.39  # [m NAVD88]
-cellsize = 1  # [m]
+cellsize = 2  # [m]
 
 # Observed Overwash Mask
-overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")  # Load observed overwash mask
-name = 'Multi-Location Storm (Florence), NON-Weighted BSS PSO, Nswarm 18, Iterations 50, SS=50/25, 24May24'
+overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence_2m.npy")  # Load observed overwash mask
+name = 'Multi-Location Storm (Florence), NON-Weighted BSS PSO, Nswarm 18, Iterations 50, SS=25/25, USACE Post-Florence 2m, Beach_SS=1, 3Jan25'
 
 BestScore = -1e10
 BestScores = []
@@ -211,8 +211,8 @@ BestScores = []
 # Define Event(s)
 
 storm_name = ['Florence']
-storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
-storm_stop = ["Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"]
+storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_2m.npy"]
+storm_stop = ["Input/Init_NCB-NewDrum-Ocracoke_2018_USACE_PostFlorence_2m.npy"]
 storm_Rhigh = [3.32]
 storm_dur = [83]
 
