@@ -3,7 +3,7 @@ Script for testing MEEB hindcast simulations.
 
 Runs a hindcast simulation and calculates fitess scores for morphologic and ecologic change between simulated and observed.
 
-IRBR 2 July 2024
+IRBR 24 October 2024
 """
 
 import numpy as np
@@ -108,8 +108,8 @@ def model_skill_categorical(obs, sim, catmask):
 # VARIABLES AND INITIALIZATIONS
 
 # 2014 - 2017
-start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
+start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy_NCFMP-Planet_2m_HighDensity.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_2m.npy"
 startdate = '20140406'
 hindcast_duration = 3.44
 
@@ -130,9 +130,9 @@ hindcast_duration = 3.44
 # INPUT
 
 # Define Coordinates of Domain
-ymin = 22400  # 22400 8400 4000 20500
-ymax = 22900  # 22900 8900 4500 21000
-xmin = 900  # 900 700 600 900
+ymin = 4000  # 22400 8400 4000 20500   # --> 8, 22, 20, 4
+ymax = 4500  # 22900 8900 4500 21000
+xmin = 600   # 900 700 600 900
 xmax = xmin + 800
 
 # Define Cross-Shore Limits for Plotting
@@ -140,16 +140,16 @@ plot_xmin = 0
 plot_xmax = plot_xmin + 900
 
 # Define Cross-Shore Limits for Skill Score Mask
-mask_xmin = 1070 - xmin  # 1070  # 930  # 720  # 1070
-mask_xmax = 1150 - xmin  # 1150  # 990  # 775  # 1120
+mask_xmin = 720 - xmin  # 1070  # 930  # 720  # 1070
+mask_xmax = 775 - xmin  # 1150  # 990  # 775  # 1120
 
 rslr = 0.006  # [m/yr]
 MHW = 0.39  # [m NAVD88]
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
-cellsize = 1  # [m]
+cellsize = 2  # [m]
 
-name = '22400-22900, 2014-2017, RSLR=6'
+name = str(ymin) + ' - ' + str(ymax) + ', RSLR=6, CALIBRATED HIGH DEN'
 
 # _____________________
 # LOAD INITIAL DOMAINS
@@ -211,28 +211,29 @@ meeb = MEEB(
     simulation_start_date=startdate,
     storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
     # --- Aeolian --- #
-    saltation_length=5,
-    saltation_length_rand_deviation=2,
-    p_dep_sand=0.22,  # Q = hs * L * n * pe/pd
-    p_dep_sand_VegMax=0.54,
-    p_ero_sand=0.10,
-    entrainment_veg_limit=0.10,
-    saltation_veg_limit=0.35,
+    saltation_length=2,
+    saltation_length_rand_deviation=1,
+    p_dep_sand=0.09,  # Q = hs * L * n * pe/pd
+    p_dep_sand_VegMax=0.17,
+    p_ero_sand=0.08,
+    entrainment_veg_limit=0.09,
+    saltation_veg_limit=0.37,
+    repose_threshold=0.37,
     shadowangle=12,
     repose_bare=20,
     repose_veg=30,
-    wind_rose=(0.81, 0.04, 0.06, 0.09),  # (right, down, left, up)
+    wind_rose=(0.91, 0.04, 0.01, 0.04),  # (right, down, left, up)
     groundwater_depth=0.4,
     # --- Storms --- #
-    Rin=249,
-    Cs=0.0283,
+    Rin=229,
+    Cs=0.0197,
     MaxUpSlope=1.5,
     marine_flux_limit=1,
-    Kow=0.0001684,
-    mm=1.04,
-    overwash_substeps=50,
-    beach_equilibrium_slope=0.022,
-    swash_erosive_timescale=1.48,
+    Kow=0.0005080,
+    mm=1.03,
+    overwash_substeps=25,
+    beach_equilibrium_slope=0.019,
+    swash_erosive_timescale=1.29,
     beach_substeps=25,
     flow_reduction_max_spec1=0.02,
     flow_reduction_max_spec2=0.05,
@@ -244,11 +245,25 @@ meeb = MEEB(
     alongshore_section_length=25,
     estimate_shoreface_parameters=True,
     # --- Veg --- #
-    sp1_b=-0.05,
     sp1_lateral_probability=0.2,
     sp2_lateral_probability=0.2,
     sp1_pioneer_probability=0.05,
-    sp2_pioneer_probability=0.05,
+    sp2_pioneer_probability=0.03,
+
+    # MY GRASS
+    sp1_a=-1.2,
+    sp1_b=-0.2,  # Mullins et al. (2019)
+    sp1_c=0.5,
+    sp1_d=1.2,
+    sp1_e=2.1,
+    sp1_peak=0.2,
+    # MY SHRUB
+    sp2_a=-1.0,
+    sp2_b=-0.2,  # Day et al. (199?)
+    sp2_c=0.0,
+    sp2_d=0.2,
+    sp2_e=2.1,
+    sp2_peak=0.05,
 )
 
 print(meeb.name)
@@ -313,6 +328,9 @@ dunefield_mask = subaerial_mask.copy()
 dunefield_mask[:, :mask_xmin] = False
 dunefield_mask[:, mask_xmax:] = False
 
+# Limit dune crest analysis to cells with dunes (no dune gaps)
+dune_mask = np.logical_and(np.logical_and(not_gap_obs_start, not_gap_obs), not_gap_sim)  # [bool] Dune gap cells set to False
+
 # Choose masks
 mask = dunefield_mask.copy()
 veg_mask = mask.copy()
@@ -333,7 +351,7 @@ if ResReduc:
 # Model Skill
 nse, rmse, nmae, mass, bss = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask)  # All cells (excluding masked areas)
 nse_dl, rmse_dl, nmae_dl, mass_dl, bss_dl = model_skill(crest_loc_obs.astype('float32'), crest_loc_sim.astype('float32'), crest_loc_obs_start.astype('float32'), np.full(crest_loc_obs.shape, True))  # Foredune location
-nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, np.full(crest_height_change_obs.shape, True))  # Foredune elevation
+nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, dune_mask)  # Foredune elevation
 
 pc_vc, hss_vc, cat_vc = model_skill_categorical(veg_change_obs, veg_change_sim, veg_mask)  # Vegetation skill based on percent cover change
 pc_vp, hss_vp, cat_vp = model_skill_categorical(veg_present_obs, veg_present_sim, veg_mask)  # Vegetation skill based on presence or absense
@@ -437,8 +455,8 @@ plt.title("Simulated")
 ax3 = Fig.add_subplot(223)
 cax3 = ax3.matshow(tco, cmap='bwr_r', vmin=-cmap_lim, vmax=cmap_lim)
 # if not ResReduc:
-#     plt.plot(crest_loc_obs - ymin, np.arange(len(dune_crest)), 'black')
-#     plt.plot(crest_loc_sim - ymin, np.arange(len(dune_crest)), 'green')
+#     plt.plot(crest_loc_obs - plot_xmin, np.arange(len(dune_crest)), 'black')
+#     plt.plot(crest_loc_sim - plot_xmin, np.arange(len(dune_crest)), 'green')
 #     plt.legend(["Observed", "Simulated"])
 
 ax4 = Fig.add_subplot(224)

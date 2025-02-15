@@ -65,14 +65,14 @@ Rhigh = 3.32  # [m NAVD88]
 Rlow = 1.90  # [m NAVD88]
 dur = 83  # [hr]
 MHW = 0.39  # [m NAVD88]
-cellsize = 1  # [m]
+cellsize = 2  # [m]
 
 # Initial Observed Topo
-Init = np.load("Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy")
+Init = np.load("Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_2m.npy")
 # Final Observed
-End = np.load("Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy")
+End = np.load("Input/Init_NCB-NewDrum-Ocracoke_2018_USACE_PostFlorence_2m.npy")
 # Load observed overwash mask
-overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")
+overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence_2m.npy")
 
 # Define Alongshore Coordinates of Domain
 ymin = 19250  # 19250 8230 22400 6855
@@ -127,20 +127,20 @@ sim_topo_post_storm, topo_change_overwash, OWflux, inundated, Qbe = routine.stor
     topo,
     Rhigh,
     dur,
-    Rin=249,
-    Cs=0.0283,
+    Rin=229,
+    Cs=0.0197,
     nn=0.5,
     MaxUpSlope=1.5,
     fluxLimit=1,
     Qs_min=1,
-    Kow=0.0001684,
-    mm=1.04,
+    Kow=0.0005080,
+    mm=1.03,
     MHW=MHW,
     Cbb=0.7,
     Qs_bb_min=1,
-    substep=50,
-    beach_equilibrium_slope=0.022,
-    swash_erosive_timescale=1.48,
+    substep=25,
+    beach_equilibrium_slope=0.019,
+    swash_erosive_timescale=1.29,
     beach_substeps=25,
     x_s=x_s,
     cellsize=cellsize,
