@@ -3,7 +3,7 @@ Script for calibrating MEEB shoreline parameters using Particle Swarms Optimizat
 
 Calibrates based on fitess score for shoreline change between two timesteps.
 
-IRBR 13 February 2025
+IRBR 20 February 2025
 """
 
 import numpy as np
@@ -80,9 +80,11 @@ def shoreline_fitness(solution):
         simulation_start_date=startdate,
         alongshore_domain_boundary_min=ymin,
         alongshore_domain_boundary_max=ymax,
+        crossshore_domain_boundary_min=xmin,
+        crossshore_domain_boundary_max=xmax,
         cellsize=cellsize,
         RSLR=0.006,
-        seeded_random_numbers=False,
+        seeded_random_numbers=True,
         storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
         storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',
         # --- Aeolian --- #
@@ -149,20 +151,21 @@ def shoreline_fitness(solution):
     # __________________________________________________________________________________________________________________________________
     # ASSESS MODEL SKILL
 
-    # Simulated shorelines
-    shoreline_sim_start = meeb.x_s_TS[0, :]
-    shoreline_sim_end = meeb.x_s_TS[-1, :]
+    # Beginning shoreline location
+    shoreline_start = routine.ocean_shoreline(meeb.topo_TS[:, :, 0], meeb.MHW_init)
 
-    # Observed shorelines
-    shoreline_obs_start = routine.ocean_shoreline(topo_start, meeb.MHW_init)
+    # Simulated shoreline location
+    shoreline_sim_end = routine.ocean_shoreline(meeb.topo_TS[:, :, -1], meeb.MHW)
+
+    # Observed shoreline location
     shoreline_obs_end = routine.ocean_shoreline(topo_end_obs, meeb.MHW)
 
     # Shoreline changes
-    shoreline_change_sim = shoreline_sim_end - shoreline_sim_start
-    shoreline_change_obs = shoreline_obs_end - shoreline_obs_start
+    shoreline_change_sim = shoreline_sim_end - shoreline_start
+    shoreline_change_obs = shoreline_obs_end - shoreline_start
 
     # Model Skill
-    nse, rmse, nmae, mass, bss = model_skill(shoreline_change_obs, shoreline_change_sim, np.zeros(shoreline_change_sim.shape))  # Vegetation skill based on percent cover change
+    nse, rmse, nmae, mass, bss = model_skill(shoreline_change_obs, shoreline_change_sim, np.zeros(shoreline_change_sim.shape))
 
     score = bss
 
@@ -189,7 +192,7 @@ start_time = time.time()  # Record time at start of calibration
 
 # 2014 - 2018
 start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy_NCFMP-Planet_2m_HighDensity.npy"
-stop = "Init_NCB-2200-34200_2018_USACE_PostFlorence_2m.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2018_USACE_PostFlorence_2m_HighDensity.npy"
 startdate = '20140406'
 hindcast_duration = 4.34
 cellsize = 2  # [m]
@@ -198,9 +201,9 @@ MHW = 0.39  # [m NAVD88] Initial
 name = '1000-12500, 2014-2018, BSS'
 
 # Define Alongshore Coordinates of Domain
-ymin = 1000
-ymax = 12500
-xmin = 450
+ymin = 9000
+ymax = 10500
+xmin = 650
 xmax = 1350
 
 # Resize According to Cellsize
@@ -234,10 +237,10 @@ gc.collect()
 # _____________________________________________
 # Prepare Particle Swarm Parameters
 
-iterations = 7
-swarm_size = 7
+iterations = 5
+swarm_size = 3
 dimensions = 1  # Number of free paramters
-n_jobs = 7
+n_jobs = 5
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
 w: Inertia weight constant. [0-1] Determines how much the particle keeps on with its previous velocity (i.e., speed and direction of the search). 
@@ -247,9 +250,9 @@ particle itself and recognizing the search result of the swarm; Control the trad
 
 bounds = (
     # Minimum
-    np.array([-0.001]),    # pioneer_probability
+    np.array([0.002]),
     # Maximum
-    np.array([0.12])      # pioneer_probability
+    np.array([0.10])
 )
 
 
