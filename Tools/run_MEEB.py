@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 12 February 2025
+IRBR 4 March 2025
 """
 
 import numpy as np
@@ -97,6 +97,7 @@ meeb = MEEB(
     init_elev_array=topo_start,
     init_spec1_array=spec1_start,
     init_spec2_array=spec2_start,
+    save_frequency=2,
     # --- Aeolian --- #
     saltation_length=2,
     saltation_length_rand_deviation=1,
@@ -175,8 +176,9 @@ mhw_end_sim = meeb.MHW  # [m NAVD88]
 topo_change_sim = topo_end_sim - topo_start_sim  # [m]
 
 # Veg change
-veg_start_sim = meeb.veg_TS[:, :, 0]
-veg_end_sim = meeb.veg_TS[:, :, -1]
+veg_TS = meeb.spec1_TS + meeb.spec2_TS
+veg_start_sim = veg_TS[:, :, 0]
+veg_end_sim = veg_TS[:, :, -1]
 veg_change_sim = veg_end_sim - veg_start_sim  # [m]
 veg_present_sim = veg_end_sim > 0.05  # [bool]
 
@@ -327,7 +329,7 @@ def ani_frame(timestep):
     yrstr = "Year " + str(timestep * meeb.save_frequency)
     text1.set_text(yrstr)
 
-    veggie = meeb.veg_TS[:, plot_xmin: plot_xmax, timestep]
+    veggie = veg_TS[:, plot_xmin: plot_xmax, timestep]
     veggie = np.ma.masked_where(elev <= mhw, veggie)  # Mask cells below MHW
     cax2.set_data(veggie)
     text2.set_text(yrstr)
@@ -353,7 +355,7 @@ if animate:
     timestr = "Year " + str(0 * meeb.save_frequency)
     text1 = plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
 
-    veg = meeb.veg_TS[:, plot_xmin: plot_xmax, 0]
+    veg = veg_TS[:, plot_xmin: plot_xmax, 0]
     veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
     cmap2 = copy.copy(plt.colormaps["YlGn"])
     cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue

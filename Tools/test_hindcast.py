@@ -3,7 +3,7 @@ Script for testing MEEB hindcast simulations.
 
 Runs a hindcast simulation and calculates fitess scores for morphologic and ecologic change between simulated and observed.
 
-IRBR 24 October 2024
+IRBR 4 March 2025
 """
 
 import numpy as np
@@ -414,6 +414,9 @@ cmap_lim = 1.5  # max(max_change_obs, max_change_sim)
 cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 
+# Combine species
+veg_TS = meeb.spec1_TS + meeb.spec2_TS
+
 # -----------------
 # Final Elevation & Vegetation
 Fig = plt.figure(figsize=(14, 7.5))
@@ -536,7 +539,7 @@ def ani_frame(timestep):
     yrstr = "Year " + str(timestep * meeb.save_frequency)
     text1.set_text(yrstr)
 
-    veggie = meeb.veg_TS[:, plot_xmin: plot_xmax, timestep]
+    veggie = veg_TS[:, plot_xmin: plot_xmax, timestep]
     veggie = np.ma.masked_where(elev <= mhw, veggie)  # Mask cells below MHW
     cax2.set_data(veggie)
     text2.set_text(yrstr)
@@ -562,7 +565,7 @@ cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
 timestr = "Year " + str(0 * meeb.save_frequency)
 text1 = plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
 
-veg = meeb.veg_TS[:, plot_xmin: plot_xmax, 0]
+veg = veg_TS[:, plot_xmin: plot_xmax, 0]
 veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
 cmap2 = copy.copy(plt.colormaps["YlGn"])
 cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
