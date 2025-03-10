@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 13 February 2025
+Last update: 10 March 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -318,7 +318,6 @@ class MEEB:
 
         # STORMS
         self._StormList = np.float32(np.load(inputloc + storm_list_filename))
-        self._mean_stochastic_storm_TWL = np.mean(self._StormList[:, 2])  # np.mean(self._StormList[:, 2][self._StormList[:, 2] >= self._average_dune_toe_height])
         self._storm_timeseries = np.float32(np.load(inputloc + storm_timeseries_filename))
         self._pstorm = [0.333, 0.333, 0.167, 0.310, 0.381, 0.310, 0.310, 0.310, 0.286, 0, 0.119, 0.024, 0.048, 0.048, 0.048, 0.071, 0.333, 0.286, 0.214,
                         0.190, 0.190, 0.262, 0.214, 0.262, 0.238]  # Empirical probability of storm occurance for each 1/25th (~biweekly) iteration of the year, from 1979-2021 NCB storm record (1.78 m NAVD88 Berm Elev.)
@@ -333,10 +332,10 @@ class MEEB:
         self._wind_direction = np.zeros([self._iterations], dtype=np.int32)
         self._slabheight = round(self._slabheight, 2)  # Round slabheight to 2 decimals
         self._sedimentation_balance = np.zeros(self._topo.shape, dtype=np.float32)  # [m] Initialize map of the sedimentation balance: difference between erosion and deposition for 1 model year; (+) = net deposition, (-) = net erosion
-        self._topographic_change = self._topo * 0  # [m] Map of the absolute value of topographic change over 1 model year (i.e., a measure of if the topography is changing or stable)
+        self._topographic_change = np.zeros(self._topo.shape, dtype=bool)  # [bool] Map of where topography has change over 1 model year (+ or -)
         self._x_s_TS = [self._x_s]  # Initialize storage array for shoreline position
         self._x_t_TS = [self._x_t]  # Initialize storage array for shoreface toe position
-        self._x_bb_TS = [routine.backbarrier_shoreline(self._topo, self._MHW)]  # Initialize storage array for back-barrier shoreline position
+        self._x_bb_TS = [routine.backbarrier_shoreline_nonjitted(self._topo, self._MHW)]  # Initialize storage array for back-barrier shoreline position
         self._sp1_peak_at0 = self._sp1_peak  # Store initial peak growth of sp. 1
         self._sp2_peak_at0 = self._sp2_peak  # Store initial peak growth of sp. 2
         self._vegcount = 0
@@ -353,10 +352,8 @@ class MEEB:
         self._spec1_TS[:, :, 0] = self._spec1
         self._spec2_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each spec2 map at specified frequency
         self._spec2_TS[:, :, 0] = self._spec2
-        self._veg_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each veg map at specified frequency
-        self._veg_TS[:, :, 0] = self._veg
-        self._storm_inundation_TS = np.zeros([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each veg map at specified frequency
-        self._inundated_output_aggregate = np.zeros([self._longshore, self._crossshore], dtype=np.float32)
+        self._storm_inundation_TS = np.zeros([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float16)  # Array for saving each veg map at specified frequency
+        self._inundated_output_aggregate = np.zeros([self._longshore, self._crossshore], dtype=np.float16)
 
         if init_by_file:
             del Init
@@ -411,8 +408,7 @@ class MEEB:
 
         # Apply changes, make calculations
         self._topo += aeolian_elevation_change * self._slabheight  # [m NAVD88] Changes applied to the topography; convert aeolian_elevation_change from slabs to meters
-        self._sedimentation_balance = self._sedimentation_balance + (self._topo - topo_copy_pre)  # [m] Update the sedimentation balance map
-        self._topographic_change = self._topographic_change + abs(self._topo - topo_copy_pre)  # [m]
+        self._topographic_change += (self._topo - topo_copy_pre != 0)  # [bool]
 
         # --------------------------------------
         # STORMS
@@ -441,7 +437,7 @@ class MEEB:
 
                 # Storm Processes: Beach/duneface change, overwash
                 self._StormRecord = np.vstack((self._StormRecord, np.array([year, iteration_year, np.max(Rhigh), np.max(Rlow), dur], dtype=np.float32)))
-                self._topo, topo_change, self._OWflux, inundated, Qbe = routine.storm_processes(
+                self._topo, self._OWflux, inundated, Qbe = routine.storm_processes(
                     topof=self._topo,
                     Rhigh=Rhigh,
                     dur=dur,
@@ -484,11 +480,9 @@ class MEEB:
 
             else:
                 self._OWflux = np.zeros([self._longshore], dtype=np.float32)  # [m^3] No overwash if no storm
-                topo_change = np.zeros(self._topo.shape, dtype=np.float32)  # [m NAVD88]
                 Qbe = np.zeros([self._longshore], dtype=np.float32)  # [m^3] No overwash if no storm
 
-            self._sedimentation_balance += topo_change  # [m]
-            self._topographic_change += abs(topo_change)  # [m]
+            self._topographic_change += (self._topo - topo_copy_pre != 0)  # [bool]
 
             # --------------------------------------
             # SHORELINE CHANGE
@@ -535,11 +529,10 @@ class MEEB:
             # Enforce angles of repose
             """IR 25Apr24: Ideally, angles of repose would be enforced after avery aeolian iteration and every storm. However, to significantly increase model speed, I now enforce AOR only at the end of each
             shoreline iteration (i.e., every 2 aeolian iterations). The morphodynamic effects of this are apparently negligible, while run time is much quicker."""
-            self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._cellsize, self._RNG)[0]  # [m NAVD88]
+            self._topo = routine.enforceslopes(self._topo, self._veg, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._cellsize, self._RNG)  # [m NAVD88]
 
             # Update sedimentation balance after adjusting the shoreline and enforcing AOR
-            self._sedimentation_balance += self._topo - topo_copy_pre  # [m] Update the sedimentation balance map
-            self._topographic_change += abs(self._topo - topo_copy_pre)
+            self._topographic_change += (self._topo - topo_copy_pre != 0)
 
             # Store shoreline and shoreface toe locations
             self._x_s_TS = np.vstack((self._x_s_TS, self._x_s))  # Store
@@ -548,6 +541,8 @@ class MEEB:
 
             # Maintain equilibrium back-barrier depth
             self._topo = routine.maintain_equilibrium_backbarrier_depth(self._topo, self._eq_backbarrier_depth, self._MHW)
+
+        self._sedimentation_balance += self._topo - topo_copy_pre  # [m] Update the sedimentation balance map
 
         # --------------------------------------
         # VEGETATION
@@ -585,17 +580,10 @@ class MEEB:
             pioneer1[pioneer2] = 0  # Spec2 outcompetes spec1 in pioneer expansion
 
             # Update Vegetation Cover
-            spec1_diff = self._spec1 - spec1_prev  # Determine changes in vegetation cover
-            spec2_diff = self._spec2 - spec2_prev  # Determine changes in vegetation cover
-            spec1_growth = spec1_diff * (spec1_diff > 0)  # Split cover changes into into gain and loss
-            spec1_loss = spec1_diff * (spec1_diff < 0)
-            spec2_growth = spec2_diff * (spec2_diff > 0)  # Split cover changes into into gain and loss
-            spec2_loss = spec2_diff * (spec2_diff < 0)
-
-            spec1_change_allowed = np.minimum(1 - self._veg, spec1_growth) * np.logical_or(spec1_prev > 0, np.logical_or(lateral1, pioneer1))  # Only allow growth in adjacent or pioneer cells
-            spec2_change_allowed = np.minimum(1 - self._veg, spec2_growth) * np.logical_or(spec2_prev > 0, np.logical_or(lateral2, pioneer2))  # Only allow growth in adjacent or pioneer cells
-            self._spec1 = spec1_prev + spec1_change_allowed + spec1_loss  # Re-assemble gain and loss and add to original vegetation cover
-            self._spec2 = spec2_prev + spec2_change_allowed + spec2_loss  # Re-assemble gain and loss and add to original vegetation cover
+            spec1_change_allowed = np.minimum(1 - self._veg, (self._spec1 - spec1_prev) * ((self._spec1 - spec1_prev) > 0)) * np.logical_or(spec1_prev > 0, np.logical_or(lateral1, pioneer1))  # Only allow growth in adjacent or pioneer cells
+            spec2_change_allowed = np.minimum(1 - self._veg, (self._spec2 - spec2_prev) * ((self._spec2 - spec2_prev) > 0)) * np.logical_or(spec2_prev > 0, np.logical_or(lateral2, pioneer2))  # Only allow growth in adjacent or pioneer cells
+            self._spec1 = spec1_prev + spec1_change_allowed + ((self._spec1 - spec1_prev) * ((self._spec1 - spec1_prev) < 0))  # Re-assemble gain and loss and add to original vegetation cover
+            self._spec2 = spec2_prev + spec2_change_allowed + ((self._spec2 - spec2_prev) * ((self._spec2 - spec2_prev) < 0))  # Re-assemble gain and loss and add to original vegetation cover
 
             Spec1_elev_min_mhw = self._Spec1_elev_min + self._MHW  # [m MHW]
             Spec2_elev_min_mhw = self._Spec2_elev_min + self._MHW  # [m MHW]
@@ -619,8 +607,7 @@ class MEEB:
             self._topo_TS[:, :, moment] = self._topo
             self._spec1_TS[:, :, moment] = self._spec1
             self._spec2_TS[:, :, moment] = self._spec2
-            self._veg_TS[:, :, moment] = self._veg
-            self._storm_inundation_TS[:, :, moment] = self._inundated_output_aggregate
+            self._storm_inundation_TS[:, :, moment] = self._inundated_output_aggregate.astype(np.float16)
             self._inundated_output_aggregate *= False  # Reset for next output period
 
         # --------------------------------------
@@ -660,10 +647,6 @@ class MEEB:
     @property
     def veg(self):
         return self._veg
-
-    @property
-    def veg_TS(self):
-        return self._veg_TS
 
     @property
     def spec1_TS(self):

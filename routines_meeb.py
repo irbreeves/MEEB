@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 13 February 2025
+Last update: 10 March 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -283,12 +283,12 @@ def shiftslabs(Pe, Pd, hop_avg, hop_rand_deviation, vegf, vegf_lim, direction, r
     return elevation_change
 
 
-def enforceslopes(topo, vegf, sh, anglesand, angleveg, th, MHW, cellsize, RNG):
+def enforceslopes(topof, vegf, sh, anglesand, angleveg, th, MHW, cellsize, RNG):
     """Function to enforce the angle of repose, with open boundaries.
 
     Parameters
     ----------
-    topo : ndarray
+    topof : ndarray
         [m NAVD88] Elevation domain.
     vegf : ndarray
         Map of combined vegetation effectiveness.
@@ -311,36 +311,34 @@ def enforceslopes(topo, vegf, sh, anglesand, angleveg, th, MHW, cellsize, RNG):
     ----------
     topo :
         Topography updated with enforced angles of repose.
-    moved_slabs:
-        Number of slabs moved this iteration
     """
 
-    x_s_min = np.min(ocean_shoreline(topo, MHW))
-    x_b_max = np.max(backbarrier_shoreline(topo, MHW))
+    x_s_min = np.min(ocean_shoreline(topof, MHW))
+    x_b_max = np.max(backbarrier_shoreline(topof, MHW))
 
-    seaward_subaqueous = topo[:, :x_s_min].copy()
-    landward_subaqueous = topo[:, x_b_max:].copy()
+    seaward_subaqueous = topof[:, :x_s_min].copy()
+    landward_subaqueous = topof[:, x_b_max:].copy()
 
-    topof = topo[:, x_s_min: x_b_max] / sh  # [slabs] Convert from m to slabs NAVD88
+    topof = topof[:, x_s_min: x_b_max] / sh  # [slabs] Convert from m to slabs NAVD88
     vegf = vegf[:, x_s_min: x_b_max]
     subaerial = topof > MHW
 
-    steplimitsand = np.floor(np.tan(anglesand * np.pi / 180) * cellsize / sh).astype(np.float32)  # Maximum allowed height difference for sandy cells
-    steplimitsanddiagonal = np.floor(np.sqrt(2) * np.tan(anglesand * np.pi / 180) * cellsize / sh).astype(np.float32)  # Maximum allowed height difference for sandy cells along diagonal
-    steplimitveg = np.floor(np.tan(angleveg * np.pi / 180) * cellsize / sh).astype(np.float32)  # Maximum allowed height difference for cells vegetated > threshold
-    steplimitvegdiagonal = np.floor(np.sqrt(2) * np.tan(angleveg * np.pi / 180) * cellsize / sh).astype(np.float32)  # Maximum allowed height difference for cells vegetated  along diagonal > threshold
+    steplimitsand = np.floor(np.tan(anglesand * np.pi / 180) * cellsize / sh)  # Maximum allowed height difference for sandy cells
+    steplimitsanddiagonal = np.floor(np.sqrt(2) * np.tan(anglesand * np.pi / 180) * cellsize / sh)  # Maximum allowed height difference for sandy cells along diagonal
+    steplimitveg = np.floor(np.tan(angleveg * np.pi / 180) * cellsize / sh)  # Maximum allowed height difference for cells vegetated > threshold
+    steplimitvegdiagonal = np.floor(np.sqrt(2) * np.tan(angleveg * np.pi / 180) * cellsize / sh)  # Maximum allowed height difference for cells vegetated  along diagonal > threshold
 
     steplimit = (vegf < th) * steplimitsand + (vegf >= th) * steplimitveg  # Map with max height diff seen from each central cell
     steplimitdiagonal = (vegf < th) * steplimitsanddiagonal + (vegf >= th) * steplimitvegdiagonal  # Idem for diagonal
 
     M, N = topof.shape  # Retrieve dimensions of area
-    slopes = np.zeros([M, N, 8], dtype=np.float32)  # Initialize
-    exceeds = np.zeros([M, N, 8], dtype=np.float32)  # Initialize
+    slopes = np.zeros([M, N, 8], dtype=np.float16)  # Initialize
+    exceeds = np.zeros([M, N, 8], dtype=bool)  # Initialize
 
-    avalanched_cells = 0  # Number of avalanched cells
-    slabsmoved = 1  # Initial number to get the loop going
+    continue_loop = True
 
-    while slabsmoved > 0:
+    while continue_loop:
+
         # Padding with same cell to create open boundaries
         topof = np.column_stack((topof[:, 0], topof, topof[:, -1]))
         topof = np.vstack((topof[0, :], topof, topof[-1, :]))
@@ -389,18 +387,20 @@ def enforceslopes(topo, vegf, sh, anglesand, angleveg, th, MHW, cellsize, RNG):
                               - exceeds[:, :, 7] + np.roll(exceeds[:, :, 7], (-1, -1), axis=(0, 1))
 
         topof = topof[1: -1, 1: -1]  # Remove padding
-        slabsmoved = np.sum(exceeds)  # Count moved slabs during this loop
-        avalanched_cells = avalanched_cells + slabsmoved  # Total number of moved slabs this iteration
+
+        # Exit while loop if no slabs moved in this iteration
+        if not np.any(exceeds):
+            continue_loop = False
 
     topof_updated = np.hstack((seaward_subaqueous, topof * sh, landward_subaqueous))  # [m NAVD88] Convert back to m
 
-    return topof_updated, avalanched_cells.astype(np.float32)
+    return topof_updated
 
 
 def growthfunction1_sens(species, sed, A1, B1, C1, D1, E1, P1):
     """Grows (or reduces) vegetation by updating the vegetation effectiveness. Growth/reduction is based on sedimentation balance and growth curve.
 
-    For Ammophilia-like dune-growing grasses.
+    For dune-growing grasses.
 
     Parameters
     ----------
@@ -443,14 +443,20 @@ def growthfunction1_sens(species, sed, A1, B1, C1, D1, E1, P1):
     s34 = (y4 - y3) / (x4 - x3)
     s45 = (y5 - y4) / (x5 - x4)
 
-    leftextension = (sed < x1) * -1
-    firstleg = (sed >= x1) * (sed < x2) * ((sed - x1) * s12 + y1)
-    secondleg = (sed >= x2) * (sed < x3) * ((sed - x2) * s23 + y2)
-    thirdleg = (sed >= x3) * (sed < x4) * ((sed - x3) * s34 + y3)
-    fourthleg = (sed >= x4) * (sed < x5) * ((sed - x4) * s45 + y4)
-    rightextension = (sed >= x5) * -1
-
-    species = np.sum([species, leftextension, firstleg, secondleg, thirdleg, fourthleg, rightextension], axis=0, dtype=np.float32)
+    # Process sum in chunks to reduce memory consumption
+    for n in range(6):
+        if n == 0:
+            species += (sed < x1) * -1  # Left extension
+        elif n == 1:
+            species += (sed >= x1) * (sed < x2) * ((sed - x1) * s12 + y1)  # First leg
+        elif n == 2:
+            species += (sed >= x2) * (sed < x3) * ((sed - x2) * s23 + y2)  # Second leg
+        elif n == 3:
+            species += (sed >= x3) * (sed < x4) * ((sed - x3) * s34 + y3)  # Third leg
+        elif n == 4:
+            species += (sed >= x4) * (sed < x5) * ((sed - x4) * s45 + y4)  # Fourth leg
+        else:
+            species += (sed >= x5) * -1  # Right extension
 
     species[species < minimum] = minimum
     species[species > maximum] = maximum
@@ -461,7 +467,7 @@ def growthfunction1_sens(species, sed, A1, B1, C1, D1, E1, P1):
 def growthfunction2_sens(species, sed, A2, B2, C2, D2, E2, P2):
     """Grows (or reduces) vegetation by updating the vegetation effectiveness. Growth/reduction is based on sedimentation balance and growth curve.
 
-    For Buckthorn-like woody vegetation.
+    For woody vegetation.
 
     Parameters
     ----------
@@ -504,14 +510,20 @@ def growthfunction2_sens(species, sed, A2, B2, C2, D2, E2, P2):
     s34 = (y4 - y3) / (x4 - x3)
     s45 = (y5 - y4) / (x5 - x4)
 
-    leftextension = (sed < x1) * -1
-    firstleg = (sed >= x1) * (sed < x2) * ((sed - x1) * s12 + y1)
-    secondleg = (sed >= x2) * (sed < x3) * ((sed - x2) * s23 + y2)
-    thirdleg = (sed >= x3) * (sed < x4) * ((sed - x3) * s34 + y3)
-    fourthleg = (sed >= x4) * (sed < x5) * ((sed - x4) * s45 + y4)
-    rightextension = (sed >= x5) * -1
-
-    species = np.sum([species, leftextension, firstleg, secondleg, thirdleg, fourthleg, rightextension], axis=0, dtype=np.float32)
+    # Process sum in chunks to reduce memory consumption
+    for n in range(6):
+        if n == 0:
+            species += (sed < x1) * -1  # Left extension
+        elif n == 1:
+            species += (sed >= x1) * (sed < x2) * ((sed - x1) * s12 + y1)  # First leg
+        elif n == 2:
+            species += (sed >= x2) * (sed < x3) * ((sed - x2) * s23 + y2)  # Second leg
+        elif n == 3:
+            species += (sed >= x3) * (sed < x4) * ((sed - x3) * s34 + y3)  # Third leg
+        elif n == 4:
+            species += (sed >= x4) * (sed < x5) * ((sed - x4) * s45 + y4)  # Fourth leg
+        else:
+            species += (sed >= x5) * -1  # Right extension
 
     species[species < minimum] = minimum
     species[species > maximum] = maximum
@@ -541,24 +553,20 @@ def lateral_expansion(veg, dist, prob, RNG):
 
     # Pad vegetation matrix with zeros for rolling
     veg = veg > 0
-    vegpad = np.zeros(np.add(veg.shape, (2, 2)))
+    vegpad = np.zeros(np.add(veg.shape, (2, 2)), dtype=bool)
     vegpad[1: -1, 1: -1] = veg
-    veg3 = vegpad.copy()
+    lateral_expansion_possible = vegpad.copy()
 
     # Add shifted matrices to initial matrix to include boundaries
     for i in [-dist, 0, dist]:
         for j in [-dist, 0, dist]:
             # Only 4 neighbouring cells (Von Neumann neighbourhood)
-            # if i*3+5+j % 2 == 0:
-            veg2 = np.roll(vegpad, (i, j), axis=(0, 1))
-            veg3 = veg3 + veg2
+            lateral_expansion_possible = np.logical_or(lateral_expansion_possible, np.roll(vegpad, (i, j), axis=(0, 1)))
 
-    veg3[veg3 > 1] = 1
-    lateral_expansion_possible = veg3[1: -1, 1: -1]
+    lateral_expansion_possible = lateral_expansion_possible[1: -1, 1: -1]
 
-    # Lateral expansion only takes place in a fraction <prob> of the possible cells
-    width, length = veg.shape
-    lateral_expansion_allowed = RNG.random((width, length)) < (lateral_expansion_possible * prob)
+    # Lateral expansion only takes place in a fraction of the possible cells
+    lateral_expansion_allowed = RNG.random(veg.shape) < (lateral_expansion_possible * prob)
     lateral_expansion_allowed = lateral_expansion_allowed > 0
 
     return lateral_expansion_allowed
@@ -584,9 +592,6 @@ def establish_new_vegetation(topof, MHW, prob, RNG):
         [bool] Cells into which new vegetation has successfully established.
     """
 
-    # Convert topography to height above current sea level
-    topof = topof - MHW
-
     # Vertices (these need to be specified)
     x1 = 0.0
     x2 = 2.0
@@ -605,16 +610,24 @@ def establish_new_vegetation(topof, MHW, prob, RNG):
     s34 = (y4 - y3) / (x4 - x3)
     s45 = (y5 - y4) / (x5 - x4)
 
-    leftextension = (topof < x1) * 0
-    firstleg = (topof >= x1) * (topof < x2) * ((topof - x1) * s12 + y1)
-    secondleg = (topof >= x2) * (topof < x3) * ((topof - x2) * s23 + y2)
-    thirdleg = (topof >= x3) * (topof < x4) * ((topof - x3) * s34 + y3)
-    fourthleg = (topof >= x4) * (topof < x5) * ((topof - x4) * s45 + y4)
-    rightextension = (topof >= x5) * 0
+    # Process in chunks to reduce memory consumption
+    pioneer_establish_prob = np.zeros(topof.shape)  # Initialize
+    for n in range(6):
+        if n == 0:
+            leg = (topof - MHW < x1) * 0
+        elif n == 1:
+            leg = (topof - MHW >= x1) * (topof - MHW < x2) * ((topof - MHW - x1) * s12 + y1)
+        elif n == 2:
+            leg = (topof - MHW >= x2) * (topof - MHW < x3) * ((topof - MHW - x2) * s23 + y2)
+        elif n == 3:
+            leg = (topof - MHW >= x3) * (topof - MHW < x4) * ((topof - MHW - x3) * s34 + y3)
+        elif n == 4:
+            leg = (topof - MHW >= x4) * (topof - MHW < x5) * ((topof - MHW - x4) * s45 + y4)
+        else:
+            leg = (topof - MHW >= x5) * 0
+        pioneer_establish_prob += leg
 
-    pioneer_establish_prob = leftextension + firstleg + secondleg + thirdleg + fourthleg + rightextension
-    width, length = topof.shape
-    pioneer_established = RNG.random((width, length)) < pioneer_establish_prob
+    pioneer_established = RNG.random(topof.shape) < pioneer_establish_prob
 
     return pioneer_established
 
@@ -633,10 +646,6 @@ def spec2_zonation(spec2, topo, min_elev, max_elev, dune_threshold, MHW, cellsiz
         landward_of_dunecrest[ls, dune_crestline[ls]:] = True
 
     # ---------
-    # Must be within elevation range
-    elevation = np.logical_and(topo - MHW > min_elev, topo - MHW <= max_elev)
-
-    # ---------
     # Must be fronted by sufficiently tall dune
     index = np.argmax(topo - MHW > dune_threshold, axis=1)
     index[index == 0] = -1
@@ -645,8 +654,8 @@ def spec2_zonation(spec2, topo, min_elev, max_elev, dune_threshold, MHW, cellsiz
         fronting_low_dune[ls, :index[ls]] = True
 
     # ---------
-    # Determine where spec2 can establish
-    shrub_allowed = landward_of_dunecrest * elevation * ~fronting_low_dune
+    # Determine where spec2 can establish; must be landward of dunecrest, within elevation range, fronted by tall dune
+    shrub_allowed = landward_of_dunecrest * np.logical_and(topo - MHW > min_elev, topo - MHW <= max_elev) * ~fronting_low_dune
 
     return shrub_allowed
 
@@ -727,7 +736,6 @@ def shoreline_change_from_CST(
     return x_s, x_t, s_sf  # [m]
 
 
-@njit(cache=True)
 def ocean_shoreline(topof, MHW):
     """Returns location of the ocean shoreline.
 
@@ -752,6 +760,61 @@ def ocean_shoreline(topof, MHW):
 @njit(cache=True)
 def backbarrier_shoreline(topof, MHW):
     """Returns location of the back-barrier shoreline.
+
+    Parameters
+    ----------
+    topof : ndarray
+        [m] Present elevation domain.
+    MHW : float
+        [m] Mean high water elevation.
+
+    Returns
+    ----------
+    BBshoreline : ndarray
+        Cross-shore location of the back-barrier shoreline for each row alongshore.
+    """
+
+    # BBshoreline = topof.shape[1] - np.argmax(np.fliplr(topof) >= MHW, axis=1) - 1
+
+    water = topof < MHW
+    BBshoreline = np.zeros(topof.shape[0], dtype=np.int32)
+
+    # Finds the first continous section of N subaqeuous cells landward of the ocean shoreline, and takes the first cell of that section as the back-barrier shoreline
+    N = 25  # [cells] Threshold number of cells for subaqueous section; assumes any subaqeuous cells < N is interior pond
+    for ls in range(topof.shape[0]):
+        x_s = np.argwhere(water[ls, :] < 1)[0][0]
+        bb_water = np.argwhere(water[ls, x_s:] > 0)
+        x_bb = topof.shape[1] - 1
+        if len(bb_water) > 0:
+            for q in range(len(bb_water)):
+                x_bb_temp = bb_water[q][0] + x_s - 1
+
+                if x_bb_temp + N <= topof.shape[1]:
+                    if np.all(water[ls, x_bb_temp: x_bb_temp + N] > 0):
+                        x_bb = x_bb_temp
+                        break
+                else:
+                    if np.all(water[ls, x_bb_temp: topof.shape[1]] > 0):
+                        x_bb = x_bb_temp
+                        break
+
+        BBshoreline[ls] = np.int32(x_bb)
+
+    # # Simple version: Takes first subaqueous cell landward of ocean shoreline as back-barrier shoreline
+    # for ls in range(topof.shape[0]):
+    #     x_s = np.argwhere(water[ls, :] < 1)[0][0]
+    #     if x_s + 10 < topof.shape[1]:
+    #         bb_water = np.argwhere(water[ls, x_s + 10:] > 0)
+    #     else:
+    #         bb_water = np.argwhere(water[ls, x_s:] > 0)
+    #     x_bb = min(bb_water[0][0] + x_s - 1 if len(bb_water) > 0 else topof.shape[1] - 1, topof.shape[1])
+    #     BBshoreline[ls] = x_bb
+
+    return BBshoreline
+
+
+def backbarrier_shoreline_nonjitted(topof, MHW):
+    """Returns location of the back-barrier shoreline. Non-jitted version.
 
     Parameters
     ----------
@@ -925,7 +988,7 @@ def find_crest_buffer(topo, line_init, crestline, buffer, MHW):
     threshold = 0.6  # [m] Threshold backshore drop for peak detection
     crest_pct = 0.1
 
-    not_gap = np.ones(line_init.shape, dtype=np.float32)  # Array indicating which cells in crestline returned an index for an actual peak (i.e., not gap, [1]) and which cells for which no peak was found (i.e., gap, [0])
+    not_gap = np.ones(line_init.shape, dtype=np.int8)  # Array indicating which cells in crestline returned an index for an actual peak (i.e., not gap, [1]) and which cells for which no peak was found (i.e., gap, [0])
 
     last_peak_idx = 0
     for r in range(len(topo)):
@@ -1333,8 +1396,6 @@ def storm_processes(
         ----------
         topof
             [m NAVD88] Updated elevation domain.
-        topof_change
-            [m] Array of topographic change from storm overwash processes.
         OWloss
             [m^3] Volume of overwash deposition landward of dune crest for each cell unit alongshore.
         netDischarge
@@ -1349,11 +1410,10 @@ def storm_processes(
     cell_area = cellsize * cellsize
 
     # Set Up Flow Routing Domain
-    domain_width_start = 0  # [cells]
-    domain_width_end = int(crossshore)  # [cells]
-    domain_width = domain_width_end - domain_width_start  # [cells]
+    domain_width_start = 0  # np.min(ocean_shoreline(topof, MHW))  # [cells]  ToDo: Slight difference if domain_width_start set to ocean shoreline
     Elevation = topof[:, domain_width_start:].copy()  # [m NAVD88]
-    dune_crest_loc, not_gap = foredune_crest(Elevation, MHW, cellsize)  # Cross-shore location of pre-storm dune crest
+    domain_width = Elevation.shape[1]  # [cells]
+    dune_crest_loc = foredune_crest(Elevation, MHW, cellsize)[0]  # Cross-shore location of pre-storm dune crest
 
     # Initialize Memory Storage Arrays
     OWloss = np.zeros([longshore], dtype=np.float32)  # [m^3] Aggreagate volume of overwash deposition landward of dune crest for this storm
@@ -1374,18 +1434,17 @@ def storm_processes(
 
         # Find dune crest locations and heights for this storm iteration
         if TS % substep == 0:  # Update every storm hour (not every substep) for speed
-            dune_crest_loc, not_gap = foredune_crest(Elevation, MHW, cellsize)  # Cross-shore location of pre-storm dune crest
+            dune_crest_loc = foredune_crest(Elevation, MHW, cellsize)[0]  # Cross-shore location of pre-storm dune crest
 
         # ----------------------
         # Landward of Dune Crest
 
         # Route Overwash
-        Discharge, SedFluxIn, SedFluxOut = route_overwash(
+        overwash_inundated, SedFluxDiff = route_overwash(
             Elevation,
             dune_crest_loc,
             MHW,
             domain_width,
-            domain_width_start,
             longshore,
             Rhigh,
             Rin,
@@ -1405,17 +1464,16 @@ def storm_processes(
         )
 
         # Update Elevation After Every Storm Hour of Overwash
-        ElevationChangeLandward = (SedFluxIn - SedFluxOut) / area_time_conversion  # [m] Net elevation change
+        ElevationChangeLandward = SedFluxDiff / area_time_conversion  # [m] Net elevation change
         ElevationChangeLandward[ElevationChangeLandward > fluxLimit] = fluxLimit  # Constrain to flux limit
         ElevationChangeLandward[ElevationChangeLandward < -fluxLimit] = -fluxLimit  # Constrain to flux limit
-        ElevationChangeLandward[np.arange(longshore), dune_crest_loc - domain_width_start] = 0  # Do not yet update elevation change at dune crest
+        ElevationChangeLandward[np.arange(longshore), dune_crest_loc] = 0  # Do not yet update elevation change at dune crest
 
         # Calculate and save volume of sediment deposited on/behind the barrier interior for every hour
         OWloss = OWloss + np.sum(ElevationChangeLandward, axis=1) * cell_area  # [m^3] For each cell alongshore
 
         # Record cells inundated from overwash
-        overwash_inundated = Discharge > 0
-        inundated[domain_width_start:, :] = np.logical_or(inundated[domain_width_start:, :], overwash_inundated)  # Update inundated map with cells landward of dune crest
+        inundated[:, domain_width_start:] = np.logical_or(inundated[:, domain_width_start:], overwash_inundated)  # Update inundated map with cells landward of dune crest
 
         # ---------------------
         # Seaward of Dune Crest
@@ -1425,7 +1483,7 @@ def storm_processes(
             Elevation.copy(),
             cellsize,
             dune_crest_loc,
-            x_s,
+            x_s - domain_width_start,
             MHW,
             Rhigh,
             beach_equilibrium_slope,
@@ -1436,7 +1494,7 @@ def storm_processes(
         ElevationChangeSeaward /= substep
         BeachDune_Volume_Change += dV / substep
 
-        inundated = np.logical_or(inundated, beach_inundated)  # Update inundated map with cells seaward of dune crest
+        inundated[:, domain_width_start:] = np.logical_or(inundated[:, domain_width_start:], beach_inundated)  # Update inundated map with cells seaward of dune crest
 
         # ----------------
         # Update Elevation
@@ -1445,10 +1503,9 @@ def storm_processes(
         Elevation += ElevationChangeLandward
 
     # Update Elevation Domain After Storm
-    topo_change = Elevation - topof[:, domain_width_start:]  # [m] Change in elevation of barrier
-    topof += topo_change  # [m NAVD88]
+    topof[:, domain_width_start:] += Elevation - topof[:, domain_width_start:]  # [m NAVD88] Add change in elevation of barrier
 
-    return topof, topo_change, OWloss, inundated, BeachDune_Volume_Change
+    return topof, OWloss, inundated, BeachDune_Volume_Change
 
 
 @njit(cache=True)
@@ -1591,7 +1648,7 @@ def gradient(y, dx=1.0):
     """
 
     stop = len(y) - 1
-    grad = np.zeros(y.shape)
+    grad = np.zeros(y.shape, dtype=np.float32)
     grad[0] = (y[0 + 1] - y[0]) / dx  # Boundary
     grad[-1] = (y[-1] - y[-1 - 1]) / dx  # Boundary
     for i in range(1, stop):
@@ -1606,7 +1663,6 @@ def route_overwash(
         dune_crest_loc,
         MHW,
         domain_width,
-        domain_width_start,
         longshore,
         Rhigh,
         Rin,
@@ -1646,8 +1702,7 @@ def route_overwash(
 
         # Set Discharge at Dune Crest
         for ls in range(longshore):
-            Discharge[ls, dune_crest_loc[ls] - domain_width_start] = Qdune[ls]
-
+            Discharge[ls, dune_crest_loc[ls]] = Qdune[ls]
         flow_start = int(np.min(dune_crest_loc))
 
         for d in range(flow_start, domain_width - 1):
@@ -1897,7 +1952,7 @@ def route_overwash(
                         Qs_out = Qs1 + Qs2 + Qs3
                         SedFluxOut[i, d] = Qs_out
 
-    return Discharge, SedFluxIn, SedFluxOut
+    return Discharge > 0, SedFluxIn - SedFluxOut
 
 
 def init_AST_environment(wave_asymmetry,
@@ -2257,7 +2312,7 @@ def calculate_beach_slope(topof, dune_crest_loc, average_dune_toe_height, MHW, c
         Slope of the beach for each cell alongshore.
     """
 
-    x_s = ocean_shoreline(topof, MHW)
+    x_s = np.argmax(topof >= MHW, axis=1)
     beach_slopes = np.zeros(topof.shape[0], dtype=np.float32)  # Initialize
 
     # Find local active beach slope
