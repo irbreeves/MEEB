@@ -159,7 +159,7 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, spec1_TS, spec2_TS, mhw_in
         MHW = mhw_init + rslr * ts * save_frequency
 
         # Smooth topography to remove small-scale variability
-        topo = topo_TS[:, :, ts]
+        topo = topo_TS[:, :, ts].astype(np.float32)  # Temporarily convert slice to float32
 
         # Find dune crest, toe, and heel lines
         dune_crestline, not_gap = routine.foredune_crest(topo, MHW, cellsize)
@@ -208,7 +208,7 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, spec1_TS, spec2_TS, mhw_in
         steep_beach_slope = np.rot90(np.array([beach_slopes > beach_slope_threshold] * crossshore), -1)
 
         # Smooth vegetation to remove small-scale variability
-        veg = scipy.ndimage.gaussian_filter(spec1_TS[:, :, ts] + spec2_TS[:, :, ts], 5, mode='constant').astype(np.float16)
+        veg = scipy.ndimage.gaussian_filter((spec1_TS[:, :, ts] + spec2_TS[:, :, ts]).astype(np.float32), 5, mode='constant').astype(np.float16)
 
         # Categorize Cells of Model Domain
         # ['Subaqueous', 'Beach-Shallow', 'Beach-Steep', 'Dune', 'Unvegetated Interior', 'Vegetated Interior']

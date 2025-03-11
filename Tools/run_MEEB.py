@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 4 March 2025
+IRBR 11 March 2025
 """
 
 import numpy as np
@@ -170,8 +170,8 @@ print()
 # ASSESS MODEL RESULTS
 
 # Topo change
-topo_start_sim = meeb.topo_TS[:, :, 0]  # [m NAVDD88]
-topo_end_sim = meeb.topo_TS[:, :, -1]  # [m NAVDD88]
+topo_start_sim = meeb.topo_TS[:, :, 0].astype(np.float32)  # [m NAVDD88]
+topo_end_sim = meeb.topo_TS[:, :, -1].astype(np.float32)  # [m NAVDD88]
 mhw_end_sim = meeb.MHW  # [m NAVD88]
 topo_change_sim = topo_end_sim - topo_start_sim  # [m]
 

@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 10 March 2025
+Last update: 11 March 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -346,12 +346,12 @@ class MEEB:
         # __________________________________________________________________________________________________________________________________
         # MODEL OUPUT CONFIGURATION
 
-        self._topo_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each topo map at specified frequency
-        self._topo_TS[:, :, 0] = self._topo
-        self._spec1_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each spec1 map at specified frequency
-        self._spec1_TS[:, :, 0] = self._spec1
-        self._spec2_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float32)  # Array for saving each spec2 map at specified frequency
-        self._spec2_TS[:, :, 0] = self._spec2
+        self._topo_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float16)  # Array for saving each topo map at specified frequency
+        self._topo_TS[:, :, 0] = self._topo.astype(np.float16)
+        self._spec1_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float16)  # Array for saving each spec1 map at specified frequency
+        self._spec1_TS[:, :, 0] = self._spec1.astype(np.float16)
+        self._spec2_TS = np.empty([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float16)  # Array for saving each spec2 map at specified frequency
+        self._spec2_TS[:, :, 0] = self._spec2.astype(np.float16)
         self._storm_inundation_TS = np.zeros([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float16)  # Array for saving each veg map at specified frequency
         self._inundated_output_aggregate = np.zeros([self._longshore, self._crossshore], dtype=np.float16)
 
@@ -604,9 +604,9 @@ class MEEB:
 
         if (it + 1) % (self._save_frequency * self._iterations_per_cycle) == 0:
             moment = int((it + 1) / self._save_frequency / self._iterations_per_cycle)
-            self._topo_TS[:, :, moment] = self._topo
-            self._spec1_TS[:, :, moment] = self._spec1
-            self._spec2_TS[:, :, moment] = self._spec2
+            self._topo_TS[:, :, moment] = self._topo.astype(np.float16)
+            self._spec1_TS[:, :, moment] = self._spec1.astype(np.float16)
+            self._spec2_TS[:, :, moment] = self._spec2.astype(np.float16)
             self._storm_inundation_TS[:, :, moment] = self._inundated_output_aggregate.astype(np.float16)
             self._inundated_output_aggregate *= False  # Reset for next output period
 

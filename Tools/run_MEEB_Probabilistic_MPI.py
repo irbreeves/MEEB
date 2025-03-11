@@ -2,7 +2,7 @@
 Probabilistic framework for running MEEB simulations using MPI distributed memory parallelism on super computers. Generates probabilistic projections
 of future change.
 
-IRBR 12 February 2025
+IRBR 11 March 2025
 """
 
 import os
@@ -126,7 +126,7 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
     # Create classified map
     elevation_classification = classify_topo_change(meeb.topo_TS.shape[2], topo_change_sim_TS)
     inundation_classification = classify_overwash_frequency(meeb.topo_TS.shape[2], meeb.storm_inundation_TS, meeb.topo_TS, meeb.MHW_init, meeb.RSLR)
-    habitat_state_classification = classify_ecogeomorphic_habitat_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.veg_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.37)
+    habitat_state_classification = classify_ecogeomorphic_habitat_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.spec1_TS, meeb.spec2_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.37)
 
     classes = [elevation_classification, habitat_state_classification, inundation_classification]
 
@@ -152,7 +152,7 @@ def classify_topo_change(TS, topo_change_sim_TS):
     return topo_change_bin
 
 
-def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, vegetated_threshold, beach_slope_threshold=0.019):
+def classify_ecogeomorphic_habitat_state(TS, topo_TS, spec1_TS, spec2_TS, mhw_init, rslr, vegetated_threshold, beach_slope_threshold=0.019):
     """Classify by ecogeomorphic state using topography and vegetatio, with focus on bird and turtle habitat."""
 
     habitat_state_classes = np.zeros([habitat_state_num_classes, num_saves, longshore, crossshore], dtype=np.float32)  # Initialize
@@ -165,7 +165,7 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, ve
         MHW = mhw_init + rslr * ts * save_frequency
 
         # Smooth topography to remove small-scale variability
-        topo = scipy.ndimage.gaussian_filter(topo_TS[:, :, ts], 5, mode='reflect')
+        topo = scipy.ndimage.gaussian_filter(topo_TS[:, :, ts], 5, mode='reflect').astype(np.float32)
 
         # Find dune crest, toe, and heel lines
         dune_crestline, not_gap = routine.foredune_crest(topo, MHW, cellsize)
@@ -215,18 +215,6 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, ve
             if not_gap[ls]:
                 fronting_dune_gap_simple[ls, :] = False
 
-        fronting_dune_gap = np.zeros(topo.shape, dtype=bool)  # Areas with 90 deg spread of dune gaps
-        for ls in range(longshore):
-            if not not_gap[ls]:
-                crest_loc = dune_crestline[ls]
-                temp = np.ones([crossshore - crest_loc, longshore], dtype=np.float32)
-                right_diag = np.tril(temp, k=ls)
-                left_diag = np.fliplr(np.tril(temp, k=len(dune_crestline) - ls - 1))
-                spread = np.rot90(right_diag * left_diag, 1)
-                fronting_dune_gap[:, crest_loc:] = np.flipud(np.logical_or(fronting_dune_gap[:, crest_loc:], spread))
-                trim = max(0, right_diag.shape[0] - crest_loc)
-                fronting_dune_gap[:, max(0, crest_loc - right_diag.shape[0]): crest_loc] = np.fliplr(fronting_dune_gap[:, crest_loc:])[:, trim:]
-
         # Find dune crest heights
         dune_crestheight = np.zeros(longshore, dtype=np.float32)
         for ls in range(longshore):
@@ -236,7 +224,7 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_TS, mhw_init, rslr, ve
         steep_beach_slope = np.rot90(np.array([beach_slopes > beach_slope_threshold] * crossshore), -1)
 
         # Smooth vegetation to remove small-scale variability
-        veg = scipy.ndimage.gaussian_filter(veg_TS[:, :, ts], 5, mode='constant')
+        veg = scipy.ndimage.gaussian_filter((spec1_TS[:, :, ts] + spec2_TS[:, :, ts]).astype(np.float32), 5, mode='constant').astype(np.float16)
         unvegetated = veg < vegetated_threshold  # [bool] Map of unvegetated areas
 
         # Categorize Cells of Model Domain
