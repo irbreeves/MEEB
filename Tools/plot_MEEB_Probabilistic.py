@@ -1,7 +1,7 @@
 """
 Script for plotting output from datafiles of probabilistic MEEB simulation.
 
-IRBR 12 February 2025
+IRBR 13 March 2025
 """
 
 import numpy as np
@@ -928,34 +928,117 @@ def class_frequency_animation(class_probabilities, orientation='vertical'):
 
 
 # __________________________________________________________________________________________________________________________________
-# LOAD PROBABILISTIC SIM DATA
+# SIM SPECIFICATIONS
 
-# Specify filenames
-elev_class_probabilities_filename = ["ElevClassProbabilities_4Feb25_9500-17000_meeb39.npy"]
+# Classification Scheme - Choose from one or more of three currently available options: elevation, overwash_frequency, state
+classification_scheme = ['state', 'elevation']
 
-state_class_probabilities_filename = ["HabitatStateClassProbabilities_4Feb25_9500-17000_meeb39.npy"]
+name = ''  # Name of simulation suite
+sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
+save_frequency = 2  # [yr] Time step for probability calculations
+cellsize = 2  # [m]
+plot_xmin = 0  # [m] Cross-shore min coordinate for plotting
+plot_xmax = plot_xmin + 1500  # [m] Cross-shore max coordinate for plotting
+plot_start_step = 3  # [save_frequency] Time step at which to start timeline plots (steps before this can be considered spin-up)
 
-inundation_class_probabilities_filename = ["InundationClassProbabilities_4Feb25_9500-17000_meeb39.npy"]
+plot = True  # [bool]
+animate = False  # [bool]
 
-
-# Load
-elev_class_probabilities = np.load("Output/SimData/" + elev_class_probabilities_filename[0])
-state_class_probabilities = np.load("Output/SimData/" + state_class_probabilities_filename[0])
-inundation_class_probabilities = np.load("Output/SimData/" + inundation_class_probabilities_filename[0])
-
-# Stich multiple sections of probabilistic runs together in space (if applicable)
-if len(inundation_class_probabilities_filename) > 0:
-    for n in range(1, len(inundation_class_probabilities_filename)):
-        elev_class_probabilities_addition = np.load("Output/SimData/" + elev_class_probabilities_filename[n])
-        state_class_probabilities_addition = np.load("Output/SimData/" + state_class_probabilities_filename[n])
-        inundation_class_probabilities_addition = np.load("Output/SimData/" + inundation_class_probabilities_filename[n])
-        elev_class_probabilities = np.concatenate((elev_class_probabilities, elev_class_probabilities_addition), axis=2)
-        state_class_probabilities = np.concatenate((state_class_probabilities, state_class_probabilities_addition), axis=2)
-        inundation_class_probabilities = np.concatenate((inundation_class_probabilities, inundation_class_probabilities_addition), axis=1)
-
+num_saves = int(np.floor(sim_duration/save_frequency)) + 1
 
 # __________________________________________________________________________________________________________________________________
-# CLASS SPECIFICATIONS
+# LOAD PROBABILISTIC SIM DATA
+
+# Specify filenames located in /Output/SimData
+elev_class_probabilities_filename = ["ElevClassProbabilities_12Mar25_0-14000_meeb65.npy",
+                                     "ElevClassProbabilities_12Mar25_14000-32000_meeb65.npy"]
+
+state_class_probabilities_filename = ["HabitatStateClassProbabilities_12Mar25_0-14000_meeb65.npy",
+                                      "HabitatStateClassProbabilities_12Mar25_14000-32000_meeb65.npy"]
+
+overwash_class_probabilities_filename = []
+
+# Specify extents of each file section
+xmin = [225, 100]  # [cells] Cross-shore extent minimum of domain, for each output file
+xmax = [675, 750]  # [cells] Cross-shore extent maximum of domain, for each output file
+y_length = [14000, 18000]  # [cells] Alongshore length of domain, for each output file
+
+# Load and resize array(s) to be equal in cross-shore dimensions
+xmin_targ = min(xmin)
+xmax_targ = max(xmax)
+if 'elevation' in classification_scheme:
+    elev_class_probabilities = np.load("Output/SimData/" + elev_class_probabilities_filename[0])
+    add_front = np.zeros([elev_class_probabilities.shape[0], elev_class_probabilities.shape[1], y_length[0], (xmin[0] - xmin_targ)])
+    add_back = np.zeros([elev_class_probabilities.shape[0], elev_class_probabilities.shape[1], y_length[0], (xmax_targ - xmax[0])])
+    add_front[2, :, :, :] = 1
+    add_back[2, :, :, :] = 1
+    elev_class_probabilities = np.concatenate((add_front, elev_class_probabilities), axis=3)
+    elev_class_probabilities = np.concatenate((elev_class_probabilities, add_back), axis=3)
+
+    # Stich multiple sections of probabilistic runs together in space (if applicable)
+    if len(elev_class_probabilities_filename) > 0:
+        for n in range(1, len(elev_class_probabilities_filename)):
+            elev_class_probabilities_addition = np.load("Output/SimData/" + elev_class_probabilities_filename[n])
+            add_front = np.zeros([elev_class_probabilities_addition.shape[0], elev_class_probabilities_addition.shape[1], y_length[n], (xmin[n] - xmin_targ)])
+            add_back = np.zeros([elev_class_probabilities_addition.shape[0], elev_class_probabilities_addition.shape[1], y_length[n], (xmax_targ - xmax[n])])
+            add_front[2, :, :, :] = 1
+            add_back[2, :, :, :] = 1
+            elev_class_probabilities_addition = np.concatenate((add_front, elev_class_probabilities_addition), axis=3)
+            elev_class_probabilities_addition = np.concatenate((elev_class_probabilities_addition, add_back), axis=3)
+
+            elev_class_probabilities = np.concatenate((elev_class_probabilities, elev_class_probabilities_addition), axis=2)
+
+    longshore = elev_class_probabilities.shape[2]
+    crossshore = elev_class_probabilities.shape[3]
+
+if 'state' in classification_scheme:
+    state_class_probabilities = np.load("Output/SimData/" + state_class_probabilities_filename[0])
+    add_front = np.zeros([state_class_probabilities.shape[0], state_class_probabilities.shape[1], y_length[0], (xmin[0] - xmin_targ)])
+    add_back = np.zeros([state_class_probabilities.shape[0], state_class_probabilities.shape[1], y_length[0], (xmax_targ - xmax[0])])
+    add_front[0, :, :, :] = 1
+    add_back[0, :, :, :] = 1
+    state_class_probabilities = np.concatenate((add_front, state_class_probabilities), axis=3)
+    state_class_probabilities = np.concatenate((state_class_probabilities, add_back), axis=3)
+
+    # Stich multiple sections of probabilistic runs together in space (if applicable)
+    if len(state_class_probabilities_filename) > 0:
+        for n in range(1, len(state_class_probabilities_filename)):
+            state_class_probabilities_addition = np.load("Output/SimData/" + state_class_probabilities_filename[n])
+            add_front = np.zeros([state_class_probabilities_addition.shape[0], state_class_probabilities_addition.shape[1], y_length[n], (xmin[n] - xmin_targ)])
+            add_back = np.zeros([state_class_probabilities_addition.shape[0], state_class_probabilities_addition.shape[1], y_length[n], (xmax_targ - xmax[n])])
+            add_front[0, :, :, :] = 1
+            add_back[0, :, :, :] = 1
+            state_class_probabilities_addition = np.concatenate((add_front, state_class_probabilities_addition), axis=3)
+            state_class_probabilities_addition = np.concatenate((state_class_probabilities_addition, add_back), axis=3)
+
+            state_class_probabilities = np.concatenate((state_class_probabilities, state_class_probabilities_addition), axis=2)
+
+    longshore = state_class_probabilities.shape[2]
+    crossshore = state_class_probabilities.shape[3]
+
+if 'overwash_frequency' in classification_scheme:
+    overwash_class_probabilities = np.load("Output/SimData/" + overwash_class_probabilities_filename[0])
+    add_front = np.zeros([overwash_class_probabilities.shape[0], y_length[0], (xmin[0] - xmin_targ)])
+    add_back = np.zeros([overwash_class_probabilities.shape[0], y_length[0], (xmax_targ - xmax[0])])
+    overwash_class_probabilities = np.concatenate((add_front, overwash_class_probabilities), axis=2)
+    overwash_class_probabilities = np.concatenate((overwash_class_probabilities, add_back), axis=2)
+
+    # Stich multiple sections of probabilistic runs together in space (if applicable)
+    if len(overwash_class_probabilities_filename) > 0:
+        for n in range(1, len(overwash_class_probabilities_filename)):
+            overwash_class_probabilities_addition = np.load("Output/SimData/" + overwash_class_probabilities_filename[n])
+            add_front = np.zeros([overwash_class_probabilities_addition.shape[0], y_length[n], (xmin[n] - xmin_targ)])
+            add_back = np.zeros([overwash_class_probabilities_addition.shape[0], y_length[n], (xmax_targ - xmax[n])])
+            overwash_class_probabilities_addition = np.concatenate((add_front, overwash_class_probabilities_addition), axis=2)
+            overwash_class_probabilities_addition = np.concatenate((overwash_class_probabilities_addition, add_back), axis=2)
+
+            overwash_class_probabilities = np.concatenate((overwash_class_probabilities, overwash_class_probabilities_addition), axis=1)
+
+    longshore = overwash_class_probabilities.shape[1]
+    crossshore = overwash_class_probabilities.shape[2]
+
+# __________________________________________________________________________________________________________________________________
+# CLASS SPECIFICATIONS - Labels & color schemes
 
 # Elevation
 elev_class_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
@@ -973,24 +1056,6 @@ cmap_class_prob = plt.get_cmap('cividis', 5)
 cmap_conf = plt.get_cmap('BuPu', 4)  # 4 discrete colors
 
 # __________________________________________________________________________________________________________________________________
-# SIM SPECIFICATIONS
-
-name = ''  # Name of simulation suite
-sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
-save_frequency = 2  # [yr] Time step for probability calculations
-cellsize = 2  # [m]
-plot_xmin = 0  # [m] Cross-shore min coordinate for plotting
-plot_xmax = plot_xmin + 1500  # [m] Cross-shore max coordinate for plotting
-plot_start_step = 3
-
-plot = True
-animate = False
-
-longshore = elev_class_probabilities.shape[2]
-crossshore = elev_class_probabilities.shape[3]
-num_saves = int(np.floor(sim_duration/save_frequency)) + 1
-
-# __________________________________________________________________________________________________________________________________
 # PLOT RESULTS
 
 print()
@@ -998,29 +1063,35 @@ print(name)
 
 
 if plot:
-    # # plot_class_maps(elev_class_probabilities, elev_class_labels, it=-1)
-    # # plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
-    # plot_most_probable_class(elev_class_probabilities, elev_class_cmap, elev_class_labels, it=-1, orientation='horizontal')
-    # plot_most_probable_class(state_class_probabilities, state_class_cmap, state_class_labels, it=-1, orientation='horizontal')
-    # plot_class_frequency(inundation_class_probabilities, it=-1, class_label='Overwash Events', orientation='horizontal')
-    # plot_probabilistic_class_area_change_over_time(state_class_probabilities, state_class_labels, norm='class', start_step=plot_start_step)
-    # plot_weighted_area_bar_over_time(state_class_probabilities, state_class_cmap, state_class_labels, start_step=plot_start_step)
-    # # plot_most_likely_transition_maps(state_class_probabilities)
-    # plot_transitions_area_matrix(state_class_probabilities, state_class_labels, norm='class', start_step=plot_start_step)
-    # plot_class_area_loss_gain_over_time(state_class_probabilities, state_class_labels, start_step=plot_start_step)
-    # plot_transitions_time_matrix(state_class_probabilities, start_step=plot_start_step)
-    # plot_overwash_intensity_over_time(inundation_class_probabilities, state_class_probabilities, dy=10)
-    # plot_transitions_intensity_alongshore(state_class_probabilities, dy=100, start_step=plot_start_step, end_step=-1)
-    plot_transition_succession(state_class_probabilities, 14, state_class_labels, 'Steep to Shallow Beach', start_step=plot_start_step)
-    # plot_most_likely_ocean_shoreline(state_class_probabilities, plot_start_step)
-    plot_most_probable_class(state_class_probabilities, state_class_cmap, state_class_labels, it=3, orientation='vertical')
-    plot_most_probable_class(state_class_probabilities, state_class_cmap, state_class_labels, it=-1, orientation='vertical')
-    plot_transect_history_most_likely_class(state_class_probabilities, 613, start_step=3)
-if animate:
-    bins_animation(elev_class_probabilities, elev_class_labels)
-    bins_animation(state_class_probabilities, state_class_labels)
-    most_likely_animation(elev_class_probabilities, elev_class_cmap, elev_class_labels, orientation='horizontal')
-    most_likely_animation(state_class_probabilities, state_class_cmap, state_class_labels, orientation='horizontal')
-    class_frequency_animation(inundation_class_probabilities, orientation='horizontal')
-plt.show()
+    if 'elevation' in classification_scheme:
+        # plot_class_maps(elev_class_probabilities, elev_class_labels, it=-1)
+        plot_most_probable_class(elev_class_probabilities, elev_class_cmap, elev_class_labels, it=-1, orientation='horizontal')
+        if animate:
+            bins_animation(elev_class_probabilities, elev_class_labels)
+            most_likely_animation(elev_class_probabilities, elev_class_cmap, elev_class_labels, orientation='horizontal')
 
+    if 'state' in classification_scheme:
+        # plot_class_maps(state_class_probabilities, state_class_labels, it=-1)
+        plot_most_probable_class(state_class_probabilities, state_class_cmap, state_class_labels, it=-1, orientation='horizontal')
+        plot_probabilistic_class_area_change_over_time(state_class_probabilities, state_class_labels, norm='class', start_step=plot_start_step)
+        plot_weighted_area_bar_over_time(state_class_probabilities, state_class_cmap, state_class_labels, start_step=plot_start_step)
+        # plot_most_likely_transition_maps(state_class_probabilities)
+        plot_transitions_area_matrix(state_class_probabilities, state_class_labels, norm='class', start_step=plot_start_step)
+        # plot_class_area_loss_gain_over_time(state_class_probabilities, state_class_labels, start_step=plot_start_step)
+        # plot_transitions_time_matrix(state_class_probabilities, start_step=plot_start_step)
+        # plot_transitions_intensity_alongshore(state_class_probabilities, dy=100, start_step=plot_start_step, end_step=-1)
+        plot_most_likely_ocean_shoreline(state_class_probabilities, plot_start_step)
+        # plot_transition_succession(state_class_probabilities, 14, state_class_labels, 'Steep to Shallow Beach', start_step=plot_start_step)
+        # plot_transect_history_most_likely_class(state_class_probabilities, 500, start_step=plot_start_step)
+        if animate:
+            bins_animation(state_class_probabilities, state_class_labels)
+            most_likely_animation(state_class_probabilities, state_class_cmap, state_class_labels, orientation='horizontal')
+
+    if 'overwash_frequency' in classification_scheme:
+        plot_class_frequency(overwash_class_probabilities, it=-1, class_label='Overwash Events', orientation='horizontal')
+        if 'state' in classification_scheme:
+            plot_overwash_intensity_over_time(overwash_class_probabilities, state_class_probabilities, dy=100)
+        if animate:
+            class_frequency_animation(overwash_class_probabilities, orientation='horizontal')
+
+plt.show()
