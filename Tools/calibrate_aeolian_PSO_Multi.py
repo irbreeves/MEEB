@@ -4,7 +4,7 @@ Script for calibrating MEEB aeolian parameters using Particle Swarms Optimizatio
 Calibrates based on fitess score for morphologic change between two observation, and incorporates multiple
 timeframes and/or locations into each fitness score.
 
-IRBR 24 October 2024
+IRBR 4 April 2025
 """
 
 import numpy as np
@@ -132,6 +132,7 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         # --- Aeolian --- #
         saltation_length=2,
         saltation_length_rand_deviation=1,
+        slabheight=0.02,
         p_dep_sand=solution[0],
         p_dep_sand_VegMax=solution[0] + solution[1],
         p_ero_sand=solution[2],
@@ -142,18 +143,20 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         repose_veg=30,
         wind_rose=rose,
         # --- Storms --- #
-        Rin=229,
-        Cs=0.0197,
+        Rin=245,
+        Cs=0.0235,
         MaxUpSlope=1.5,
         marine_flux_limit=1,
-        Kow=0.0005080,
-        mm=1.03,
+        Kow=0.0003615,
+        mm=1.05,
         overwash_substeps=25,
-        beach_equilibrium_slope=0.019,
-        swash_erosive_timescale=1.29,
-        beach_substeps=25,
-        flow_reduction_max_spec1=0.02,
-        flow_reduction_max_spec2=0.05,
+        beach_equilibrium_slope=0.021,
+        swash_erosive_timescale=1.51,
+        beach_substeps=1,
+        flow_reduction_max_spec1=0.002,
+        flow_reduction_max_spec2=0.02,
+        # --- Shoreline --- #
+        shoreline_diffusivity_coefficient=0.07,
         # --- Veg --- #
         sp1_lateral_probability=0.2,
         sp2_lateral_probability=0.2,
@@ -161,7 +164,7 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         sp2_pioneer_probability=0.03,
         # MY GRASS
         sp1_a=-1.2,
-        sp1_b=-0.2,  # Mullins et al. (2019)
+        sp1_b=-0.067,  # Mullins et al. (2019)
         sp1_c=0.5,
         sp1_d=1.2,
         sp1_e=2.1,
@@ -333,7 +336,7 @@ x_range_max = [int(i / cellsize) for i in x_range_max]
 MHW = 0.39  # [m NAVD88] Initial
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
-name = '2014-2017, 5 x 500-m Locations, Multi-Objective BSS, 65 iter, Planet 2m High Density, New Species Vertices, Zonation, and Mortality, 1Nov24'
+name = '2014-2017, 5 x 500-m Locations, Multi-Objective BSS, 65 iter, Planet 2m High Density, 1Apr25'
 
 print(name)
 
