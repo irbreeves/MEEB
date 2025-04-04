@@ -1,6 +1,6 @@
 """
 Script for testing MEEB overwash function.
-IRBR 9 September 2024
+IRBR 1 April 2025
 """
 
 import numpy as np
@@ -123,34 +123,34 @@ RNG = np.random.default_rng(seed=13)
 # Overwash, Beach, & Dune Change
 topo_prestorm = copy.deepcopy(topo)  # [m NAVD88]
 
-sim_topo_post_storm, topo_change_overwash, OWflux, inundated, Qbe = routine.storm_processes(
+sim_topo_post_storm, OWflux, inundated, Qbe = routine.storm_processes(
     topo,
     Rhigh,
     dur,
-    Rin=229,
-    Cs=0.0197,
+    Rin=245,
+    Cs=0.0235,
     nn=0.5,
     MaxUpSlope=1.5,
     fluxLimit=1,
     Qs_min=1,
-    Kow=0.0005080,
-    mm=1.03,
+    Kow=0.0003615,
+    mm=1.05,
     MHW=MHW,
     Cbb=0.7,
     Qs_bb_min=1,
     substep=25,
-    beach_equilibrium_slope=0.019,
-    swash_erosive_timescale=1.29,
-    beach_substeps=25,
+    beach_equilibrium_slope=0.021,
+    swash_erosive_timescale=1.51,
+    beach_substeps=1,
     x_s=x_s,
     cellsize=cellsize,
     spec1=spec1,
     spec2=spec2,
-    flow_reduction_max_spec1=0.02,
-    flow_reduction_max_spec2=0.05,
+    flow_reduction_max_spec1=0.002,
+    flow_reduction_max_spec2=0.02,
 )
 
-sim_topo_final = routine.enforceslopes(sim_topo_post_storm, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, cellsize=cellsize, RNG=RNG)[0]  # Enforce angles of repose
+sim_topo_final = routine.enforceslopes(sim_topo_post_storm, veg, sh=0.02, anglesand=20, angleveg=30, th=0.37, MHW=MHW, cellsize=cellsize, RNG=RNG)  # Enforce angles of repose
 
 SimDuration = time.time() - start_time
 print()
