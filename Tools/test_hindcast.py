@@ -3,7 +3,7 @@ Script for testing MEEB hindcast simulations.
 
 Runs a hindcast simulation and calculates fitess scores for morphologic and ecologic change between simulated and observed.
 
-IRBR 4 March 2025
+IRBR 4 April 2025
 """
 
 import numpy as np
@@ -149,7 +149,7 @@ ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
 cellsize = 2  # [m]
 
-name = str(ymin) + ' - ' + str(ymax) + ', RSLR=6, CALIBRATED HIGH DEN'
+name = str(ymin) + ' - ' + str(ymax) + ', RSLR=6'
 
 # _____________________
 # LOAD INITIAL DOMAINS
@@ -213,6 +213,7 @@ meeb = MEEB(
     # --- Aeolian --- #
     saltation_length=2,
     saltation_length_rand_deviation=1,
+    slabheight=0.02,
     p_dep_sand=0.09,  # Q = hs * L * n * pe/pd
     p_dep_sand_VegMax=0.17,
     p_ero_sand=0.08,
@@ -225,18 +226,18 @@ meeb = MEEB(
     wind_rose=(0.91, 0.04, 0.01, 0.04),  # (right, down, left, up)
     groundwater_depth=0.4,
     # --- Storms --- #
-    Rin=229,
-    Cs=0.0197,
+    Rin=245,
+    Cs=0.0235,
     MaxUpSlope=1.5,
     marine_flux_limit=1,
-    Kow=0.0005080,
-    mm=1.03,
+    Kow=0.0003615,
+    mm=1.05,
     overwash_substeps=25,
-    beach_equilibrium_slope=0.019,
-    swash_erosive_timescale=1.29,
-    beach_substeps=25,
-    flow_reduction_max_spec1=0.02,
-    flow_reduction_max_spec2=0.05,
+    beach_equilibrium_slope=0.021,
+    swash_erosive_timescale=1.51,
+    beach_substeps=1,
+    flow_reduction_max_spec1=0.002,
+    flow_reduction_max_spec2=0.02,
     # --- Shoreline --- #
     wave_asymmetry=0.6,
     wave_high_angle_fraction=0.39,
@@ -244,6 +245,7 @@ meeb = MEEB(
     mean_wave_period=6.6,
     alongshore_section_length=25,
     estimate_shoreface_parameters=True,
+    shoreline_diffusivity_coefficient=0.07,
     # --- Veg --- #
     sp1_lateral_probability=0.2,
     sp2_lateral_probability=0.2,
@@ -252,7 +254,7 @@ meeb = MEEB(
 
     # MY GRASS
     sp1_a=-1.2,
-    sp1_b=-0.2,  # Mullins et al. (2019)
+    sp1_b=-0.067,  # Mullins et al. (2019)
     sp1_c=0.5,
     sp1_d=1.2,
     sp1_e=2.1,
