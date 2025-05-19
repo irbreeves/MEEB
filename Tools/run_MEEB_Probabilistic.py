@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 11 March 2025
+IRBR 12 May 2025
 """
 
 import os
@@ -54,6 +54,7 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         # --- Aeolian --- #
         saltation_length=2,
         saltation_length_rand_deviation=1,
+        slabheight=0.02,
         p_dep_sand=0.09,  # Q = hs * L * n * pe/pd
         p_dep_sand_VegMax=0.17,
         p_ero_sand=0.08,
@@ -66,7 +67,7 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         wind_rose=(0.91, 0.04, 0.01, 0.04),  # (right, down, left, up)
         groundwater_depth=0.4,
         # --- Storms --- #
-        Rin=232,
+        Rin=245,
         Cs=0.0235,
         MaxUpSlope=1.5,
         marine_flux_limit=1,
@@ -76,8 +77,8 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         beach_equilibrium_slope=0.021,
         swash_erosive_timescale=1.51,
         beach_substeps=1,
-        flow_reduction_max_spec1=0.02,
-        flow_reduction_max_spec2=0.05,
+        flow_reduction_max_spec1=0.002,
+        flow_reduction_max_spec2=0.02,
         # --- Shoreline --- #
         wave_asymmetry=0.6,
         wave_high_angle_fraction=0.39,
@@ -93,7 +94,7 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         sp2_pioneer_probability=0.03,
         # MY GRASS
         sp1_a=-1.2,
-        sp1_b=-0.2,  # Mullins et al. (2019)
+        sp1_b=-0.067,  # Mullins et al. (2019)
         sp1_c=0.5,
         sp1_d=1.2,
         sp1_e=2.1,
@@ -117,9 +118,9 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
     if 'elevation' in classification_scheme:
         classification.append(classify_topo_change(meeb.topo_TS.shape[2], meeb.topo_TS))
     if 'overwash_frequency' in classification_scheme:
-        classification.append(classify_overwash_frequency(meeb.topo_TS.shape[2], meeb.storm_inundation_TS, meeb.topo_TS, meeb.MHW_init, meeb.RSLR))
+        classification.append(classify_overwash_frequency(meeb.topo_TS.shape[2], meeb.storm_inundation_TS, meeb.topo_TS, meeb.MHW_TS))
     if 'state' in classification_scheme:
-        classification.append(classify_ecogeomorphic_habitat_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.spec1_TS, meeb.spec2_TS, meeb.MHW_init, meeb.RSLR, vegetated_threshold=0.37))
+        classification.append(classify_ecogeomorphic_habitat_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.spec1_TS, meeb.spec2_TS, meeb.MHW_TS, vegetated_threshold=0.37))
 
     del meeb
     gc.collect()
@@ -146,7 +147,7 @@ def classify_topo_change(TS, topo_TS):
     return topo_change_bin
 
 
-def classify_ecogeomorphic_habitat_state(TS, topo_TS, spec1_TS, spec2_TS, mhw_init, rslr, vegetated_threshold, beach_slope_threshold=0.019):
+def classify_ecogeomorphic_habitat_state(TS, topo_TS, spec1_TS, spec2_TS, mhw_ts, vegetated_threshold, beach_slope_threshold=0.019):
     """Classify by ecogeomorphic state using topography and vegetatio, with focus on bird and turtle habitat."""
 
     habitat_state_classes = np.zeros([num_saves, longshore, crossshore], dtype=np.int8)  # Initialize
@@ -156,7 +157,7 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, spec1_TS, spec2_TS, mhw_in
     for ts in range(TS):
 
         # Find MHW for this time step
-        MHW = mhw_init + rslr * ts * save_frequency
+        MHW = mhw_ts[ts]
 
         # Smooth topography to remove small-scale variability
         topo = topo_TS[:, :, ts].astype(np.float32)  # Temporarily convert slice to float32
@@ -264,13 +265,13 @@ def classify_inundation(TS, inundation_TS, topo, mhw_init, rslr):
     return inundation
 
 
-def classify_overwash_frequency(TS, inundation_TS, topo, mhw_init, rslr):
+def classify_overwash_frequency(TS, inundation_TS, topo, mhw_ts):
     """Classify according to number of times inundated from storm overwash."""
 
     overwash = np.zeros([num_saves, longshore, crossshore], dtype=np.int16)
 
     for ts in range(TS):
-        MHW = mhw_init + rslr * ts * save_frequency
+        MHW = mhw_ts[ts]
         storm_inun = inundation_TS[:, :, ts].astype(np.int16)
         storm_inun[topo[:, :, ts] < MHW] = 0
         if ts == 0:
@@ -993,11 +994,6 @@ elev_class_edges = [-np.inf, -0.5, -0.1, 0.1, 0.5, np.inf]  # [m] Elevation chan
 elev_class_labels = ['< -0.5', '-0.5 - -0.1', '-0.1 - 0.1', '0.1 - 0.5', '> 0.5']
 elev_class_cmap = colors.ListedColormap(['#ca0020', '#f4a582', '#f7f7f7', '#92c5de', '#0571b0'])
 
-state_classification_label = 'Ecogeomorphic State'  # Axes labels on figures
-state_class_edges = [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5]  # [m] State change
-state_class_labels = ['Subaqueous', 'Beach', 'Dune', 'Washover', 'Interior']
-state_class_cmap = colors.ListedColormap(['blue', 'gold', 'saddlebrown', 'red', 'green'])
-
 habitat_state_classification_label = 'Habitat-Ecogeomorphic State'  # Axes labels on figures
 habitat_state_class_edges = [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5]  # [m] State change
 habitat_state_class_labels = ['Subaqueous', 'Beach-Shallow', 'Beach-Steep', 'Dune', 'Unvegetated Interior', 'Vegetated Interior']
@@ -1026,7 +1022,7 @@ core_num = int(os.environ['SLURM_CPUS_PER_TASK'])  # --> Use this if running on 
 classification_scheme = ['elevation', 'overwash_frequency', 'state']
 
 # Define Horizontal and Vertical References of Domain
-ymin = 13830  # [m] Alongshore coordinate
+ymin = 14000  # [m] Alongshore coordinate
 ymax = 32000  # [m] Alongshore coordinate
 xmin = 200  # [m] Cross-shore coordinate
 xmax = 1500  # [m] Cross-shore coordinate
@@ -1035,12 +1031,12 @@ plot_xmax = 1500  # [m] Cross-shore coordinate (for plotting), relative to trimm
 MHW_init = 0.39  # [m NAVD88] Initial mean high water
 cellsize = 2  # [m]
 
-name = '11Mar25, 13830-32000, 2018-2050, meeb63'  # Name of simulation suite
+name = '13May25, 14000-32000, 2018-2050, meeb121'  # Name of simulation suite
 
 plot = False  # [bool]
 animate = False  # [bool]
 save_data = True  # [bool]
-savename = '11Mar25_13830-32000_meeb63'
+savename = '13May25_14000-32000_meeb121'
 
 # _____________________
 # INITIAL CONDITIONS
@@ -1061,7 +1057,6 @@ spec2_start = Init[2, ymin: ymax, xmin: xmax].copy()
 longshore, crossshore = topo_start.shape
 
 elev_num_classes = len(elev_class_edges) - 1
-state_num_classes = len(state_class_edges) - 1
 habitat_state_num_classes = len(habitat_state_class_edges) - 1
 num_saves = int(np.floor(sim_duration/save_frequency)) + 1
 
