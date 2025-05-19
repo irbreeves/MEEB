@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 11 March 2025
+Last update: 12 May 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -354,6 +354,7 @@ class MEEB:
         self._spec2_TS[:, :, 0] = self._spec2.astype(np.float16)
         self._storm_inundation_TS = np.zeros([self._longshore, self._crossshore, int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float16)  # Array for saving each veg map at specified frequency
         self._inundated_output_aggregate = np.zeros([self._longshore, self._crossshore], dtype=np.float16)
+        self._MHW_TS = np.zeros([int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1])  # Array for saving each MHW at specified frequency
 
         if init_by_file:
             del Init
@@ -465,7 +466,7 @@ class MEEB:
                 )
 
                 # Update vegetation from storm effects
-                inundated = gaussian_filter(inundated.astype(np.float32), 2 / self._cellsize, mode='reflect')
+                inundated = gaussian_filter(inundated.astype(np.float32), 4 / self._cellsize, mode='reflect')
                 inundation_mortality = inundated >= self._RNG.random((self._longshore, self._crossshore), dtype=np.float32)  # Stochastic mortality effect along edges of inundation
                 self._spec1[inundation_mortality] = 0  # Remove species where inundated
                 self._spec2[inundation_mortality] = 0  # Remove species where inundated
@@ -608,6 +609,7 @@ class MEEB:
             self._spec1_TS[:, :, moment] = self._spec1.astype(np.float16)
             self._spec2_TS[:, :, moment] = self._spec2.astype(np.float16)
             self._storm_inundation_TS[:, :, moment] = self._inundated_output_aggregate.astype(np.float16)
+            self._MHW_TS[moment] = self._MHW
             self._inundated_output_aggregate *= False  # Reset for next output period
 
         # --------------------------------------
@@ -691,6 +693,10 @@ class MEEB:
     @property
     def MHW_init(self):
         return self._MHW_init
+
+    @property
+    def MHW_TS(self):
+        return self._MHW_TS
 
     @property
     def StormRecord(self):
