@@ -1,6 +1,6 @@
 """
 Script for testing MEEB overwash function.
-IRBR 9 September 2024
+IRBR 1 April 2025
 """
 
 import numpy as np
@@ -65,14 +65,14 @@ Rhigh = 3.32  # [m NAVD88]
 Rlow = 1.90  # [m NAVD88]
 dur = 83  # [hr]
 MHW = 0.39  # [m NAVD88]
-cellsize = 1  # [m]
+cellsize = 2  # [m]
 
 # Initial Observed Topo
-Init = np.load("Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy")
+Init = np.load("Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_2m.npy")
 # Final Observed
-End = np.load("Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy")
+End = np.load("Input/Init_NCB-NewDrum-Ocracoke_2018_USACE_PostFlorence_2m.npy")
 # Load observed overwash mask
-overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")
+overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence_2m.npy")
 
 # Define Alongshore Coordinates of Domain
 ymin = 19250  # 19250 8230 22400 6855
@@ -123,34 +123,34 @@ RNG = np.random.default_rng(seed=13)
 # Overwash, Beach, & Dune Change
 topo_prestorm = copy.deepcopy(topo)  # [m NAVD88]
 
-sim_topo_post_storm, topo_change_overwash, OWflux, inundated, Qbe = routine.storm_processes(
+sim_topo_post_storm, OWflux, inundated, Qbe = routine.storm_processes(
     topo,
     Rhigh,
     dur,
-    Rin=249,
-    Cs=0.0283,
+    Rin=245,
+    Cs=0.0235,
     nn=0.5,
     MaxUpSlope=1.5,
     fluxLimit=1,
     Qs_min=1,
-    Kow=0.0001684,
-    mm=1.04,
+    Kow=0.0003615,
+    mm=1.05,
     MHW=MHW,
     Cbb=0.7,
     Qs_bb_min=1,
-    substep=50,
-    beach_equilibrium_slope=0.022,
-    swash_erosive_timescale=1.48,
-    beach_substeps=25,
+    substep=25,
+    beach_equilibrium_slope=0.021,
+    swash_erosive_timescale=1.51,
+    beach_substeps=1,
     x_s=x_s,
     cellsize=cellsize,
     spec1=spec1,
     spec2=spec2,
-    flow_reduction_max_spec1=0.02,
-    flow_reduction_max_spec2=0.05,
+    flow_reduction_max_spec1=0.002,
+    flow_reduction_max_spec2=0.02,
 )
 
-sim_topo_final = routine.enforceslopes(sim_topo_post_storm, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, cellsize=cellsize, RNG=RNG)[0]  # Enforce angles of repose
+sim_topo_final = routine.enforceslopes(sim_topo_post_storm, veg, sh=0.02, anglesand=20, angleveg=30, th=0.37, MHW=MHW, cellsize=cellsize, RNG=RNG)  # Enforce angles of repose
 
 SimDuration = time.time() - start_time
 print()

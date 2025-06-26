@@ -2,14 +2,13 @@
     use in MEEB (Mesoscale Explicit Ecogeomorphic Barrier model).
 
     IRB Reeves
-    Last update: 7 October 2024
+    Last update: 1 November 2024
 """
 
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
 import routines_meeb as routine
-from skimage.transform import resize
 
 
 def populateVeg(topo,
@@ -140,17 +139,17 @@ def densityVeg(veggie, den):
     s2[veggie == 2] = 1
 
     # Apply density
-    s1[den <= 0] *= 0.4
-    s1[den == 1] *= 0.6
-    s1[den == 2] *= 0.8
+    s1[den <= 0] *= 0.8
+    s1[den == 1] *= 0.9
+    s1[den == 2] *= 0.95
     s1[den == 3] *= 1.0
 
-    s2[den <= 0] *= 0.4
-    s2[den == 1] *= 0.6
-    s2[den == 2] *= 0.8
+    s2[den <= 0] *= 0.7
+    s2[den == 1] *= 0.8
+    s2[den == 2] *= 0.9
     s2[den == 3] *= 1.0
 
-    s1[np.logical_and(np.logical_and(s1 == 0, s2 == 0), den > 0)] = 0.4
+    s1[np.logical_and(np.logical_and(s1 == 0, s2 == 0), den > 0)] = 0.8
 
     # Add +/- 10% density random noise to vegetated cells
     randNoise = np.random.uniform(-0.1, 0.1, s1.shape) * (s1 > 0)
@@ -183,26 +182,26 @@ SF_slope = 0.0082  # Equilibrium shoreface slope
 buffer = 3000  #
 
 # Domain
-xmin = 7000  # [m] Alongshore coordinate for start of domain
-xmax = 35750  # [m] Alongshore coordinate for end of domain
+xmin = 2200  # [m] Alongshore coordinate for start of domain
+xmax = 34200  # [m] Alongshore coordinate for end of domain
 ymin = 100  # [m] Cross-shore coordinate for start of domain
-ymax = 1800  # [m] Cross-shore coordinate for end of domain
+ymax = 1600  # [m] Cross-shore coordinate for end of domain
 zmax = 10  # [m NAVD88] Maximum elevation to remove outlier errors
 zmin = -10  # [m NAVD88] Minimum elevation to remove outlier errors
 bay = 0  # [m] Additional width of bay to add to domain
-cellsize = 1  # [m] Cell dimensions; if greater than 1, script resizes arrays to fit new resolution; cellsizes less than 1 m not advised
+cellsize = 2  # [m] Cell dimensions; if greater than 1, script resizes arrays to fit new resolution; cellsizes less than 1 m not advised
 
 # Vegetation
 Veggie = True  # [bool] Whether or not to load & convert a contemporaneous init veg raster
 VeggiePop = False  # [bool] Whether or not to use stoachstic population of vegetation or init veg density raster
-Thin = True  # [bool] Whether to artificiallly and randomly thin out vegetation cover
+Thin = False  # [bool] Whether to artificiallly and randomly thin out vegetation cover
 veg_tif_file = ""  # Path to raw input tif file with 1 m resolution
 vegden_tif_file = ""  # Path to raw input tif file with 1 m resolution
 veg_min = 0.5  # [m] Minimum elevation for vegetation
 
 # Save
 save = False  # [bool] Whether or not to save finished arrays
-savename = "NCB-NewDrum-Ocracoke_2018_PostFlorence"
+savename = "NCB-2200-34200_2018_USACE_PostFlorence_2m"
 
 
 # ================================================================================================================
@@ -245,7 +244,7 @@ cs, ls = dem.shape
 
 # Set back-barrier TODO: Account for barrier profiles that are entirely under MHW (i.e., inlets)
 BB_shoreline = []
-BB_slope = np.arange(1, BB_slope_length + 1) * BB_depth / BB_slope_length
+BB_slope = np.arange(1, int(BB_slope_length / cellsize) + 1) * BB_depth / int(BB_slope_length / cellsize)
 BB_profile = np.hstack((BB_slope, np.ones([buffer]) * BB_depth)) * -1
 for l in range(ls):
     BB_loc = np.argmax(dem[:, l] > BB_thresh)
@@ -255,7 +254,7 @@ for l in range(ls):
 # Set shoreface
 dem = np.rot90(dem, 2)  # Flip upside down
 ocean_shoreline = []
-SF_profile = np.arange(1, buffer + 1) * SF_slope * -1 + MHW
+SF_profile = np.arange(1, buffer + 1) * (SF_slope * cellsize) * -1 + MHW
 for l in range(ls):
     shoreline_loc = np.argmax(dem[:, l] > MHW)
     ocean_shoreline.append(shoreline_loc)
@@ -303,13 +302,13 @@ veg = spec1 + spec2
 
 # Resize
 if cellsize > 1:
-    orig_size = dem.shape
-    new_size = (int(orig_size[0] / cellsize), int(orig_size[1] / cellsize))
-    dem = resize(dem, new_size)
-    spec1 = resize(spec1, new_size)
-    spec2 = resize(spec2, new_size)
-    veg = resize(veg, new_size)
+    dem = routine.reduce_raster_resolution(dem, cellsize)
+    spec1 = routine.reduce_raster_resolution(spec1, cellsize)
+    spec2 = routine.reduce_raster_resolution(spec2, cellsize)
+    veg = routine.reduce_raster_resolution(veg, cellsize)
     dune_crest = routine.foredune_crest(dem, MHW, cellsize)
+    spec2[np.logical_and(spec1 > 0, spec2 > 0)] = 0  # Remove potential species overlap
+
 
 # ================================================================================================================
 # PLOT & SAVE

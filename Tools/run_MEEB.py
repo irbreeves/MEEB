@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 16 October 2024
+IRBR 11 March 2025
 """
 
 import numpy as np
@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import os
 import copy
+import gc
 from tqdm import trange
 
 import routines_meeb as routine
@@ -31,24 +32,25 @@ from meeb import MEEB
 # startdate = '20181007'
 
 # 2018
-start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_18400-23400.npy"
-startdate = '20181007'
+start = "Init_NCB-2200-34200_2018_USACE_PostFlorence_2m.npy"
+startdate = '20181015'
 
 # _____________________
 
-sim_duration = 12
+sim_duration = 32
 MHW = 0.39  # [m NAVD88]
-cellsize = 1  # [m]
-name = '250-750, 2018-2030, RSLR=0.0124'  # Name of simulation
+cellsize = 2  # [m]
+name = '9500-17000, 2018-2050, RSLR=9.6'  # Name of simulation
+animate = False
 
 # _____________________
 # Define Coordinates of Model Domain
-ymin = 250  # Alongshore
-ymax = 750  # Alongshore
-xmin = 0  # Cross-shore
-xmax = 850  # Cross-shore
+ymin = 9500  # Alongshore
+ymax = 17000  # Alongshore
+xmin = 450  # Cross-shore
+xmax = 1250  # Cross-shore
 plot_xmin = 0  # Cross-shore plotting
-plot_xmax = 800  # Cross-shore plotting
+plot_xmax = 1500  # Cross-shore plotting
 
 # Resize according to cellsize
 ymin = int(ymin / cellsize)  # Alongshore
@@ -57,6 +59,16 @@ xmin = int(xmin / cellsize)  # Cross-shore
 xmax = int(xmax / cellsize)  # Cross-shore
 plot_xmin = int(plot_xmin / cellsize)  # Cross-shore plotting
 plot_xmax = int(plot_xmax / cellsize)  # Cross-shore plotting
+
+# Load Initial Domains
+Init = np.load("Input/" + start)
+topo_start = Init[0, ymin: ymax, xmin: xmax].copy()
+spec1_start = Init[1, ymin: ymax, xmin: xmax].copy()
+spec2_start = Init[2, ymin: ymax, xmin: xmax].copy()
+
+del Init
+gc.collect()
+
 
 # __________________________________________________________________________________________________________________________________
 # RUN MODEL
@@ -70,38 +82,47 @@ meeb = MEEB(
     crossshore_domain_boundary_min=xmin,
     crossshore_domain_boundary_max=xmax,
     cellsize=cellsize,
-    RSLR=0.0124,
+    RSLR=0.0096,
     MHW=MHW,
     init_filename=start,
     hindcast=False,
+    shift_mean_storm_intensity_start=1.485,
+    shift_mean_storm_intensity_end=4.199,
+    storm_twl_duration_correlation=28.31,
     seeded_random_numbers=True,
     simulation_start_date=startdate,
     storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',  # For hindcasts
     storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',  # For forecasts
+    init_by_file=False,
+    init_elev_array=topo_start,
+    init_spec1_array=spec1_start,
+    init_spec2_array=spec2_start,
+    save_frequency=2,
     # --- Aeolian --- #
-    saltation_length=5,
-    saltation_length_rand_deviation=2,
+    saltation_length=2,
+    saltation_length_rand_deviation=1,
     slabheight=0.02,
-    p_dep_sand=0.22,  # Q = hs * L * n * pe/pd
-    p_dep_sand_VegMax=0.54,
-    p_ero_sand=0.10,
-    entrainment_veg_limit=0.10,
-    saltation_veg_limit=0.35,
+    p_dep_sand=0.09,  # Q = hs * L * n * pe/pd
+    p_dep_sand_VegMax=0.17,
+    p_ero_sand=0.08,
+    entrainment_veg_limit=0.09,
+    saltation_veg_limit=0.37,
+    repose_threshold=0.37,
     shadowangle=12,
     repose_bare=20,
     repose_veg=30,
-    wind_rose=(0.81, 0.04, 0.06, 0.09),  # (right, down, left, up)
+    wind_rose=(0.91, 0.04, 0.01, 0.04),  # (right, down, left, up)
     # --- Storms --- #
-    Rin=249,
-    Cs=0.0283,
+    Rin=232,
+    Cs=0.0235,
     MaxUpSlope=1.5,
     marine_flux_limit=1,
-    Kow=0.0001684,
-    mm=1.04,
-    overwash_substeps=50,
-    beach_equilibrium_slope=0.022,
-    swash_erosive_timescale=1.48,
-    beach_substeps=25,
+    Kow=0.0003615,
+    mm=1.05,
+    overwash_substeps=25,
+    beach_equilibrium_slope=0.021,
+    swash_erosive_timescale=1.51,
+    beach_substeps=1,
     flow_reduction_max_spec1=0.02,
     flow_reduction_max_spec2=0.05,
     # --- Shoreline --- #
@@ -109,13 +130,27 @@ meeb = MEEB(
     wave_high_angle_fraction=0.39,
     mean_wave_height=0.98,
     mean_wave_period=6.6,
-    alongshore_section_length=30,
+    alongshore_section_length=25,
     estimate_shoreface_parameters=True,
     # --- Veg --- #
     sp1_lateral_probability=0.2,
     sp2_lateral_probability=0.2,
     sp1_pioneer_probability=0.05,
-    sp2_pioneer_probability=0.05,
+    sp2_pioneer_probability=0.03,
+    # MY GRASS
+    sp1_a=-1.2,
+    sp1_b=-0.2,  # Mullins et al. (2019)
+    sp1_c=0.5,
+    sp1_d=1.2,
+    sp1_e=2.1,
+    sp1_peak=0.2,
+    # MY SHRUB
+    sp2_a=-1.0,
+    sp2_b=-0.2,  # Conn and Day (1993)
+    sp2_c=0.0,
+    sp2_d=0.2,
+    sp2_e=2.1,
+    sp2_peak=0.05,
 )
 
 print(meeb.name, end='\n' * 2)
@@ -135,14 +170,15 @@ print()
 # ASSESS MODEL RESULTS
 
 # Topo change
-topo_start_sim = meeb.topo_TS[:, :, 0]  # [m NAVDD88]
-topo_end_sim = meeb.topo_TS[:, :, -1]  # [m NAVDD88]
+topo_start_sim = meeb.topo_TS[:, :, 0].astype(np.float32)  # [m NAVDD88]
+topo_end_sim = meeb.topo_TS[:, :, -1].astype(np.float32)  # [m NAVDD88]
 mhw_end_sim = meeb.MHW  # [m NAVD88]
 topo_change_sim = topo_end_sim - topo_start_sim  # [m]
 
 # Veg change
-veg_start_sim = meeb.veg_TS[:, :, 0]
-veg_end_sim = meeb.veg_TS[:, :, -1]
+veg_TS = meeb.spec1_TS + meeb.spec2_TS
+veg_start_sim = veg_TS[:, :, 0]
+veg_end_sim = veg_TS[:, :, -1]
 veg_change_sim = veg_end_sim - veg_start_sim  # [m]
 veg_present_sim = veg_end_sim > 0.05  # [bool]
 
@@ -229,27 +265,48 @@ plt.plot(np.mean(topo_end_sim[:, plot_xmin: plot_xmax], axis=0), 'r')
 plt.legend(['Start', 'Simulated'])
 plt.title("Average Profile")
 
-profx = int(140 / cellsize)
-proffig2 = plt.figure(figsize=(11, 7.5))
-for t in range(0, int(meeb.simulation_time_yr / meeb.save_frequency), 2):
-    prof = meeb.topo_TS[profx, :, t]
-    plt.plot(prof)
-prof = meeb.topo_TS[profx, :, -1]
-crest_loc_elev = prof[dune_crest_end[profx]]
-plt.scatter(dune_crest_end[profx], crest_loc_elev)
-plt.title(name + ", x =" + str(profx))
+# profx = int(140 / cellsize)
+# proffig2 = plt.figure(figsize=(11, 7.5))
+# for t in range(0, int(meeb.simulation_time_yr / meeb.save_frequency), 2):
+#     prof = meeb.topo_TS[profx, :, t]
+#     plt.plot(prof)
+# prof = meeb.topo_TS[profx, :, -1]
+# crest_loc_elev = prof[dune_crest_end[profx]]
+# plt.scatter(dune_crest_end[profx], crest_loc_elev)
+# plt.title(name + ", x =" + str(profx))
 
 # -----------------
 # Shoreline Position Over Time
-step = 1  # [yr] Plotting interval
-plt.figure(figsize=(14, 7.5))
-plt.xlabel('Cross-shore Position [m]')
-plt.ylabel('Alongshore Position [m]')
-plt.title(name)
-for t in range(0, meeb.x_s_TS.shape[0], int(step * meeb.storm_iterations_per_year)):
-    plt.plot(meeb.x_s_TS[t, :] * cellsize, np.arange(len(dune_crest)))
-ax = plt.gca()
-ax.invert_yaxis()
+Fig = plt.figure()
+plt.tight_layout()
+ax_1 = Fig.add_subplot(211)
+plt.ylabel('Meters Cross-Shore')
+
+color = plt.cm.viridis(np.arange(meeb.x_s_TS.shape[0]))
+
+for it in range(meeb.x_s_TS.shape[0]):
+    shoreline_it = meeb.x_s_TS[it, :] * cellsize  # Find relative ocean shoreline positions and convert y-axis to meters
+    shoreline_it = np.repeat(shoreline_it, cellsize)  # Convert x-axis to meters
+    if it == 0:
+        ax_1.plot(shoreline_it, c=color[it], label='Start')
+    if it == meeb.x_s_TS.shape[0] - 1:
+        ax_1.plot(shoreline_it, c=color[it], label='End')
+    else:
+        ax_1.plot(shoreline_it, c=color[it], label='_')
+plt.legend()
+
+# Short and long-term shoreline change
+ax_2 = Fig.add_subplot(212)
+plt.xlabel('Meters Alongshore')
+plt.ylabel('Shoreline Change Rate [m/yr]')
+long_term_shoreline_change_rate = (meeb.x_s_TS[-1, :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # [m/yr]
+long_term_shoreline_change_rate = np.repeat(long_term_shoreline_change_rate, cellsize)
+short_term_shoreline_change_rate = (meeb.x_s_TS[int(10 * meeb.storm_iterations_per_year), :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # First decade
+short_term_shoreline_change_rate = np.repeat(short_term_shoreline_change_rate, cellsize)
+ax_2.plot(np.arange(int(meeb.x_s_TS.shape[1] * cellsize)), np.zeros([int(meeb.x_s_TS.shape[1] * cellsize)]), 'k--', alpha=0.3, label='_Zero Line')
+ax_2.plot(short_term_shoreline_change_rate, 'cornflowerblue', label='Short-term Shoreline Change (First Decade)')
+ax_2.plot(long_term_shoreline_change_rate, 'darkred', label='Long-term Shoreline Change (Full Simulation Duration)')
+plt.legend()
 
 # -----------------
 # Storm Sequence
@@ -272,7 +329,7 @@ def ani_frame(timestep):
     yrstr = "Year " + str(timestep * meeb.save_frequency)
     text1.set_text(yrstr)
 
-    veggie = meeb.veg_TS[:, plot_xmin: plot_xmax, timestep]
+    veggie = veg_TS[:, plot_xmin: plot_xmax, timestep]
     veggie = np.ma.masked_where(elev <= mhw, veggie)  # Mask cells below MHW
     cax2.set_data(veggie)
     text2.set_text(yrstr)
@@ -280,44 +337,45 @@ def ani_frame(timestep):
     return cax1, cax2, text1, text2
 
 
-# Set animation base figure
-Fig = plt.figure(figsize=(14, 8))
-topo = meeb.topo_TS[:, plot_xmin: plot_xmax, 0]  # [m]
-topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
-cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps["terrain"]), 0.5, 0.9)  # Truncate colormap
-cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-if topo.shape[0] > topo.shape[1]:
-    ax1 = Fig.add_subplot(121)
-else:
-    ax1 = Fig.add_subplot(211)
-cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=6.0)
-# cax1 = ax1.matshow(topo, cmap='terrain', vmin=-2, vmax=6.0)
-cbar = Fig.colorbar(cax1)
-cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
-timestr = "Year " + str(0 * meeb.save_frequency)
-text1 = plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
+if animate:
+    # Set animation base figure
+    Fig = plt.figure(figsize=(14, 8))
+    topo = meeb.topo_TS[:, plot_xmin: plot_xmax, 0]  # [m]
+    topo = np.ma.masked_where(topo <= MHW, topo)  # Mask cells below MHW
+    cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps["terrain"]), 0.5, 0.9)  # Truncate colormap
+    cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
+    if topo.shape[0] > topo.shape[1]:
+        ax1 = Fig.add_subplot(121)
+    else:
+        ax1 = Fig.add_subplot(211)
+    cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=6.0)
+    # cax1 = ax1.matshow(topo, cmap='terrain', vmin=-2, vmax=6.0)
+    cbar = Fig.colorbar(cax1)
+    cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
+    timestr = "Year " + str(0 * meeb.save_frequency)
+    text1 = plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
 
-veg = meeb.veg_TS[:, plot_xmin: plot_xmax, 0]
-veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
-cmap2 = copy.copy(plt.colormaps["YlGn"])
-cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
-if topo.shape[0] > topo.shape[1]:
-    ax2 = Fig.add_subplot(122)
-else:
-    ax2 = Fig.add_subplot(212)
-cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
-cbar = Fig.colorbar(cax2)
-cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
-timestr = "Year " + str(0 * meeb.save_frequency)
-text2 = plt.text(2, meeb.veg.shape[0] - 2, timestr, c='white')
-plt.tight_layout()
+    veg = veg_TS[:, plot_xmin: plot_xmax, 0]
+    veg = np.ma.masked_where(topo <= MHW, veg)  # Mask cells below MHW
+    cmap2 = copy.copy(plt.colormaps["YlGn"])
+    cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
+    if topo.shape[0] > topo.shape[1]:
+        ax2 = Fig.add_subplot(122)
+    else:
+        ax2 = Fig.add_subplot(212)
+    cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
+    cbar = Fig.colorbar(cax2)
+    cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
+    timestr = "Year " + str(0 * meeb.save_frequency)
+    text2 = plt.text(2, meeb.veg.shape[0] - 2, timestr, c='white')
+    plt.tight_layout()
 
-# Create and save animation
-ani = animation.FuncAnimation(Fig, ani_frame, frames=int(meeb.simulation_time_yr / meeb.save_frequency) + 1, interval=300, blit=True)
-c = 1
-while os.path.exists("Output/Animation/meeb_elev_" + str(c) + ".gif"):
-    c += 1
-ani.save("Output/Animation/meeb_elev_" + str(c) + ".gif", dpi=150, writer="imagemagick")
+    # Create and save animation
+    ani = animation.FuncAnimation(Fig, ani_frame, frames=int(meeb.simulation_time_yr / meeb.save_frequency) + 1, interval=300, blit=True)
+    c = 1
+    while os.path.exists("Output/Animation/meeb_elev_" + str(c) + ".gif"):
+        c += 1
+    ani.save("Output/Animation/meeb_elev_" + str(c) + ".gif", dpi=150, writer="imagemagick")
 
 
 plt.show()

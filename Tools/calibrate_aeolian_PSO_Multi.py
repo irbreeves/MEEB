@@ -4,7 +4,7 @@ Script for calibrating MEEB aeolian parameters using Particle Swarms Optimizatio
 Calibrates based on fitess score for morphologic change between two observation, and incorporates multiple
 timeframes and/or locations into each fitness score.
 
-IRBR 8 July 2024
+IRBR 4 April 2025
 """
 
 import numpy as np
@@ -122,7 +122,7 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         crossshore_domain_boundary_min=xmin,
         crossshore_domain_boundary_max=xmax,
         cellsize=cellsize,
-        RSLR=0.004,
+        RSLR=0.006,
         MHW=MHW,
         seeded_random_numbers=True,
         init_filename=topo_name,
@@ -130,8 +130,9 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         simulation_start_date=startdate,
         storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
         # --- Aeolian --- #
-        saltation_length=5,
-        saltation_length_rand_deviation=2,
+        saltation_length=2,
+        saltation_length_rand_deviation=1,
+        slabheight=0.02,
         p_dep_sand=solution[0],
         p_dep_sand_VegMax=solution[0] + solution[1],
         p_ero_sand=solution[2],
@@ -142,24 +143,39 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         repose_veg=30,
         wind_rose=rose,
         # --- Storms --- #
-        Rin=249,
-        Cs=0.0283,
+        Rin=245,
+        Cs=0.0235,
         MaxUpSlope=1.5,
         marine_flux_limit=1,
-        Kow=0.0001684,
-        mm=1.04,
-        overwash_substeps=50,
-        beach_equilibrium_slope=0.022,
-        swash_erosive_timescale=1.48,
-        beach_substeps=25,
-        flow_reduction_max_spec1=0.02,
-        flow_reduction_max_spec2=0.05,
+        Kow=0.0003615,
+        mm=1.05,
+        overwash_substeps=25,
+        beach_equilibrium_slope=0.021,
+        swash_erosive_timescale=1.51,
+        beach_substeps=1,
+        flow_reduction_max_spec1=0.002,
+        flow_reduction_max_spec2=0.02,
+        # --- Shoreline --- #
+        shoreline_diffusivity_coefficient=0.07,
         # --- Veg --- #
-        sp1_b=-0.05,
         sp1_lateral_probability=0.2,
         sp2_lateral_probability=0.2,
         sp1_pioneer_probability=0.05,
-        sp2_pioneer_probability=0.05,
+        sp2_pioneer_probability=0.03,
+        # MY GRASS
+        sp1_a=-1.2,
+        sp1_b=-0.067,  # Mullins et al. (2019)
+        sp1_c=0.5,
+        sp1_d=1.2,
+        sp1_e=2.1,
+        sp1_peak=0.2,
+        # MY SHRUB
+        sp2_a=-1.0,
+        sp2_b=-0.2,  # Conn and Day (1993)
+        sp2_c=0.0,
+        sp2_d=0.2,
+        sp2_e=2.1,
+        sp2_peak=0.05,
     )
 
     # Loop through time
@@ -190,6 +206,7 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
     crest_loc_obs_start, not_gap_obs_start = routine.foredune_crest(topo_start, mhw_end_sim, cellsize)
     crest_loc_obs, not_gap_obs = routine.foredune_crest(topo_end_obs, mhw_end_sim, cellsize)
     crest_loc_sim, not_gap_sim = routine.foredune_crest(topo_end_sim, mhw_end_sim, cellsize)
+    dune_mask = np.logical_and(np.logical_and(not_gap_obs_start, not_gap_obs), not_gap_sim)  # [bool] Dune gap cells set to False, not included in dune crest height scoring
 
     crest_height_obs_start = topo_start[np.arange(topo_start.shape[0]), crest_loc_obs_start]
     crest_height_obs = topo_end_obs[np.arange(topo_end_obs.shape[0]), crest_loc_obs]
@@ -204,7 +221,7 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
 
     # Model Skill
     nse, rmse, nmae, mass, bss, pc, hss = model_skill(topo_change_obs, topo_change_sim, np.zeros(topo_change_obs.shape), mask)  # All cells (excluding masked areas)
-    nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh, pc_dh, hss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, np.full(crest_height_change_obs.shape, True))  # Foredune elevation
+    nse_dh, rmse_dh, nmae_dh, mass_dh, bss_dh, pc_dh, hss_dh = model_skill(crest_height_obs, crest_height_sim, crest_height_obs_start, dune_mask)
 
     # Combine Skill Scores (Multi-Objective Optimization)
     score = np.average([bss, bss_dh])  # This is the skill score used in particle swarms optimization
@@ -277,24 +294,34 @@ n_cores = 18  # Number of cores to run parallel simulations on
 # _____________________________________________
 # Define Multiple Timeframes
 
-sim_start = ["Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"]
-sim_stop = ["Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
+sim_start = ["Init_NCB-NewDrum-Ocracoke_2014_PostSandy_NCFMP-Planet_2m_HighDensity.npy"]
+sim_stop = ["Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_2m.npy"]
 sim_startdate = ['20140406']  # [yyyymmdd]
 sim_dur = [3.44]  # [yr]
-cellsize = 1  # [m]
+cellsize = 2  # [m]
 
 # _____________________________________________
 # Define Multiple Locations
 
-# tall ridge 1, tall ridge 2, overwash fan, overwash gap
-ymin = [6300, 21000, 19030]
-ymax = [6500, 21200, 19230]
-xmin = [700, 900, 900]
-xmax = [1400, 1600, 1600]
+# # tall ridge 1, tall ridge 2, overwash fan, overwash gap
+# ymin = [6300, 21000, 19030]
+# ymax = [6500, 21200, 19230]
+# xmin = [700, 900, 900]
+# xmax = [1400, 1600, 1600]
+#
+# # Cross-shore range of foredune system for skill assessment
+# x_range_min = [838, 1068, 1135]
+# x_range_max = [880, 1100, 1185]
+
+# 5 Locations
+ymin = [6300, 21000, 18970, 17400, 7800]
+ymax = [6800, 21500, 19470, 17900, 8300]
+xmin = [700, 900, 900, 900, 700]
+xmax = [1400, 1600, 1600, 1600, 1400]
 
 # Cross-shore range of foredune system for skill assessment
-x_range_min = [838, 1068, 1135]
-x_range_max = [880, 1100, 1185]
+x_range_min = [838, 1068, 1125, 1080, 905]
+x_range_max = [880, 1105, 1185, 1120, 935]
 
 # Resize According to Cellsize
 ymin = [int(i / cellsize) for i in ymin]  # Alongshore
@@ -309,7 +336,7 @@ x_range_max = [int(i / cellsize) for i in x_range_max]
 MHW = 0.39  # [m NAVD88] Initial
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
-name = '2014-2017, 3 Locations, Multi-Objective BSS, Expansion=0.2/0.05, 26May24'
+name = '2014-2017, 5 x 500-m Locations, Multi-Objective BSS, 65 iter, Planet 2m High Density, 1Apr25'
 
 print(name)
 
@@ -321,7 +348,7 @@ print(name)
 # _____________________________________________
 # Prepare Particle Swarm Parameters
 
-iterations = 50
+iterations = 65
 swarm_size = 18
 dimensions = 9  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}

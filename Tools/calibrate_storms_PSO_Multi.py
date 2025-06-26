@@ -4,7 +4,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 Calibrates based on fitess score for all beach/dune/overwash morphologic change, and incorporates multiple
 storm events and/or locations into each fitness score.
 
-IRBR 9 September 2024
+IRBR 1 April 2025
 """
 
 import numpy as np
@@ -77,7 +77,7 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, s
     topo_start_copy = copy.deepcopy(topo_start_obs)
     veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
 
-    sim_topo_final, topo_change_overwash, OWflux, inundated, Qbe = routine.storm_processes(
+    sim_topo_final, OWflux, inundated, Qbe = routine.storm_processes(
         topo_start_copy,
         Rhigh,
         dur,
@@ -92,19 +92,19 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, s
         MHW=MHW,
         Cbb=0.7,
         Qs_bb_min=1,
-        substep=50,
+        substep=25,
         beach_equilibrium_slope=solution[3],
         swash_erosive_timescale=solution[4],
-        beach_substeps=25,
+        beach_substeps=1,
         x_s=x_s,
         cellsize=cellsize,
         spec1=spec1,
         spec2=spec2,
-        flow_reduction_max_spec1=0.02,  # Grass
-        flow_reduction_max_spec2=0.05,  # Shrub
+        flow_reduction_max_spec1=0.002,  # Grass
+        flow_reduction_max_spec2=0.02,  # Shrub
     )
 
-    topo_end_sim = routine.enforceslopes(sim_topo_final, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, cellsize=cellsize, RNG=RNG)[0]
+    topo_end_sim = routine.enforceslopes(sim_topo_final, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, cellsize=cellsize, RNG=RNG)
 
     topo_change_sim = topo_end_sim - topo_start_obs  # [m] Simulated change
     topo_change_obs = topo_end_obs - topo_start_obs  # [m] Observed change
@@ -198,11 +198,11 @@ RNG = np.random.default_rng(seed=13)  # Seeded random numbers for reproducibilit
 # _____________________________________________
 # Define Variables
 MHW = 0.39  # [m NAVD88]
-cellsize = 1  # [m]
+cellsize = 2  # [m]
 
 # Observed Overwash Mask
-overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence.npy")  # Load observed overwash mask
-name = 'Multi-Location Storm (Florence), NON-Weighted BSS PSO, Nswarm 18, Iterations 50, SS=50/25, 24May24'
+overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence_2m.npy")  # Load observed overwash mask
+name = 'Multi-Location Storm (Florence), NON-Weighted BSS PSO, Nswarm 18, Iterations 50, USACE Post-Florence 2m, 1Apr25'
 
 BestScore = -1e10
 BestScores = []
@@ -211,8 +211,8 @@ BestScores = []
 # Define Event(s)
 
 storm_name = ['Florence']
-storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
-storm_stop = ["Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"]
+storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_2m.npy"]
+storm_stop = ["Input/Init_NCB-NewDrum-Ocracoke_2018_USACE_PostFlorence_2m.npy"]
 storm_Rhigh = [3.32]
 storm_dur = [83]
 
