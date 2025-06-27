@@ -1,9 +1,9 @@
 [
   {
-    "name": "Mesoscale Explicit Ecogeomorphic Barrier model (MEEB) v1.0",
+    "name": "Mesoscale Explicit Ecogeomorphic Barrier model (MEEB) 1.1.0",
     "organization": "U.S. Geological Survey",
     "description": "The Mesoscale Explicit Ecogeomorphic Barrier model (MEEB) resolves cross-shore and alongshore changes in topography and ecology to simulate the ecogeomorphic evolution of an undeveloped coastal barrier or barrier segment. The model is designed to operate over spatiotemporal scales most relevant to coastal management practices (decades and kilometers).",
-    "version": "1.0",
+    "version": "1.1.0",
     "status": "Archival",
 
     "permissions": {
@@ -11,15 +11,15 @@
       "licenses": [
         {
           "name": "Public Domain, CC0-1.0",
-          "URL": ""
+          "URL": "https://code.usgs.gov/spcmsc/meeb/-/raw/1.1.0/LICENSE.md"
         }
       ]
     },
 
-    "homepageURL": "",
-    "downloadURL": "",
-    "disclaimerURL": "",
-    "repositoryURL": "",
+    "homepageURL": "https://code.usgs.gov/spcmsc/meeb",
+    "downloadURL": "https://code.usgs.gov/spcmsc/meeb/-/archive/1.1.0/meeb-1.1.0.zip",
+    "disclaimerURL": "https://code.usgs.gov/spcmsc/meeb/-/raw/1.1.0/DISCLAIMER.md",
+    "repositoryURL": "https://code.usgs.gov/spcmsc/meeb.git",
     "vcs": "git",
 
     "laborHours": 0,
@@ -29,9 +29,9 @@
       "barrier island",
       "coasts",
       "modeling",
-      "geomorphology"
-	  "ecology"
-	  "mesoscale"
+      "geomorphology",
+	    "ecology",
+	    "mesoscale"
     ],
 
     "languages": [
@@ -44,7 +44,7 @@
     },
 
     "date": {
-      "metadataLastUpdated": "2024-11-05"
+      "metadataLastUpdated": "2025-06-26"
     }
   }
 ]
