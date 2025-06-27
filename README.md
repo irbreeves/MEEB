@@ -1,8 +1,11 @@
 # *MEEB*
-Mesoscale Explicit Ecogeomorphic Barrier model v1.0
+Mesoscale Explicit Ecogeomorphic Barrier model v1.1
 
-Reeves, I. R. B., Ashton, A. D., Lentz, E. L., Sherwood, C. R., Passeri, D. L., & Zeigler., S. L. (in review). Projecting 
-management-relevant change of undeveloped coastal barriers with the Mesoscale Explicit Ecogeomorphic Barrier model (MEEB) v1.0. 
+Journal Article: Reeves, I. R. B., Ashton, A. D., Lentz, E. L., Sherwood, C. R., Passeri, D. L., and Zeigler., S. L., in review,
+Projecting management-relevant change of undeveloped coastal barriers with the Mesoscale Explicit Ecogeomorphic Barrier model (MEEB) 
+v1.0: Geoscientific Model Development.
+
+Software Package: Reeves, I. R. B., 2025, Mesoscale Explicit Ecogeomorphic Barrier Model (MEEB) v1.0: U.S. Geological Survey software release, https://doi.org/10.5066/P13N6RHA.
 
 ## About
 The Mesoscale Explicit Ecogeomorphic Barrier model (*MEEB*) resolves cross-shore and alongshore changes in topography and ecology 
@@ -19,9 +22,7 @@ and shoreline and shoreface change processes.
 
 ## Installation
 
-First, download the source code for *MEEB* into a new project directory. To get the source code, download the zip file:
-
-    https://github.com/irbreeves/MEEB/archive/refs/heads/main.zip
+First, download the source code for *MEEB* into a new project directory.
 
 Then, run the following from the top-level folder (the one that contains `setup.py`) to install into the current environment:
 
@@ -54,7 +55,7 @@ To run a Notebook, navigate to the main `/MEEB` directory in a *terminal* window
       jupyter notebook
 
 This will launch an interactive Notebook environment in your default web browser. In the Jupyter Notebook web browser, open on the 
-`/Notebook` folder, and double click to open one of two Notebook tutorials:
+`/Notebooks` folder, and double click to open one of two Notebook tutorials:
 
    `run_MEEB_Deterministic.ipynb` for a simple deterministic run. Start here!
 

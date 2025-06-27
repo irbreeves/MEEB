@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 12 May 2025
+Last update: 26 June 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -34,7 +34,7 @@ class MEEB:
             vegetation_iterations_per_year=1,  # Number of vegetation updates in 1 model year
             save_frequency=0.5,  # [years] Save results every n years
             simulation_time_yr=15.0,  # [yr] Length of the simulation time
-            cellsize=1,  # [m] Cell length and width
+            cellsize=2,  # [m] Cell length and width
             alongshore_domain_boundary_min=0,  # [m] Alongshore minimum boundary location for model domain
             alongshore_domain_boundary_max=10e7,  # [m] Alongshore maximum boundary location for model domain; if left to this default value, it will automatically adjust to the actual full length of the domain
             crossshore_domain_boundary_min=0,  # [m] Cross-shore minimum boundary location for model domain
@@ -54,16 +54,16 @@ class MEEB:
 
             # AEOLIAN
             slabheight=0.02,  # Height of slabs for aeolian transport, proportion of cell dimension (0.02, Teixeira et al. 2023)
-            saltation_length=5,  # [cells] Hop length for saltating slabs of sand (5 m, Teixeira et al. 2023); note units of cells (e.g., if cellsize = 2 m and saltation_length = 5 cells, slabs will hop 10 m)
-            saltation_length_rand_deviation=2,  # [cells] Deviation around saltation_length for random uniform distribution of saltation lengths. Must be at lest 1 cell smaller than saltation_length.
+            saltation_length=2,  # [cells] Hop length for saltating slabs of sand (5 m, Teixeira et al. 2023); note units of cells (e.g., if cellsize = 2 m and saltation_length = 5 cells, slabs will hop 10 m)
+            saltation_length_rand_deviation=1,  # [cells] Deviation around saltation_length for random uniform distribution of saltation lengths. Must be at lest 1 cell smaller than saltation_length.
             groundwater_depth=0.4,  # Proportion of the smoothed topography used to set groundwater profile
-            wind_rose=(0.81, 0.04, 0.06, 0.09),  # Proportion of wind TOWARDS (right, down, left, up)
-            p_dep_sand=0.22,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
-            p_dep_sand_VegMax=0.54,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover; must be greater than or equal to p_dep_sand/p_dep_basesaltation_length_rand_deviation
+            wind_rose=(0.91, 0.04, 0.01, 0.04),  # Proportion of wind TOWARDS (right, down, left, up)
+            p_dep_sand=0.09,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
+            p_dep_sand_VegMax=0.17,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover; must be greater than or equal to p_dep_sand/p_dep_basesaltation_length_rand_deviation
             p_dep_base=0.1,  # [0-1] Probability of deposition of base cells
-            p_ero_sand=0.10,  # [0-1] Probability of erosion of bare/sandy cells
-            entrainment_veg_limit=0.10,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible
-            saltation_veg_limit=0.35,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
+            p_ero_sand=0.08,  # [0-1] Probability of erosion of bare/sandy cells
+            entrainment_veg_limit=0.09,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible
+            saltation_veg_limit=0.37,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
             shadowangle=12,  # [deg]
             repose_bare=20,  # [deg] Angle of repose for unvegetated cells
             repose_veg=30,  # [deg] Angle of repose for vegetation cells
@@ -80,7 +80,7 @@ class MEEB:
             mean_wave_height=0.98,  # [m] Mean offshore significant wave height
             mean_wave_period=6.6,  # [s] Mean wave period
             alongshore_section_length=25,  # [m] Distance alongshore between shoreline positions used in the shoreline diffusion calculations
-            shoreline_diffusivity_coefficient=0.06,  # [m^(3/5) s^(-6/5)] Alongshore transport diffusion coefficient
+            shoreline_diffusivity_coefficient=0.07,  # [m^(3/5) s^(-6/5)] Alongshore transport diffusion coefficient
             average_dune_toe_height=1.67,  # [m] Time- and space-averaged dune toe height above MHW
             estimate_shoreface_parameters=True,  # [bool] Turn on to estimate shoreface parameters as function of specific wave and sediment characteristics
             shoreface_grain_size=2e-4,  # [m] Median grain size (D50) of ocean shoreface; used for optional shoreface parameter estimations
@@ -89,13 +89,13 @@ class MEEB:
             specific_gravity_submerged_sed=1.65,  # Submerged specific gravity of sediment; used for optional shoreface parameter estimations
 
             # VEGETATION
-            sp1_a=-1.5,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
-            sp1_b=-0.05,  # Vertice b, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_a=-1.2,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_b=-0.067,  # Vertice b, spec1. vegetation growth based on Mullins et al. (2019)
             sp1_c=0.5,  # Vertice c, spec1. vegetation growth based on Nield and Baas (2008)
-            sp1_d=1.5,  # Vertice d, spec1. vegetation growth based on Nield and Baas (2008)
-            sp1_e=2.2,  # Vertice e, spec1. vegetation growth based on Nield and Baas (2008)
-            sp2_a=-1.6,  # Vertice a, spec2. vegetation growth based on Nield and Baas (2008)
-            sp2_b=-0.7,  # Vertice b, spec2. vegetation growth based on Nield and Baas (2008)
+            sp1_d=1.2,  # Vertice d, spec1. vegetation growth based on Nield and Baas (2008)
+            sp1_e=2.1,  # Vertice e, spec1. vegetation growth based on Nield and Baas (2008)
+            sp2_a=-1.0,  # Vertice a, spec2. vegetation growth based on Nield and Baas (2008)
+            sp2_b=-0.2,  # Vertice b, spec2. vegetation growth based on Conn and Day (1993)
             sp2_c=0.0,  # Vertice c, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_d=0.2,  # Vertice d, spec2. vegetation growth based on Nield and Baas (2008)
             sp2_e=2.1,  # Vertice e, spec2. vegetation growth based on Nield and Baas (2008)
@@ -105,18 +105,18 @@ class MEEB:
             sp1_lateral_probability=0.2,  # [0-1] Probability of lateral expansion of existing vegetation
             sp2_lateral_probability=0.2,  # [0-1] Probability of lateral expansion of existing vegetation
             sp1_pioneer_probability=0.05,  # [0-1] Probability of occurrence of new pioneering vegetation
-            sp2_pioneer_probability=0.05,  # [0-1] Probability of occurrence of new pioneering vegetation
+            sp2_pioneer_probability=0.03,  # [0-1] Probability of occurrence of new pioneering vegetation
             maxvegeff=1.0,  # [0-1] Value of maximum vegetation effectiveness allowed
             Spec1_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 1
             Spec2_elev_min=0.25,  # [m MHW] Minimum elevation (relative to MHW) for species 2
-            flow_reduction_max_spec1=0.02,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 1 at full density
-            flow_reduction_max_spec2=0.05,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 2 at full density
+            flow_reduction_max_spec1=0.002,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 1 at full density
+            flow_reduction_max_spec2=0.02,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 2 at full density
             effective_veg_sigma=3,  # Standard deviation for Gaussian filter of vegetation cover
 
             # STORM OVERWASH AND BEACH-DUNE CHANGE
             storm_list_filename="SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy",
             storm_timeseries_filename="StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
-            Rin=232,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
+            Rin=245,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
             Cs=0.0235,  # Constant for representing flow momentum for sediment transport in overwash
             nn=0.5,  # Flow routing constant
             MaxUpSlope=1.5,  # Maximum slope water can flow uphill
