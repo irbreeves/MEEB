@@ -1143,7 +1143,7 @@ def find_crests(profile, MHW, threshold, crest_pct):
         pks_idx = pks_idx[profile[pks_idx] > MHW]
 
     peak_found = False
-    
+
     # If there aren't any peaks, return NaN
     if len(pks_idx) == 0:
         idx = np.nan
