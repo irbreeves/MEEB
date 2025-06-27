@@ -974,7 +974,7 @@ def class_frequency_animation(class_probabilities, orientation='vertical'):
 # VARIABLES AND INITIALIZATIONS
 
 # 2018 North Core Banks
-start = "Init_NCB-2200-34200_2018_USACE_PostFlorence_2m.npy"
+start = "Init_NCB-2200-34200_2018_PostFlorence_2m.npy"
 startdate = '20181015'
 
 # _____________________

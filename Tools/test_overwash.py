@@ -70,7 +70,7 @@ cellsize = 2  # [m]
 # Initial Observed Topo
 Init = np.load("Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_2m.npy")
 # Final Observed
-End = np.load("Input/Init_NCB-NewDrum-Ocracoke_2018_USACE_PostFlorence_2m.npy")
+End = np.load("Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_2m.npy")
 # Load observed overwash mask
 overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence_2m.npy")
 

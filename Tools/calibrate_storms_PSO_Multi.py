@@ -212,7 +212,7 @@ BestScores = []
 
 storm_name = ['Florence']
 storm_start = ["Input/Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_2m.npy"]
-storm_stop = ["Input/Init_NCB-NewDrum-Ocracoke_2018_USACE_PostFlorence_2m.npy"]
+storm_stop = ["Input/Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_2m.npy"]
 storm_Rhigh = [3.32]
 storm_dur = [83]
 

@@ -3,7 +3,7 @@ Script for running sensitivity analyses of MEEB aeolian parameters using SALib, 
 
 Model output used in sensitivity analysis is the Brier Skill Score for elevation.
 
-IRBR 8 July 2024
+IRBR 27 June 2025
 """
 
 import numpy as np
@@ -124,7 +124,7 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         crossshore_domain_boundary_min=xmin,
         crossshore_domain_boundary_max=xmax,
         cellsize=cellsize,
-        RSLR=0.004,
+        RSLR=0.006,
         MHW=MHW,
         seeded_random_numbers=True,
         init_filename=topo_name,
@@ -132,8 +132,8 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         simulation_start_date=startdate,
         storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
         # --- Aeolian --- #
-        saltation_length=5,
-        saltation_length_rand_deviation=2,
+        saltation_length=2,
+        saltation_length_rand_deviation=1,
         p_dep_sand=solution[0],
         p_dep_sand_VegMax=solution[0] + solution[1],
         p_ero_sand=solution[2],
@@ -144,24 +144,39 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         repose_veg=int(round(solution[6] + solution[7])),
         wind_rose=rose,
         # --- Storms --- #
-        Rin=249,
-        Cs=0.0283,
+        Rin=245,
+        Cs=0.0235,
         MaxUpSlope=1.5,
         marine_flux_limit=1,
-        Kow=0.0001684,
-        mm=1.04,
-        overwash_substeps=50,
-        beach_equilibrium_slope=0.022,
-        swash_erosive_timescale=1.48,
-        beach_substeps=25,
-        flow_reduction_max_spec1=0.02,
-        flow_reduction_max_spec2=0.05,
+        Kow=0.0003615,
+        mm=1.05,
+        overwash_substeps=25,
+        beach_equilibrium_slope=0.021,
+        swash_erosive_timescale=1.51,
+        beach_substeps=1,
+        flow_reduction_max_spec1=0.002,
+        flow_reduction_max_spec2=0.02,
+        # --- Shoreline --- #
+        shoreline_diffusivity_coefficient=0.07,
         # --- Veg --- #
-        sp1_b=-0.05,
         sp1_lateral_probability=0.2,
         sp2_lateral_probability=0.2,
         sp1_pioneer_probability=0.05,
-        sp2_pioneer_probability=0.05,
+        sp2_pioneer_probability=0.03,
+        # MY GRASS
+        sp1_a=-1.2,
+        sp1_b=-0.067,  # Mullins et al. (2019)
+        sp1_c=0.5,
+        sp1_d=1.2,
+        sp1_e=2.1,
+        sp1_peak=0.2,
+        # MY SHRUB
+        sp2_a=-1.0,
+        sp2_b=-0.2,  # Conn and Day (1993)
+        sp2_c=0.0,
+        sp2_d=0.2,
+        sp2_e=2.1,
+        sp2_peak=0.05,
     )
 
     # Loop through time
@@ -286,11 +301,11 @@ reduc = 5  # Raster resolution reduction factor
 # _____________________________________________
 # Define Timeframe(s)
 
-sim_start = ["Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"]
-sim_stop = ["Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"]
+sim_start = ["Init_NCB-NewDrum-Ocracoke_2014_PostSandy_2m.npy"]
+sim_stop = ["Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_2m.npy"]
 sim_startdate = ['20140406']  # [yyyymmdd]
 sim_dur = [3.44]  # [yr]
-cellsize = 1  # [m]
+cellsize = 2  # [m]
 
 # _____________________________________________
 # Define Location(s)

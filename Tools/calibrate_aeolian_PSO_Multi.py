@@ -294,7 +294,7 @@ n_cores = 18  # Number of cores to run parallel simulations on
 # _____________________________________________
 # Define Multiple Timeframes
 
-sim_start = ["Init_NCB-NewDrum-Ocracoke_2014_PostSandy_NCFMP-Planet_2m_HighDensity.npy"]
+sim_start = ["Init_NCB-NewDrum-Ocracoke_2014_PostSandy_2m.npy"]
 sim_stop = ["Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_2m.npy"]
 sim_startdate = ['20140406']  # [yyyymmdd]
 sim_dur = [3.44]  # [yr]
@@ -302,16 +302,6 @@ cellsize = 2  # [m]
 
 # _____________________________________________
 # Define Multiple Locations
-
-# # tall ridge 1, tall ridge 2, overwash fan, overwash gap
-# ymin = [6300, 21000, 19030]
-# ymax = [6500, 21200, 19230]
-# xmin = [700, 900, 900]
-# xmax = [1400, 1600, 1600]
-#
-# # Cross-shore range of foredune system for skill assessment
-# x_range_min = [838, 1068, 1135]
-# x_range_max = [880, 1100, 1185]
 
 # 5 Locations
 ymin = [6300, 21000, 18970, 17400, 7800]
