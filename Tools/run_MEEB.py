@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 11 March 2025
+IRBR 27 June 2025
 """
 
 import numpy as np
@@ -19,20 +19,8 @@ from meeb import MEEB
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
 
-# # 2014
-# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-# startdate = '20140406'
-
-# # 2017
-# start = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# startdate = '20170916'
-
-# # 2018
-# start = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover_2m.npy"
-# startdate = '20181007'
-
 # 2018
-start = "Init_NCB-2200-34200_2018_USACE_PostFlorence_2m.npy"
+start = "Init_NCB-2200-34200_2018_PostFlorence_2m.npy"
 startdate = '20181015'
 
 # _____________________
@@ -40,15 +28,15 @@ startdate = '20181015'
 sim_duration = 32
 MHW = 0.39  # [m NAVD88]
 cellsize = 2  # [m]
-name = '9500-17000, 2018-2050, RSLR=9.6'  # Name of simulation
+name = '18000-20000, 2018-2050, RSLR=9.6'  # Name of simulation
 animate = False
 
 # _____________________
 # Define Coordinates of Model Domain
-ymin = 9500  # Alongshore
-ymax = 17000  # Alongshore
-xmin = 450  # Cross-shore
-xmax = 1250  # Cross-shore
+ymin = 18000  # Alongshore
+ymax = 20000  # Alongshore
+xmin = 700  # Cross-shore
+xmax = 1500  # Cross-shore
 plot_xmin = 0  # Cross-shore plotting
 plot_xmax = 1500  # Cross-shore plotting
 
@@ -112,8 +100,9 @@ meeb = MEEB(
     repose_bare=20,
     repose_veg=30,
     wind_rose=(0.91, 0.04, 0.01, 0.04),  # (right, down, left, up)
+    groundwater_depth=0.4,
     # --- Storms --- #
-    Rin=232,
+    Rin=245,
     Cs=0.0235,
     MaxUpSlope=1.5,
     marine_flux_limit=1,
@@ -123,8 +112,8 @@ meeb = MEEB(
     beach_equilibrium_slope=0.021,
     swash_erosive_timescale=1.51,
     beach_substeps=1,
-    flow_reduction_max_spec1=0.02,
-    flow_reduction_max_spec2=0.05,
+    flow_reduction_max_spec1=0.002,
+    flow_reduction_max_spec2=0.02,
     # --- Shoreline --- #
     wave_asymmetry=0.6,
     wave_high_angle_fraction=0.39,
@@ -132,6 +121,7 @@ meeb = MEEB(
     mean_wave_period=6.6,
     alongshore_section_length=25,
     estimate_shoreface_parameters=True,
+    shoreline_diffusivity_coefficient=0.07,
     # --- Veg --- #
     sp1_lateral_probability=0.2,
     sp2_lateral_probability=0.2,
@@ -139,7 +129,7 @@ meeb = MEEB(
     sp2_pioneer_probability=0.03,
     # MY GRASS
     sp1_a=-1.2,
-    sp1_b=-0.2,  # Mullins et al. (2019)
+    sp1_b=-0.067,  # Mullins et al. (2019)
     sp1_c=0.5,
     sp1_d=1.2,
     sp1_e=2.1,

@@ -3,7 +3,7 @@ Script for calibrating MEEB vegetation parameters using Particle Swarms Optimiza
 
 Calibrates based on fitess score for morphologic and ecologic change between two timesteps.
 
-IRBR 8 July 2024
+IRBR 27 June 2025
 """
 
 import numpy as np
@@ -88,31 +88,32 @@ def veg_fitness(solution):
         storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
         storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',
         # --- Aeolian --- #
-        saltation_length=5,
-        saltation_length_rand_deviation=2,
-        p_dep_sand=0.22,
-        p_dep_sand_VegMax=0.54,
-        p_ero_sand=0.10,
-        entrainment_veg_limit=0.10,
-        saltation_veg_limit=0.35,
+        saltation_length=2,
+        saltation_length_rand_deviation=1,
+        p_dep_sand=0.09,  # Q = hs * L * n * pe/pd
+        p_dep_sand_VegMax=0.17,
+        p_ero_sand=0.08,
+        entrainment_veg_limit=0.09,
+        saltation_veg_limit=0.37,
+        repose_threshold=0.37,
         shadowangle=12,
         repose_bare=20,
         repose_veg=30,
-        wind_rose=(0.81, 0.04, 0.06, 0.09),  # (right, down, left, up)
+        wind_rose=(0.91, 0.04, 0.01, 0.04),  # (right, down, left, up)
         groundwater_depth=0.4,
         # --- Storms --- #
-        Rin=249,
-        Cs=0.0283,
+        Rin=245,
+        Cs=0.0235,
         MaxUpSlope=1.5,
         marine_flux_limit=1,
-        Kow=0.0001684,
-        mm=1.04,
-        overwash_substeps=50,
-        beach_equilibrium_slope=0.022,
-        swash_erosive_timescale=1.48,
-        beach_substeps=25,
-        flow_reduction_max_spec1=0.02,
-        flow_reduction_max_spec2=0.05,
+        Kow=0.0003615,
+        mm=1.05,
+        overwash_substeps=25,
+        beach_equilibrium_slope=0.021,
+        swash_erosive_timescale=1.51,
+        beach_substeps=1,
+        flow_reduction_max_spec1=0.002,
+        flow_reduction_max_spec2=0.02,
         # --- Shoreline --- #
         wave_asymmetry=0.6,
         wave_high_angle_fraction=0.39,
@@ -121,12 +122,12 @@ def veg_fitness(solution):
         alongshore_section_length=25,
         estimate_shoreface_parameters=True,
         # --- Veg Params --- #
-        sp1_a=-1.5,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)ion[0],
+        sp1_a=-1.2,  # Vertice a, spec1. vegetation growth based on Nield and Baas (2008)ion[0],
         sp1_b=solution[0],
         sp1_c=solution[1],
         sp1_d=solution[2],
-        sp1_e=2.2,
-        sp2_a=-1.6,
+        sp1_e=2.1,
+        sp2_a=-1.0,
         sp2_b=solution[3],
         sp2_c=solution[4],
         sp2_d=solution[5],
@@ -209,11 +210,11 @@ start_time = time.time()  # Record time at start of calibration
 # VARIABLES AND INITIALIZATIONS
 
 # 2014 - 2018
-start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
+start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy_2m.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_2m.npy"
 startdate = '20140406'
 hindcast_duration = 4.5
-cellsize = 1  # [m]
+cellsize = 2  # [m]
 
 MHW = 0.39  # [m NAVD88] Initial
 ResReduc = True  # Option to reduce raster resolution for skill assessment

@@ -108,23 +108,16 @@ def model_skill_categorical(obs, sim, catmask):
 # VARIABLES AND INITIALIZATIONS
 
 # 2014 - 2017
-start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy_NCFMP-Planet_2m_HighDensity.npy"
+start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy_2m.npy"
 stop = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence_2m.npy"
 startdate = '20140406'
 hindcast_duration = 3.44
 
 # # 2014 - 2018
-# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy-NCFMP-Plover.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
+# start = "Init_NCB-NewDrum-Ocracoke_2014_PostSandy_2m.npy"
+# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_2m.npy"
 # startdate = '20140406'
 # hindcast_duration = 4.5
-
-# # 2017 - 2018
-# start = "Init_NCB-NewDrum-Ocracoke_2017_PreFlorence.npy"
-# stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence-Plover.npy"
-# startdate = '20170916'
-# hindcast_duration = 1.06
-
 
 # _____________________
 # INPUT

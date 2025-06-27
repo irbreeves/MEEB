@@ -3,7 +3,7 @@ Script for calibrating MEEB shoreline parameters.
 
 Calibrates based on fitess score for shoreline change between two timesteps.
 
-IRBR 20 February 2025
+IRBR 27 June 2025
 """
 
 import numpy as np
@@ -102,7 +102,7 @@ def shoreline_fitness(solution):
         repose_veg=30,
         wind_rose=(0.91, 0.04, 0.01, 0.04),  # (right, down, left, up)
         # --- Storms --- #
-        Rin=232,
+        Rin=245,
         Cs=0.0235,
         MaxUpSlope=1.5,
         marine_flux_limit=1,
@@ -112,8 +112,8 @@ def shoreline_fitness(solution):
         beach_equilibrium_slope=0.021,
         swash_erosive_timescale=1.51,
         beach_substeps=1,
-        flow_reduction_max_spec1=0.02,
-        flow_reduction_max_spec2=0.05,
+        flow_reduction_max_spec1=0.002,
+        flow_reduction_max_spec2=0.02,
         # --- Shoreline --- #
         wave_asymmetry=0.6,
         wave_high_angle_fraction=0.39,
@@ -129,7 +129,7 @@ def shoreline_fitness(solution):
         sp2_pioneer_probability=0.03,
         # MY GRASS
         sp1_a=-1.2,
-        sp1_b=-0.2,  # Mullins et al. (2019)
+        sp1_b=-0.067,  # Mullins et al. (2019)
         sp1_c=0.5,
         sp1_d=1.2,
         sp1_e=2.1,
@@ -189,8 +189,8 @@ start_time = time.time()  # Record time at start of calibration
 # VARIABLES AND INITIALIZATIONS
 
 # 2014 - 2018
-start = "Init_NCB-NewDrum-Ocracoke_2005_USACE_2m.npy"
-stop = "Init_NCB-NewDrum-Ocracoke_2018_USACE_PostFlorence_2m_HighDensity.npy"
+start = "Init_NCB-NewDrum-Ocracoke_2005_2m.npy"
+stop = "Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_2m.npy"
 startdate = '20051126'
 hindcast_duration = 12.35
 cellsize = 2  # [m]
