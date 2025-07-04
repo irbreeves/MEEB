@@ -101,8 +101,8 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, s
         beach_substeps=1,
         x_s=x_s,
         cellsize=cellsize,
-        spec1=spec1,
-        spec2=spec2,
+        herbaceous_cover=spec1,
+        woody_cover=spec2,
         flow_reduction_max_spec1=solution[6],  # Grass
         flow_reduction_max_spec2=solution[7],  # Shrub
     )

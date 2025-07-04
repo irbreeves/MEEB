@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 27 June 2025
+IRBR 3 July 2025
 """
 
 import numpy as np
@@ -25,16 +25,16 @@ startdate = '20181015'
 
 # _____________________
 
-sim_duration = 32
+sim_duration = 10
 MHW = 0.39  # [m NAVD88]
 cellsize = 2  # [m]
-name = '18000-20000, 2018-2050, RSLR=9.6'  # Name of simulation
+name = '18000-20000, 2018-2028, RSLR=9.6'  # Name of simulation
 animate = False
 
 # _____________________
 # Define Coordinates of Model Domain
 ymin = 18000  # Alongshore
-ymax = 20000  # Alongshore
+ymax = 18500  # Alongshore
 xmin = 700  # Cross-shore
 xmax = 1500  # Cross-shore
 plot_xmin = 0  # Cross-shore plotting
@@ -85,7 +85,7 @@ meeb = MEEB(
     init_elev_array=topo_start,
     init_spec1_array=spec1_start,
     init_spec2_array=spec2_start,
-    save_frequency=2,
+    save_frequency=0.1,
     # --- Aeolian --- #
     saltation_length=2,
     saltation_length_rand_deviation=1,
@@ -123,24 +123,10 @@ meeb = MEEB(
     estimate_shoreface_parameters=True,
     shoreline_diffusivity_coefficient=0.07,
     # --- Veg --- #
-    sp1_lateral_probability=0.2,
-    sp2_lateral_probability=0.2,
-    sp1_pioneer_probability=0.05,
-    sp2_pioneer_probability=0.03,
-    # MY GRASS
-    sp1_a=-1.2,
-    sp1_b=-0.067,  # Mullins et al. (2019)
-    sp1_c=0.5,
-    sp1_d=1.2,
-    sp1_e=2.1,
-    sp1_peak=0.2,
-    # MY SHRUB
-    sp2_a=-1.0,
-    sp2_b=-0.2,  # Conn and Day (1993)
-    sp2_c=0.0,
-    sp2_d=0.2,
-    sp2_e=2.1,
-    sp2_peak=0.05,
+    # sp1_lateral_probability=0.008,
+    # sp2_lateral_probability=0.008,
+    # sp1_pioneer_probability=0.002,
+    # sp2_pioneer_probability=0.0012,
 )
 
 print(meeb.name, end='\n' * 2)
@@ -166,7 +152,7 @@ mhw_end_sim = meeb.MHW  # [m NAVD88]
 topo_change_sim = topo_end_sim - topo_start_sim  # [m]
 
 # Veg change
-veg_TS = meeb.spec1_TS + meeb.spec2_TS
+veg_TS = meeb.veg_fraction_TS[:, :, 2, :] + meeb.veg_fraction_TS[:, :, 4, :] + meeb.veg_fraction_TS[:, :, 6, :] + meeb.veg_fraction_TS[:, :, 7, :]  # meeb.spec1_TS + meeb.spec2_TS
 veg_start_sim = veg_TS[:, :, 0]
 veg_end_sim = veg_TS[:, :, -1]
 veg_change_sim = veg_end_sim - veg_start_sim  # [m]
@@ -210,7 +196,7 @@ cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=6.0)
 cbar = Fig.colorbar(cax1)
 cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
 ax2 = Fig.add_subplot(212)
-veg = meeb.veg[:, plot_xmin: plot_xmax]
+veg = meeb.veg_fraction_TS[:, plot_xmin: plot_xmax, 2, -1] + meeb.veg_fraction_TS[:, plot_xmin: plot_xmax, 4, -1] + meeb.veg_fraction_TS[:, plot_xmin: plot_xmax, 6, -1] + meeb.veg_fraction_TS[:, plot_xmin: plot_xmax, 7, -1]
 veg = np.ma.masked_where(topo <= mhw_end_sim, veg)  # Mask cells below MHW
 cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
 cbar = Fig.colorbar(cax2)
@@ -242,18 +228,18 @@ ax2 = Fig.add_subplot(212)
 ax2.matshow(vcs, cmap=cmap3, vmin=-1, vmax=1)
 
 # -----------------
-# Profiles
-Fig = plt.figure(figsize=(14, 7.5))
-ax1 = Fig.add_subplot(211)
-profile_x = int(140 / cellsize)
-plt.plot(topo_start_sim[profile_x, plot_xmin: plot_xmax], 'k--')
-plt.plot(topo_end_sim[profile_x, plot_xmin: plot_xmax], 'r')
-plt.title("Profile " + str(profile_x))
-ax2 = Fig.add_subplot(212)
-plt.plot(np.mean(topo_start_sim[:, plot_xmin: plot_xmax], axis=0), 'k--')
-plt.plot(np.mean(topo_end_sim[:, plot_xmin: plot_xmax], axis=0), 'r')
-plt.legend(['Start', 'Simulated'])
-plt.title("Average Profile")
+# # Profiles
+# Fig = plt.figure(figsize=(14, 7.5))
+# ax1 = Fig.add_subplot(211)
+# profile_x = int(140 / cellsize)
+# plt.plot(topo_start_sim[profile_x, plot_xmin: plot_xmax], 'k--')
+# plt.plot(topo_end_sim[profile_x, plot_xmin: plot_xmax], 'r')
+# plt.title("Profile " + str(profile_x))
+# ax2 = Fig.add_subplot(212)
+# plt.plot(np.mean(topo_start_sim[:, plot_xmin: plot_xmax], axis=0), 'k--')
+# plt.plot(np.mean(topo_end_sim[:, plot_xmin: plot_xmax], axis=0), 'r')
+# plt.legend(['Start', 'Simulated'])
+# plt.title("Average Profile")
 
 # profx = int(140 / cellsize)
 # proffig2 = plt.figure(figsize=(11, 7.5))
@@ -266,46 +252,81 @@ plt.title("Average Profile")
 # plt.title(name + ", x =" + str(profx))
 
 # -----------------
-# Shoreline Position Over Time
-Fig = plt.figure()
-plt.tight_layout()
-ax_1 = Fig.add_subplot(211)
-plt.ylabel('Meters Cross-Shore')
+# # Shoreline Position Over Time
+# Fig = plt.figure()
+# plt.tight_layout()
+# ax_1 = Fig.add_subplot(211)
+# plt.ylabel('Meters Cross-Shore')
+#
+# color = plt.cm.viridis(np.arange(meeb.x_s_TS.shape[0]))
+#
+# for it in range(meeb.x_s_TS.shape[0]):
+#     shoreline_it = meeb.x_s_TS[it, :] * cellsize  # Find relative ocean shoreline positions and convert y-axis to meters
+#     shoreline_it = np.repeat(shoreline_it, cellsize)  # Convert x-axis to meters
+#     if it == 0:
+#         ax_1.plot(shoreline_it, c=color[it], label='Start')
+#     if it == meeb.x_s_TS.shape[0] - 1:
+#         ax_1.plot(shoreline_it, c=color[it], label='End')
+#     else:
+#         ax_1.plot(shoreline_it, c=color[it], label='_')
+# plt.legend()
 
-color = plt.cm.viridis(np.arange(meeb.x_s_TS.shape[0]))
-
-for it in range(meeb.x_s_TS.shape[0]):
-    shoreline_it = meeb.x_s_TS[it, :] * cellsize  # Find relative ocean shoreline positions and convert y-axis to meters
-    shoreline_it = np.repeat(shoreline_it, cellsize)  # Convert x-axis to meters
-    if it == 0:
-        ax_1.plot(shoreline_it, c=color[it], label='Start')
-    if it == meeb.x_s_TS.shape[0] - 1:
-        ax_1.plot(shoreline_it, c=color[it], label='End')
-    else:
-        ax_1.plot(shoreline_it, c=color[it], label='_')
-plt.legend()
-
-# Short and long-term shoreline change
-ax_2 = Fig.add_subplot(212)
-plt.xlabel('Meters Alongshore')
-plt.ylabel('Shoreline Change Rate [m/yr]')
-long_term_shoreline_change_rate = (meeb.x_s_TS[-1, :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # [m/yr]
-long_term_shoreline_change_rate = np.repeat(long_term_shoreline_change_rate, cellsize)
-short_term_shoreline_change_rate = (meeb.x_s_TS[int(10 * meeb.storm_iterations_per_year), :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # First decade
-short_term_shoreline_change_rate = np.repeat(short_term_shoreline_change_rate, cellsize)
-ax_2.plot(np.arange(int(meeb.x_s_TS.shape[1] * cellsize)), np.zeros([int(meeb.x_s_TS.shape[1] * cellsize)]), 'k--', alpha=0.3, label='_Zero Line')
-ax_2.plot(short_term_shoreline_change_rate, 'cornflowerblue', label='Short-term Shoreline Change (First Decade)')
-ax_2.plot(long_term_shoreline_change_rate, 'darkred', label='Long-term Shoreline Change (Full Simulation Duration)')
-plt.legend()
+# # Short and long-term shoreline change
+# ax_2 = Fig.add_subplot(212)
+# plt.xlabel('Meters Alongshore')
+# plt.ylabel('Shoreline Change Rate [m/yr]')
+# long_term_shoreline_change_rate = (meeb.x_s_TS[-1, :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # [m/yr]
+# long_term_shoreline_change_rate = np.repeat(long_term_shoreline_change_rate, cellsize)
+# short_term_shoreline_change_rate = (meeb.x_s_TS[int(10 * meeb.storm_iterations_per_year), :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # First decade
+# short_term_shoreline_change_rate = np.repeat(short_term_shoreline_change_rate, cellsize)
+# ax_2.plot(np.arange(int(meeb.x_s_TS.shape[1] * cellsize)), np.zeros([int(meeb.x_s_TS.shape[1] * cellsize)]), 'k--', alpha=0.3, label='_Zero Line')
+# ax_2.plot(short_term_shoreline_change_rate, 'cornflowerblue', label='Short-term Shoreline Change (First Decade)')
+# ax_2.plot(long_term_shoreline_change_rate, 'darkred', label='Long-term Shoreline Change (Full Simulation Duration)')
+# plt.legend()
 
 # -----------------
-# Storm Sequence
-Fig = plt.figure(figsize=(14, 7.5))
-storms = meeb.StormRecord
-twl_it = ((storms[:, 0] - 1) * meeb.iterations_per_cycle) + storms[:, 1]
-plt.scatter(twl_it, storms[:, 2])
-plt.xlabel("Simulation Iteration")
-plt.ylabel("TWL (m NAVD88)")
+# # Storm Sequence
+# Fig = plt.figure(figsize=(14, 7.5))
+# storms = meeb.StormRecord
+# twl_it = ((storms[:, 0] - 1) * meeb.iterations_per_cycle) + storms[:, 1]
+# plt.scatter(twl_it, storms[:, 2])
+# plt.xlabel("Simulation Iteration")
+# plt.ylabel("TWL (m NAVD88)")
+
+
+# -----------------
+tx = np.linspace(0, sim_duration, meeb.veg_fraction_TS.shape[3])
+plt.figure(figsize=(9.55, 7))
+ls = 128
+cs = 158
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 0, :], c='black')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 1, :], c='turquoise')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 2, :], c='green')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 3, :], c='deeppink')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 4, :], c='purple')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 5, :], c='gold')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 6, :], c='red')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 7, :], c='brown')
+plt.legend(['Bare', 'Grass_Seedling_1', 'Grass_1', 'Grass_Seedling_2', 'Grass_2', 'Shrub_Seedling', 'Shrub', 'Shrub_Dead'])
+plt.ylabel('Fraction of Carrying Capacity')
+plt.xlabel('Years')
+plt.title("(" + str(ls) + ", " + str(cs) + ")")
+
+plt.figure(figsize=(9.55, 7))
+ls = 53#139  # 150
+cs = 85#90  # 75
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 0, :], c='black')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 1, :], c='turquoise')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 2, :], c='green')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 3, :], c='deeppink')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 4, :], c='purple')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 5, :], c='gold')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 6, :], c='red')
+plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 7, :], c='brown')
+plt.legend(['Bare', 'Grass_Seedling_1', 'Grass_1', 'Grass_Seedling_2', 'Grass_2', 'Shrub_Seedling', 'Shrub', 'Shrub_Dead'])
+plt.ylabel('Fraction of Carrying Capacity')
+plt.xlabel('Years')
+plt.title("(" + str(ls) + ", " + str(cs) + ")")
 
 
 # -----------------
@@ -316,7 +337,7 @@ def ani_frame(timestep):
     elev = meeb.topo_TS[:, plot_xmin: plot_xmax, timestep]  # [m]
     elev = np.ma.masked_where(elev <= mhw, elev)  # Mask cells below MHW
     cax1.set_data(elev)
-    yrstr = "Year " + str(timestep * meeb.save_frequency)
+    yrstr = "Year " + str(round(timestep * meeb.save_frequency, 2))
     text1.set_text(yrstr)
 
     veggie = veg_TS[:, plot_xmin: plot_xmax, timestep]
@@ -342,7 +363,7 @@ if animate:
     # cax1 = ax1.matshow(topo, cmap='terrain', vmin=-2, vmax=6.0)
     cbar = Fig.colorbar(cax1)
     cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
-    timestr = "Year " + str(0 * meeb.save_frequency)
+    timestr = "Year " + str(round(0 * meeb.save_frequency, 2))
     text1 = plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
 
     veg = veg_TS[:, plot_xmin: plot_xmax, 0]
@@ -356,8 +377,8 @@ if animate:
     cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
     cbar = Fig.colorbar(cax2)
     cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
-    timestr = "Year " + str(0 * meeb.save_frequency)
-    text2 = plt.text(2, meeb.veg.shape[0] - 2, timestr, c='white')
+    timestr = "Year " + str(round(0 * meeb.save_frequency, 2))
+    text2 = plt.text(2, meeb.topo.shape[0] - 2, timestr, c='white')
     plt.tight_layout()
 
     # Create and save animation
