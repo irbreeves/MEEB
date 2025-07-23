@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 12 May 2025
+IRBR 22 July 2025
 """
 
 import os
@@ -77,8 +77,6 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         beach_equilibrium_slope=0.021,
         swash_erosive_timescale=1.51,
         beach_substeps=1,
-        flow_reduction_max_spec1=0.002,
-        flow_reduction_max_spec2=0.02,
         # --- Shoreline --- #
         wave_asymmetry=0.6,
         wave_high_angle_fraction=0.39,
@@ -88,24 +86,6 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
         estimate_shoreface_parameters=True,
         shoreline_diffusivity_coefficient=0.07,
         # --- Veg --- #
-        sp1_lateral_probability=0.2,
-        sp2_lateral_probability=0.2,
-        sp1_pioneer_probability=0.05,
-        sp2_pioneer_probability=0.03,
-        # MY GRASS
-        sp1_a=-1.2,
-        sp1_b=-0.067,  # Mullins et al. (2019)
-        sp1_c=0.5,
-        sp1_d=1.2,
-        sp1_e=2.1,
-        sp1_peak=0.2,
-        # MY SHRUB
-        sp2_a=-1.0,
-        sp2_b=-0.2,  # Conn and Day (1993)
-        sp2_c=0.0,
-        sp2_d=0.2,
-        sp2_e=2.1,
-        sp2_peak=0.05,
     )
 
     # Loop through time
@@ -120,7 +100,7 @@ def run_individual_sim(rslr, shift_mean_storm_intensity):
     if 'overwash_frequency' in classification_scheme:
         classification.append(classify_overwash_frequency(meeb.topo_TS.shape[2], meeb.storm_inundation_TS, meeb.topo_TS, meeb.MHW_TS))
     if 'state' in classification_scheme:
-        classification.append(classify_ecogeomorphic_habitat_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.spec1_TS, meeb.spec2_TS, meeb.MHW_TS, vegetated_threshold=0.37))
+        classification.append(classify_ecogeomorphic_habitat_state(meeb.topo_TS.shape[2], meeb.topo_TS, meeb.veg_fraction_TS, meeb.MHW_TS, vegetated_threshold=0.37))
 
     del meeb
     gc.collect()
@@ -147,7 +127,7 @@ def classify_topo_change(TS, topo_TS):
     return topo_change_bin
 
 
-def classify_ecogeomorphic_habitat_state(TS, topo_TS, spec1_TS, spec2_TS, mhw_ts, vegetated_threshold, beach_slope_threshold=0.019):
+def classify_ecogeomorphic_habitat_state(TS, topo_TS, veg_fraction_TS, mhw_ts, vegetated_threshold, beach_slope_threshold=0.019):
     """Classify by ecogeomorphic state using topography and vegetatio, with focus on bird and turtle habitat."""
 
     habitat_state_classes = np.zeros([num_saves, longshore, crossshore], dtype=np.int8)  # Initialize
@@ -209,7 +189,7 @@ def classify_ecogeomorphic_habitat_state(TS, topo_TS, spec1_TS, spec2_TS, mhw_ts
         steep_beach_slope = np.rot90(np.array([beach_slopes > beach_slope_threshold] * crossshore), -1)
 
         # Smooth vegetation to remove small-scale variability
-        veg = scipy.ndimage.gaussian_filter((spec1_TS[:, :, ts] + spec2_TS[:, :, ts]).astype(np.float32), 5, mode='constant').astype(np.float16)
+        veg = scipy.ndimage.gaussian_filter((veg_fraction_TS[:, :, 2, ts] + veg_fraction_TS[:, :, 4, ts] + veg_fraction_TS[:, :, 6, ts] + veg_fraction_TS[:, :, 7, ts]).astype(np.float32), 5, mode='constant').astype(np.float16)
 
         # Categorize Cells of Model Domain
         # ['Subaqueous', 'Beach-Shallow', 'Beach-Steep', 'Dune', 'Unvegetated Interior', 'Vegetated Interior']

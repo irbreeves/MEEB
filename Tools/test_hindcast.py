@@ -3,7 +3,7 @@ Script for testing MEEB hindcast simulations.
 
 Runs a hindcast simulation and calculates fitess scores for morphologic and ecologic change between simulated and observed.
 
-IRBR 4 April 2025
+IRBR 22 July 2025
 """
 
 import numpy as np
@@ -229,8 +229,6 @@ meeb = MEEB(
     beach_equilibrium_slope=0.021,
     swash_erosive_timescale=1.51,
     beach_substeps=1,
-    flow_reduction_max_spec1=0.002,
-    flow_reduction_max_spec2=0.02,
     # --- Shoreline --- #
     wave_asymmetry=0.6,
     wave_high_angle_fraction=0.39,
@@ -240,25 +238,6 @@ meeb = MEEB(
     estimate_shoreface_parameters=True,
     shoreline_diffusivity_coefficient=0.07,
     # --- Veg --- #
-    sp1_lateral_probability=0.2,
-    sp2_lateral_probability=0.2,
-    sp1_pioneer_probability=0.05,
-    sp2_pioneer_probability=0.03,
-
-    # MY GRASS
-    sp1_a=-1.2,
-    sp1_b=-0.067,  # Mullins et al. (2019)
-    sp1_c=0.5,
-    sp1_d=1.2,
-    sp1_e=2.1,
-    sp1_peak=0.2,
-    # MY SHRUB
-    sp2_a=-1.0,
-    sp2_b=-0.2,  # Day et al. (199?)
-    sp2_c=0.0,
-    sp2_d=0.2,
-    sp2_e=2.1,
-    sp2_peak=0.05,
 )
 
 print(meeb.name)
@@ -286,10 +265,12 @@ topo_change_sim = topo_end_sim - topo_start  # [m]
 topo_change_obs = topo_end_obs - topo_start  # [m]
 
 # Veg change
-veg_end_sim = meeb.veg
-veg_change_sim = veg_end_sim - veg_start  # [m]
-veg_change_obs = veg_end - veg_start  # [m]
+veg_TS = meeb.veg_fraction_TS[:, :, 2, :] + meeb.veg_fraction_TS[:, :, 4, :] + meeb.veg_fraction_TS[:, :, 6, :] + meeb.veg_fraction_TS[:, :, 7, :]
+veg_start_sim = veg_TS[:, :, 0]
+veg_end_sim = veg_TS[:, :, -1]
+veg_change_sim = veg_end_sim - veg_start_sim  # [m]
 veg_present_sim = veg_end_sim > 0.05  # [bool]
+veg_change_obs = veg_end - veg_start  # [m]
 veg_present_obs = veg_end > 0.05  # [bool]
 
 # Subaerial mask
@@ -409,9 +390,6 @@ cmap_lim = 1.5  # max(max_change_obs, max_change_sim)
 cmap1 = routine.truncate_colormap(copy.copy(plt.colormaps.get_cmap("terrain")), 0.5, 0.9)  # Truncate colormap
 cmap1.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
 
-# Combine species
-veg_TS = meeb.spec1_TS + meeb.spec2_TS
-
 # -----------------
 # Final Elevation & Vegetation
 Fig = plt.figure(figsize=(14, 7.5))
@@ -427,7 +405,7 @@ else:
 cax1 = ax1.matshow(topo, cmap=cmap1, vmin=0, vmax=6.0)
 cbar = Fig.colorbar(cax1)
 cbar.set_label('Elevation [m]', rotation=270, labelpad=20)
-veg = meeb.veg[:, plot_xmin: plot_xmax]
+veg = veg_TS[:, plot_xmin: plot_xmax, -1]
 veg = np.ma.masked_where(topo <= mhw_end_sim, veg)  # Mask cells below MHW
 cmap2 = copy.copy(plt.colormaps["YlGn"])
 cmap2.set_bad(color='dodgerblue', alpha=0.5)  # Set cell color below MHW to blue
@@ -568,7 +546,7 @@ cax2 = ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
 cbar = Fig.colorbar(cax2)
 cbar.set_label('Vegetation [%]', rotation=270, labelpad=20)
 timestr = "Year " + str(0 * meeb.save_frequency)
-text2 = plt.text(2, meeb.veg.shape[0] - 2, timestr, c='darkblue')
+text2 = plt.text(2, veg_TS.shape[0] - 2, timestr, c='darkblue')
 plt.tight_layout()
 
 # Create and save animation

@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 3 July 2025
+Last update: 22 July 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -114,13 +114,24 @@ class MEEB:
             # Species: 2 Herbaceous, 1 Woody
             # States: Bare, H1_seed, H1_adult, H2_seed, H2_adult, W_seed, W_adult, W_dead
 
+            # Relative Geomorphic "Effectiveness"
+            H1_a_relative_effectiveness=0.75,  # [0-1] Geomorphic effectiveness of adult herbaceous species 1, relative to other species
+            H2_a_relative_effectiveness=0.5,  # [0-1] Geomorphic effectiveness of adult herbaceous species 2, relative to other species
+            W_a_relative_effectiveness=1,  # [0-1] Geomorphic effectiveness of adult woody species, relative to other species - typically the most effective (i.e., 1)
+            W_d_relative_effectiveness=0.85,  # [0-1] Geomorphic effectiveness of dead woody species, relative to other species
+
             # Dispersal and Flow
-            sp1_lateral_probability=0.008,  # [0-1] Probability of lateral expansion of existing vegetation
-            sp2_lateral_probability=0.008,  # [0-1] Probability of lateral expansion of existing vegetation
-            sp1_pioneer_probability=0.002,  # [0-1] Probability of occurrence of new pioneering vegetation
-            sp2_pioneer_probability=0.0012,  # [0-1] Probability of occurrence of new pioneering vegetation
-            flow_reduction_max_spec1=0.002,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 1 at full density
-            flow_reduction_max_spec2=0.02,  # [0-1] Proportion of overwash flow reduction through a cell populated with species 2 at full density
+            H1_lateral_probability=0.008,  # [0-1] Probability of lateral expansion of existing vegetation, herbaceous species 1
+            H2_lateral_probability=0.01,  # [0-1] Probability of lateral expansion of existing vegetation, herbaceous species 2
+            H1_pioneer_probability=0.002,  # [0-1] Probability of occurrence of new pioneering vegetation, herbaceous species 1
+            H2_pioneer_probability=0.0012,  # [0-1] Probability of occurrence of new pioneering vegetation, herbaceous species 2
+            W_pioneer_probability=0.00002,  # [0-1] Probability of occurrence of new pioneering vegetation, woody species
+            W_avian_seed_min=2,  # [seeds/timestep] Minimum number of seeds produced and dispersed per timestep for woody species
+            W_avian_seed_max=16,  # [seeds/timestep] Maximum number of seeds produced and dispersed per timestep for woody species
+            W_avian_dispersal_mean=-0.7219,  # Lognormal avian dispersal distance function
+            W_avian_dispersal_sigma=1.5,  # Lognormal avian dispersal distance function
+            H_flow_reduction_max=0.002,  # [0-1] Proportion of overwash flow reduction through a cell populated with herbaceous species at full density
+            W_flow_reduction_max=0.02,  # [0-1] Proportion of overwash flow reduction through a cell populated with woody species at full density
             effective_veg_sigma=3,  # Standard deviation for Gaussian filter of vegetation cover
 
             # Transition Probabilities
@@ -133,13 +144,13 @@ class MEEB:
             W_s_mort_Pmax_tempC=0.4,  # Woody seedling mortality at optimal temperature
             H1_growth_Pmax_tempC=0.95,  # Herbaceous seedling to adult at optimal temperature, species 1
             H1_growth_Pmax_elev=0.8,  # Herbaceous seedling to adult at optimal elevation, species 1
-            H1_growth_Pmin_stim=0.7,  # Herbaceous seedling to adult with no deposition stimulation, species 1
+            H1_growth_Pmin_stim=0.95,  # Herbaceous seedling to adult with no deposition stimulation, species 1
             H2_growth_Pmax_tempC=0.95,  # Herbaceous seedling to adult at optimal temperature, species 2
             H2_growth_Pmax_elev=0.8,  # Herbaceous seedling to adult at optimal elevation, species 2
-            H2_growth_Pmin_stim=0.7,  # Herbaceous seedling to adult with no deposition stimulation, species 2
+            H2_growth_Pmin_stim=0.95,  # Herbaceous seedling to adult with no deposition stimulation, species 2
             W_growth_Pmax_tempC=0.7,  # Woody seedling to adult at optimal temperature
             W_growth_Pmax_elev=0.6,  # Woody seedling to adult at optimal elevation
-            W_growth_Pmin_stim=0.9,  # Woody seedling to adult with no deposition stimulation
+            W_growth_Pmin_stim=0.9,  # Woody seedling to adult with no deposition stimulation (lower value = larger effect of stimulation)
             H1_a_senesce_Pmin_tempC=0.02,  # Herbaceous adult senescence to dead at optimal temperature for survival, species 1
             H1_a_senesce_Pmax_tempC=0.06,  # Herbaceous adult senescence to dead at least optimal temperatures for survival, species 1
             H2_a_senesce_Pmin_tempC=0.02,  # Herbaceous adult senescence to dead at optimal temperature for survival, species 2
@@ -152,28 +163,28 @@ class MEEB:
             W_d_loss_Pmax_twl=0.5,  # Woody dead loss (breakdown) to bare at optimum HWE TWL (as proxy for wind strength)
 
             # HWE Discharge Thresholds
-            H1_QHWE_min=40,  # [m^3] Minimum HWE discharge below which mortality probability is 0%, herbaceous species 1
-            H1_QHWE_max=80,  # [m^3] Maximum HWE discharge above which mortality probability is 100%, herbaceous species 1
-            H2_QHWE_min=40,  # [m^3] Minimum HWE discharge below which mortality probability is 0%, herbaceous species 2
-            H2_QHWE_max=80,  # [m^3] Maximum HWE discharge above which mortality probability is 100%, herbaceous species 2
-            W_QHWE_min=40,  # [m^3] Minimum HWE discharge below which mortality probability is 0%, woody species
-            W_QHWE_max=60,  # [m^3] Maximum HWE discharge above which mortality probability is 100%, woody species
+            H1_QHWE_min=8000,  # [m^3] Minimum cumulative HWE discharge (volume) below which mortality probability is 0%, herbaceous species 1
+            H1_QHWE_max=15000,  # [m^3] Maximum cumulative HWE discharge (volume) above which mortality probability is 100%, herbaceous species 1
+            H2_QHWE_min=8000,  # [m^3] Minimum cumulative HWE discharge (volume) below which mortality probability is 0%, herbaceous species 2
+            H2_QHWE_max=15000,  # [m^3] Maximum cumulative HWE discharge (volume) above which mortality probability is 100%, herbaceous species 2
+            W_QHWE_min=6000,  # [m^3] Minimum cumulative HWE discharge (volume) below which mortality probability is 0%, woody species
+            W_QHWE_max=12000,  # [m^3] Maximum cumulative HWE discharge (volume) above which mortality probability is 100%, woody species
 
             # HWE TWL Thresholds
             W_TWL_min=1,  # [m MHW] Minimum HWE total water level below which woody loss to bare is 0%
             W_TWL_max=3,  # [m MHW] Maximum HWE total water level below which woody loss to bare is 100%
 
             # Erosion/Deposition Thresholds
-            germination_erosion_limit=0.06,  # [m] Maximum depth of erosion beyond which germination probability is 0%, all species
-            germination_burial_limit=0.06,  # [m] Maximum depth of burial beyond which germination probability is 0%, all species
-            seedling_erosion_limit=-0.1,  # [m] Maximum depth of erosion beyond which seedling mortality probability is 100%, all species
-            seedling_burial_limit=0.1,  # [m] Maximum depth of deposition beyond which seedling mortality probability is 100%, all species
-            H1_uproot_limit=-0.4,  # [m] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 1
-            H1_burial_limit=0.8,  # [m] Maximum depth of deposition beyond which mortality probability is 100%, herbaceous species 1
-            H2_uproot_limit=-0.4,  # [m] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 2
-            H2_burial_limit=0.8,  # [m] Maximum depth of deposition beyond which mortality probability is 100%, herbaceous species 2
-            W_uproot_limit=-0.3,  # [m] Maximum depth of erosion beyond which mortality probability is 100%, woody species
-            W_burial_limit=2.0,  # [m] Maximum depth of deposition beyond which mortality probability is 100%, woody species
+            germination_erosion_limit=-0.06,  # [m, negative] Maximum depth of erosion beyond which germination probability is 0%, all species
+            germination_burial_limit=0.06,  # [m, positive] Maximum depth of burial beyond which germination probability is 0%, all species
+            seedling_erosion_limit=-0.1,  # [m, negative] Maximum depth of erosion beyond which seedling mortality probability is 100%, all species
+            seedling_burial_limit=0.1,  # [m, positive] Maximum depth of deposition beyond which seedling mortality probability is 100%, all species
+            H1_uproot_limit=-0.4,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 1
+            H1_burial_limit=0.8,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, herbaceous species 1
+            H2_uproot_limit=-0.4,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 2
+            H2_burial_limit=0.8,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, herbaceous species 2
+            W_uproot_limit=-0.3,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, woody species
+            W_burial_limit=4.0,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, woody species
 
             # Elevation Thresholds & Parameters
             H1_elev_gamma_a=1.63,  # Alpha of gamma probability density function for elevation, herbaceous species 1
@@ -199,10 +210,14 @@ class MEEB:
             H2_growth_tempC_max=38,  # [C] Maximum temperature for growth, herbaceous species 2
             W_growth_tempC_min=10,  # [C] Minimum temperature for growth, woody species
             W_growth_tempC_max=48,  # [C] Maximum temperature for growth, woody species
-            H1_mort_tempC_min=-10,  # [C] Threshold temperature below which mortality is 100%, herbaceous species 1
-            H1_mort_tempC_max=50,  # [C] Threshold temperature above which mortality is 100%, herbaceous species 1
-            H2_mort_tempC_min=-10,  # [C] Threshold temperature below which mortality is 100%, herbaceous species 2
-            H2_mort_tempC_max=50,  # [C] Threshold temperature above which mortality is 100%, herbaceous species 2
+            H1_s_mort_tempC_min=-5,  # [C] Threshold temperature below which seedling mortality is 100%, herbaceous species 1
+            H1_s_mort_tempC_max=50,  # [C] Threshold temperature above which seedling mortality is 100%, herbaceous species 1
+            H1_a_mort_tempC_min=-10,  # [C] Threshold temperature below which adult mortality is 100%, herbaceous species 1
+            H1_a_mort_tempC_max=50,  # [C] Threshold temperature above which adult mortality is 100%, herbaceous species 1
+            H2_s_mort_tempC_min=-5,  # [C] Threshold temperature below which seedling mortality is 100%, herbaceous species 2
+            H2_s_mort_tempC_max=50,  # [C] Threshold temperature above which seedling mortality is 100%, herbaceous species 2
+            H2_a_mort_tempC_min=-10,  # [C] Threshold temperature below which adult mortality is 100%, herbaceous species 2
+            H2_a_mort_tempC_max=50,  # [C] Threshold temperature above which adult mortality is 100%, herbaceous species 2
             W_s_mort_tempC_min=-8,  # [C] Threshold temperature below which seedling mortality is 100%, woody species
             W_s_mort_tempC_max=50,  # [C] Threshold temperature above which seedling mortality is 100%, woody species
             W_a_mort_tempC_min=-15,  # [C] Threshold temperature below which adult mortality is 100%, woody species
@@ -210,18 +225,18 @@ class MEEB:
             standard_dev_temperature=7.5,  # [C] Standard deviation (spread) of temperature anomolies around the mean
 
             # Growth Stimulation From Deposition Thresholds
-            H1_stim_min=0,  # [m] Minimum deposition for stimulation from deposition, herbaceous species 1
-            H1_stim_max=0.4,  # [m] Maximum deposition for stimulation from deposition, herbaceous species 1
-            H2_stim_min=0,  # [m] Minimum deposition for stimulation from deposition, herbaceous species 2
-            H2_stim_max=0.4,  # [m] Maximum deposition for stimulation from deposition, herbaceous species 2
-            W_stim_min=0,  # [m] Minimum deposition for stimulation from deposition, woody species
-            W_stim_max=0.1,  # [m] Maximum deposition for stimulation from deposition, woody species
+            H1_stim_min=0,  # [m/timestep] Minimum deposition for stimulation from deposition, herbaceous species 1
+            H1_stim_max=0.1,  # [m/timestep] Maximum deposition for stimulation from deposition, herbaceous species 1
+            H2_stim_min=0,  # [m/timestep] Minimum deposition for stimulation from deposition, herbaceous species 2
+            H2_stim_max=0.1,  # [m/timestep] Maximum deposition for stimulation from deposition, herbaceous species 2
+            W_stim_min=0,  # [m/timestep] Minimum deposition for stimulation from deposition, woody species
+            W_stim_max=0.04,  # [m/timestep] Maximum deposition for stimulation from deposition, woody species
 
             # Woody Fronting Dune Elevation and Shoreline Distance Thresholds
             W_dune_elev_min=1.85,  # [m MHW] Frontingf dune elevation below which woody establishment (germination and growth) is 0%
             W_dune_elev_max=2.25,  # [m MHW] Fronting dune elevation above which woody establishment (germination and growth) is 100%
-            W_shoreline_distance_min=170,  # [m MHW] Distance from ocean shoreline below which woody establishment (germination and growth) is 0% in absence of sufficiently tall dune
-            W_shoreline_distance_max=200,  # [m MHW] Distance from ocean shoreline above which woody establishment (germination and growth) is 100% in absence of sufficiently tall dune
+            W_shoreline_distance_min=170,  # [m] Distance from ocean shoreline below which woody establishment (germination and growth) is 0% in absence of sufficiently tall dune
+            W_shoreline_distance_max=200,  # [m] Distance from ocean shoreline above which woody establishment (germination and growth) is 100% in absence of sufficiently tall dune
 
             # Competition/Facilitation Thresholds and Parameters
             H1_growth_woody_comp_max=0.5,  # Maximum woody fractional cover beyond which germination/growth of herbaceous species 1 is 0%
@@ -312,14 +327,23 @@ class MEEB:
         self._shift_mean_storm_intensity_end = shift_mean_storm_intensity_end / 100
         self._shift_mean_storm_intensity_start = shift_mean_storm_intensity_start / 100
         self._storm_twl_duration_correlation = storm_twl_duration_correlation
-        self._sp1_lateral_probability = sp1_lateral_probability
-        self._sp2_lateral_probability = sp2_lateral_probability
-        self._sp1_pioneer_probability = sp1_pioneer_probability
-        self._sp2_pioneer_probability = sp2_pioneer_probability
-        self._flow_reduction_max_spec1 = flow_reduction_max_spec1
-        self._flow_reduction_max_spec2 = flow_reduction_max_spec2
+        self._H1_lateral_probability = H1_lateral_probability
+        self._H2_lateral_probability = H2_lateral_probability
+        self._H1_pioneer_probability = H1_pioneer_probability
+        self._H2_pioneer_probability = H2_pioneer_probability
+        self._W_pioneer_probability = W_pioneer_probability
+        self._W_avian_seed_min = W_avian_seed_min
+        self._W_avian_seed_max = W_avian_seed_max
+        self._W_avian_dispersal_mean = W_avian_dispersal_mean
+        self._W_avian_dispersal_sigma = W_avian_dispersal_sigma
+        self._H_flow_reduction_max = H_flow_reduction_max
+        self._W_flow_reduction_max = W_flow_reduction_max
         self._effective_veg_sigma = effective_veg_sigma
         # ---------------
+        self._H1_a_relative_effectiveness = H1_a_relative_effectiveness
+        self._H2_a_relative_effectiveness = H2_a_relative_effectiveness
+        self._W_a_relative_effectiveness = W_a_relative_effectiveness
+        self._W_d_relative_effectiveness = W_d_relative_effectiveness
         self._H1_germ_Pmax_tempC = H1_germ_Pmax_tempC
         self._H2_germ_Pmax_tempC = H2_germ_Pmax_tempC
         self._W_germ_Pmax_tempC = W_germ_Pmax_tempC
@@ -385,10 +409,14 @@ class MEEB:
         self._H2_growth_tempC_max = H2_growth_tempC_max
         self._W_growth_tempC_min = W_growth_tempC_min
         self._W_growth_tempC_max = W_growth_tempC_max
-        self._H1_mort_tempC_min = H1_mort_tempC_min
-        self._H1_mort_tempC_max = H1_mort_tempC_max
-        self._H2_mort_tempC_min = H2_mort_tempC_min
-        self._H2_mort_tempC_max = H2_mort_tempC_max
+        self._H1_s_mort_tempC_min = H1_s_mort_tempC_min
+        self._H1_s_mort_tempC_max = H1_s_mort_tempC_max
+        self._H1_a_mort_tempC_min = H1_a_mort_tempC_min
+        self._H1_a_mort_tempC_max = H1_a_mort_tempC_max
+        self._H2_s_mort_tempC_min = H2_s_mort_tempC_min
+        self._H2_s_mort_tempC_max = H2_s_mort_tempC_max
+        self._H2_a_mort_tempC_min = H2_a_mort_tempC_min
+        self._H2_a_mort_tempC_max = H2_a_mort_tempC_max
         self._W_s_mort_tempC_min = W_s_mort_tempC_min
         self._W_s_mort_tempC_max = W_s_mort_tempC_max
         self._W_a_mort_tempC_min = W_a_mort_tempC_min
@@ -486,10 +514,6 @@ class MEEB:
             raise ValueError("Simulation length is greater than hindcast timeSeries length.")
 
         # VEGETATION
-        # self._temperatureC_average_daily_max = [8.3, 7.8, 7.8, 7.8, 8.16, 8.68, 9.33, 10.09, 10.85, 11.76, 12.7, 13.94, 15.41, 16.74, 18.26, 19.59, 20.66, 21.6, 22.5, 23.56,
-        #                                         24.59, 25.93, 27.23, 28.4, 29.26, 30, 30, 30, 30, 29.66, 29.4, 28.9, 28.39, 27.79, 26.95, 25.89, 24.66, 23.49, 22.16, 20.64,
-        #                                         19.27, 17.84, 16.51, 15.17, 13.87, 12.7, 11.6, 10.66, 9.7, 8.89]  # [C] Average observed daily maximum high for 1/50-yr increments, Wallops Island area, 1991-2020
-
         self._temperatureC_average_daily_max = [8.05, 7.8, 8.42, 9.71, 11.305, 13.32, 16.075, 18.925, 21.13, 23.03, 25.26, 27.815, 29.63, 30, 29.83, 29.15, 28.09, 26.42, 24.075,
                                                 21.4, 18.555, 15.84, 13.285, 11.13, 9.295]  # [C] Average observed daily maximum high for 1/25-yr increments, Wallops Island area, 1991-2020
 
@@ -505,14 +529,19 @@ class MEEB:
         self._veg_fraction[:, :, 6] = self._spec2 * 0.80  # Set initial W Adult
         self._veg_fraction[:, :, 7] = self._spec2 * 0.05  # Set initial W Dead
 
-        self._effective_veg = gaussian_filter(init_veg, [self._effective_veg_sigma / self._cellsize, self._effective_veg_sigma / self._cellsize], mode='constant')  # Effective vegetation cover represents effect of nearby vegetation on local wind
+        effective_veg_fraction = (self._veg_fraction[:, :, 2] * self._H1_a_relative_effectiveness
+                                  + self._veg_fraction[:, :, 4] * self._H2_a_relative_effectiveness
+                                  + self._veg_fraction[:, :, 6] * self._W_a_relative_effectiveness
+                                  + self._veg_fraction[:, :, 7] * self._W_d_relative_effectiveness)  # Adults and dead shrubs
+
+        self._effective_veg = gaussian_filter(effective_veg_fraction, [self._effective_veg_sigma / self._cellsize, self._effective_veg_sigma / self._cellsize], mode='constant')  # Effective vegetation cover represents effect of nearby vegetation on local wind
 
         # MODEL PARAMETERS
         self._MHW_init = self._MHW
         self._wind_direction = np.zeros([self._iterations], dtype=np.int32)
         self._slabheight = round(self._slabheight, 2)  # Round slabheight to 2 decimals
-        self._sedimentation_balance_year = np.zeros(self._topo.shape, dtype=np.float32)  # [m] Initialize map of the sedimentation balance: difference between erosion and deposition for 1 model year; (+) = net deposition, (-) = net erosion
-        self._sedimentation_balance_biweekly = np.zeros(self._topo.shape, dtype=np.float32)  # [m] Initialize map of the sedimentation balance: difference between erosion and deposition for 1/25 model year; (+) = net deposition, (-) = net erosion
+        self._sedimentation_balance_biweekly = np.zeros([self._longshore, self._crossshore, 1], dtype=np.float32)  # [m] Initialize map of the sedimentation balance: difference between erosion and deposition for 1/25 model year; (+) = net deposition, (-) = net erosion
+        self._sedimentation_balance_long_term = np.zeros([self._longshore, self._crossshore, 5], dtype=np.float32)  # Stores the sedimentation balance of the 5 most recent timesteps to calculate a long-term aggregate
         self._x_s_TS = [self._x_s]  # Initialize storage array for shoreline position
         self._x_t_TS = [self._x_t]  # Initialize storage array for shoreface toe position
         self._x_bb_TS = [routine.backbarrier_shoreline_nonjitted(self._topo, self._MHW)]  # Initialize storage array for back-barrier shoreline position
@@ -612,7 +641,7 @@ class MEEB:
 
                 # Storm Processes: Beach/duneface change, overwash
                 self._StormRecord = np.vstack((self._StormRecord, np.array([year, iteration_year, np.max(Rhigh), np.max(Rlow), dur], dtype=np.float32)))
-                self._topo, self._OWflux, inundated, Qbe = routine.storm_processes(
+                self._topo, self._OWflux, inundated, Qbe, cumulative_hwe_discharge = routine.storm_processes(
                     topof=self._topo,
                     Rhigh=Rhigh,
                     dur=dur,
@@ -635,8 +664,8 @@ class MEEB:
                     cellsize=self._cellsize,
                     herbaceous_cover=self._veg_fraction[:, :, 2] + self._veg_fraction[:, :, 4],
                     woody_cover=self._veg_fraction[:, :, 6] + self._veg_fraction[:, :, 7],
-                    flow_reduction_max_spec1=self._flow_reduction_max_spec1,
-                    flow_reduction_max_spec2=self._flow_reduction_max_spec2,
+                    H_flow_reduction_max=self._H_flow_reduction_max,
+                    W_flow_reduction_max=self._W_flow_reduction_max,
                 )
 
                 # Aggregate inundation [boolean] for the period between the previous and next time step at which output is saved (save_frequency)
@@ -649,6 +678,7 @@ class MEEB:
             else:
                 self._OWflux = np.zeros([self._longshore], dtype=np.float32)  # [m^3] No overwash if no storm
                 Qbe = np.zeros([self._longshore], dtype=np.float32)  # [m^3] No overwash if no storm
+                cumulative_hwe_discharge = np.zeros([self._longshore, self._crossshore], dtype=np.float32)  # [m^3] No overwash if no storm
                 inundated = np.zeros([self._longshore, self._crossshore])
                 Rhigh = np.zeros([self._longshore])
 
@@ -670,19 +700,19 @@ class MEEB:
                 self._cellsize,
             )
 
-            self._x_s = routine.shoreline_change_from_AST(self._x_s,
-                                                          self._coast_diffusivity,
-                                                          self._di,
-                                                          self._dj,
-                                                          self._alongshore_section_length,
-                                                          self._storm_update_frequency / self._iterations_per_cycle,
-                                                          self._ny,
-                                                          )
+            self._x_s = routine.shoreline_change_from_AST(
+                self._x_s,
+                self._coast_diffusivity,
+                self._di,
+                self._dj,
+                self._alongshore_section_length,
+                self._storm_update_frequency / self._iterations_per_cycle,
+                self._ny,
+            )
 
             prev_shoreline = self._x_s_TS[-1]  # Shoreline positions from previous time step
 
             # Adjust topography domain to according to shoreline change
-            topo_copy_pre = self._topo.copy()
             self._topo = routine.adjust_ocean_shoreline(
                 self._topo,
                 self._x_s,
@@ -708,249 +738,276 @@ class MEEB:
             # Maintain equilibrium back-barrier depth
             self._topo = routine.maintain_equilibrium_backbarrier_depth(self._topo, self._eq_backbarrier_depth, self._MHW)
 
-            # Update sedimentation balance
-            self._sedimentation_balance_year += self._topo - topo_copy_pre  # [m] Update the sedimentation balance map
-            self._sedimentation_balance_biweekly += self._topo - topo_copy_pre  # [m] Update the sedimentation balance map
+            # Update biweekly sedimentation balance
+            self._sedimentation_balance_biweekly[:, :, 0] += self._topo - topo_copy_pre  # [m/timestep]
+            # Update long-term sedimentation balance: Remove sedimentation balance of the oldest stored timestep from the bottom, add sedimentation balance from newest timestep to the top
+            self._sedimentation_balance_long_term = np.concatenate((self._sedimentation_balance_biweekly.copy(), self._sedimentation_balance_long_term[:, :, :-1]), axis=2)
+            # Calculate the long-term aggregate sedimentation balance
+            sedimentation_balance_long_term_aggregate = np.sum(self._sedimentation_balance_long_term, axis=2)  # [m/long-term period]
 
             # --------------------------------------
-            # NEW VEGETATION
-            it_veg = int(iteration_year)
-            temperature_C = self._temperatureC_average_daily_max[it_veg]  # [C] Find temperature for this iteration
+            # VEGETATION
+            temperature_C = self._temperatureC_average_daily_max[int(iteration_year)]  # [C] Find temperature for this iteration
             extreme_temperature_C = temperature_C - 5.5 + self._RNG.normal(loc=0, scale=self._standard_dev_temperature)  # -5.5 is the average daily mean relative to max
-            hwe_q = inundated * 300  # TEMP!
+            foredune_crest_loc, not_gap = routine.foredune_crest(self._topo, self._MHW, self._cellsize)
+            fronting_dune_elevations = routine.calc_fronting_dune_elevations(self._topo, foredune_crest_loc, self._MHW, window=51)  # [m MHW]
             x_b = routine.backbarrier_shoreline(self._topo, self._MHW)
 
             # Dispersal
-            H1_currently_vegetated = self._veg_fraction[:, :, 1] + self._veg_fraction[:, :, 2] > 0.02  # Cells that are currently vegetated
-            H2_currently_vegetated = self._veg_fraction[:, :, 3] + self._veg_fraction[:, :, 4] > 0.02  # Cells that are currently vegetated
-            W_currently_vegetated = self._veg_fraction[:, :, 5] + self._veg_fraction[:, :, 6] + self._veg_fraction[:, :, 7] > 0.02  # Cells that are currently vegetated
+            H1_germ_allowed, H2_germ_allowed = routine.herbaceous_dispersal(
+                self._veg_fraction,
+                self._H1_pioneer_probability,
+                self._H1_lateral_probability,
+                self._H2_pioneer_probability,
+                self._H2_lateral_probability,
+                self._RNG,
+            )
 
-            # Pioneer Colonization via Seeds & Rhizome Fragments
-            H1_pioneer = self._RNG.random(self._topo.shape) < self._sp1_pioneer_probability
-            H2_pioneer = self._RNG.random(self._topo.shape) < self._sp1_pioneer_probability
-            W_pioneer = self._RNG.random(self._topo.shape) < self._sp1_pioneer_probability
-
-            # Lateral Expansion
-            H1_lateral = routine.lateral_expansion(self._veg_fraction[:, :, 1] + self._veg_fraction[:, :, 2], 1, self._sp1_lateral_probability, self._RNG)
-            H2_lateral = routine.lateral_expansion(self._veg_fraction[:, :, 3] + self._veg_fraction[:, :, 4], 1, self._sp1_lateral_probability, self._RNG)
-            W_lateral = routine.lateral_expansion(self._veg_fraction[:, :, 5] + self._veg_fraction[:, :, 6] + self._veg_fraction[:, :, 7], 1, self._sp2_lateral_probability, self._RNG)
-
-            # Determine Where Disperal is Allowed
-            H1_germ_allowed = np.logical_or(np.logical_or(H1_pioneer, H1_lateral), H1_currently_vegetated)
-            H2_germ_allowed = np.logical_or(np.logical_or(H2_pioneer, H2_lateral), H2_currently_vegetated)
-            W_germ_allowed = np.logical_or(np.logical_or(W_pioneer, W_lateral), W_currently_vegetated)
+            W_germ_allowed = routine.woody_dispersal(
+                self._veg_fraction,
+                self._W_pioneer_probability,
+                self._W_avian_seed_min,
+                self._W_avian_seed_max,
+                self._W_avian_dispersal_mean,
+                self._W_avian_dispersal_sigma,
+                self._cellsize,
+                self._RNG,
+            )
 
             # Calculate Transition Probabilities
-            H1_germ, H2_germ, W_germ = routine.germination_prob(temperature_C,
-                                                                self._topo,
-                                                                self._MHW,
-                                                                storm,
-                                                                hwe_q,
-                                                                self._x_s,
-                                                                x_b,
-                                                                self._cellsize,
-                                                                self._veg_fraction,
-                                                                self._sedimentation_balance_biweekly,
-                                                                self._germination_erosion_limit,
-                                                                self._germination_burial_limit,
-                                                                self._H1_germ_tempC_max,
-                                                                self._H1_germ_tempC_min,
-                                                                self._H2_germ_tempC_max,
-                                                                self._H2_germ_tempC_min,
-                                                                self._W_germ_tempC_max,
-                                                                self._W_germ_tempC_min,
-                                                                self._H1_growth_woody_comp_max,
-                                                                self._H2_growth_woody_comp_max,
-                                                                self._W_germ_Pmin_herbaceous_facil,
-                                                                self._W_germ_herbaceous_facil_max,
-                                                                self._W_dune_elev_min,
-                                                                self._W_dune_elev_max,
-                                                                self._W_shoreline_distance_min,
-                                                                self._W_shoreline_distance_max,
-                                                                self._H1_germ_Pmax_tempC,
-                                                                self._H2_germ_Pmax_tempC,
-                                                                self._W_germ_Pmax_tempC,
-                                                                )
+            H1_germ, H2_germ, W_germ = routine.germination_prob(
+                temperature_C,
+                self._topo,
+                self._MHW,
+                storm,
+                cumulative_hwe_discharge,
+                self._x_s,
+                x_b,
+                fronting_dune_elevations,
+                foredune_crest_loc,
+                self._cellsize,
+                self._veg_fraction,
+                sedimentation_balance_long_term_aggregate,
+                self._sedimentation_balance_biweekly[:, :, 0],
+                self._germination_erosion_limit,
+                self._germination_burial_limit,
+                self._H1_germ_tempC_max,
+                self._H1_germ_tempC_min,
+                self._H2_germ_tempC_max,
+                self._H2_germ_tempC_min,
+                self._W_germ_tempC_max,
+                self._W_germ_tempC_min,
+                self._H1_growth_woody_comp_max,
+                self._H2_growth_woody_comp_max,
+                self._W_germ_Pmin_herbaceous_facil,
+                self._W_germ_herbaceous_facil_max,
+                self._W_dune_elev_min,
+                self._W_dune_elev_max,
+                self._W_shoreline_distance_min,
+                self._W_shoreline_distance_max,
+                self._H1_germ_Pmax_tempC,
+                self._H2_germ_Pmax_tempC,
+                self._W_germ_Pmax_tempC,
+                H1_germ_allowed,
+                H2_germ_allowed,
+                W_germ_allowed,
+                self._RNG,
+            )
 
-            # Constrain Germination to Cells Where Dispersal is Allowed
-            H1_germ *= H1_germ_allowed
-            H2_germ *= H2_germ_allowed
-            W_germ *= W_germ_allowed
+            H1_s_mort, H2_s_mort, W_s_mort = routine.seedling_mortality_prob(
+                self._topo,
+                self._MHW,
+                self._x_s,
+                x_b,
+                fronting_dune_elevations,
+                foredune_crest_loc,
+                self._cellsize,
+                sedimentation_balance_long_term_aggregate,
+                self._sedimentation_balance_biweekly[:, :, 0],
+                temperature_C,
+                extreme_temperature_C,
+                storm,
+                cumulative_hwe_discharge,
+                self._seedling_erosion_limit,
+                self._seedling_burial_limit,
+                self._H1_growth_tempC_min,
+                self._H1_growth_tempC_max,
+                self._H2_growth_tempC_min,
+                self._H2_growth_tempC_max,
+                self._W_growth_tempC_min,
+                self._W_growth_tempC_max,
+                self._W_dune_elev_min,
+                self._W_dune_elev_max,
+                self._W_shoreline_distance_min,
+                self._W_shoreline_distance_max,
+                self._H1_s_mort_Pmax_tempC,
+                self._H2_s_mort_Pmax_tempC,
+                self._W_s_mort_Pmax_tempC,
+                self._H1_QHWE_min,
+                self._H1_QHWE_max,
+                self._H2_QHWE_min,
+                self._H2_QHWE_max,
+                self._W_QHWE_min,
+                self._W_QHWE_max,
+                self._H1_s_mort_tempC_min,
+                self._H1_s_mort_tempC_max,
+                self._H2_s_mort_tempC_min,
+                self._H2_s_mort_tempC_max,
+                self._W_s_mort_tempC_min,
+                self._W_s_mort_tempC_max,
+                self._RNG,
+            )
 
-            H1_s_mort, H2_s_mort, W_s_mort = routine.seedling_mortality_prob(self._topo,
-                                                                             self._MHW,
-                                                                             self._x_s,
-                                                                             x_b,
-                                                                             self._cellsize,
-                                                                             self._sedimentation_balance_biweekly,
-                                                                             temperature_C,
-                                                                             extreme_temperature_C,
-                                                                             storm,
-                                                                             hwe_q,
-                                                                             self._seedling_erosion_limit,
-                                                                             self._seedling_burial_limit,
-                                                                             self._H1_growth_tempC_min,
-                                                                             self._H1_growth_tempC_max,
-                                                                             self._H2_growth_tempC_min,
-                                                                             self._H2_growth_tempC_max,
-                                                                             self._W_growth_tempC_min,
-                                                                             self._W_growth_tempC_max,
-                                                                             self._W_dune_elev_min,
-                                                                             self._W_dune_elev_max,
-                                                                             self._W_shoreline_distance_min,
-                                                                             self._W_shoreline_distance_max,
-                                                                             self._H1_s_mort_Pmax_tempC,
-                                                                             self._H2_s_mort_Pmax_tempC,
-                                                                             self._W_s_mort_Pmax_tempC,
-                                                                             self._H1_QHWE_min,
-                                                                             self._H1_QHWE_max,
-                                                                             self._H2_QHWE_min,
-                                                                             self._H2_QHWE_max,
-                                                                             self._W_QHWE_min,
-                                                                             self._W_QHWE_max,
-                                                                             self._H1_mort_tempC_min,
-                                                                             self._H1_mort_tempC_max,
-                                                                             self._H2_mort_tempC_min,
-                                                                             self._H2_mort_tempC_max,
-                                                                             self._W_s_mort_tempC_min,
-                                                                             self._W_s_mort_tempC_max,
-                                                                             self._RNG,
-                                                                             )
+            H1_growth, H2_growth, W_growth = routine.growth_prob(
+                self._topo,
+                self._MHW,
+                self._x_s,
+                x_b,
+                sedimentation_balance_long_term_aggregate,
+                temperature_C,
+                storm,
+                cumulative_hwe_discharge,
+                self._veg_fraction,
+                self._H1_growth_tempC_min,
+                self._H1_growth_tempC_max,
+                self._H2_growth_tempC_min,
+                self._H2_growth_tempC_max,
+                self._W_growth_tempC_min,
+                self._W_growth_tempC_max,
+                self._H1_stim_min,
+                self._H1_stim_max,
+                self._H2_stim_min,
+                self._H2_stim_max,
+                self._W_stim_min,
+                self._W_stim_max,
+                self._H1_elev_gamma_a,
+                self._H1_elev_gamma_scale,
+                self._H1_elev_gamma_loc,
+                self._H2_elev_gamma_a,
+                self._H2_elev_gamma_scale,
+                self._H2_elev_gamma_loc,
+                self._W_elev_gamma_a,
+                self._W_elev_gamma_scale,
+                self._W_elev_gamma_loc,
+                self._H1_growth_woody_comp_max,
+                self._H2_growth_woody_comp_max,
+                self._H1_growth_Pmax_tempC,
+                self._H2_growth_Pmax_tempC,
+                self._W_growth_Pmax_tempC,
+                self._H1_growth_Pmin_stim,
+                self._H2_growth_Pmin_stim,
+                self._W_growth_Pmin_stim,
+                self._H1_growth_Pmax_elev,
+                self._H2_growth_Pmax_elev,
+                self._W_growth_Pmax_elev,
+                H1_s_mort,
+                H2_s_mort,
+                W_s_mort,
+            )
 
-            H1_growth, H2_growth, W_growth = routine.growth_prob(self._topo,
-                                                                 self._MHW,
-                                                                 self._x_s,
-                                                                 x_b,
-                                                                 self._sedimentation_balance_biweekly,
-                                                                 temperature_C,
-                                                                 storm,
-                                                                 hwe_q,
-                                                                 self._veg_fraction,
-                                                                 self._H1_growth_tempC_min,
-                                                                 self._H1_growth_tempC_max,
-                                                                 self._H2_growth_tempC_min,
-                                                                 self._H2_growth_tempC_max,
-                                                                 self._W_growth_tempC_min,
-                                                                 self._W_growth_tempC_max,
-                                                                 self._H1_stim_min,
-                                                                 self._H1_stim_max,
-                                                                 self._H2_stim_min,
-                                                                 self._H2_stim_max,
-                                                                 self._W_stim_min,
-                                                                 self._W_stim_max,
-                                                                 self._H1_elev_gamma_a,
-                                                                 self._H1_elev_gamma_scale,
-                                                                 self._H1_elev_gamma_loc,
-                                                                 self._H2_elev_gamma_a,
-                                                                 self._H2_elev_gamma_scale,
-                                                                 self._H2_elev_gamma_loc,
-                                                                 self._W_elev_gamma_a,
-                                                                 self._W_elev_gamma_scale,
-                                                                 self._W_elev_gamma_loc,
-                                                                 self._H1_growth_woody_comp_max,
-                                                                 self._H2_growth_woody_comp_max,
-                                                                 self._H1_growth_Pmax_tempC,
-                                                                 self._H2_growth_Pmax_tempC,
-                                                                 self._W_growth_Pmax_tempC,
-                                                                 self._H1_growth_Pmin_stim,
-                                                                 self._H2_growth_Pmin_stim,
-                                                                 self._W_growth_Pmin_stim,
-                                                                 self._H1_growth_Pmax_elev,
-                                                                 self._H2_growth_Pmax_elev,
-                                                                 self._W_growth_Pmax_elev,
-                                                                 )
+            W_a_removal = routine.woody_removal_prob(
+                sedimentation_balance_long_term_aggregate,
+                self._sedimentation_balance_biweekly[:, :, 0],
+                self._W_burial_limit,
+                self._W_uproot_limit,
+                self._RNG
+            )
 
-            W_a_removal = routine.woody_removal_prob(self._sedimentation_balance_biweekly,
-                                                     self._W_burial_limit,
-                                                     self._W_uproot_limit,
-                                                     self._RNG
-                                                     )
+            H1_a_senesce, H2_a_senesce, W_a_senesce = routine.senescence_prob(
+                self._topo,
+                self._MHW,
+                self._x_s,
+                x_b,
+                sedimentation_balance_long_term_aggregate,
+                self._sedimentation_balance_biweekly[:, :, 0],
+                temperature_C,
+                extreme_temperature_C,
+                storm,
+                cumulative_hwe_discharge,
+                W_a_removal,
+                self._H1_growth_tempC_min,
+                self._H1_growth_tempC_max,
+                self._H2_growth_tempC_min,
+                self._H2_growth_tempC_max,
+                self._W_growth_tempC_min,
+                self._W_growth_tempC_max,
+                self._H1_a_senesce_Pmin_tempC,
+                self._H1_a_senesce_Pmax_tempC,
+                self._H2_a_senesce_Pmin_tempC,
+                self._H2_a_senesce_Pmax_tempC,
+                self._W_a_senesce_Pmin_tempC,
+                self._W_a_senesce_Pmax_tempC,
+                self._H1_QHWE_min,
+                self._H1_QHWE_max,
+                self._H2_QHWE_min,
+                self._H2_QHWE_max,
+                self._W_QHWE_min,
+                self._W_QHWE_max,
+                self._H1_uproot_limit,
+                self._H2_uproot_limit,
+                self._H1_burial_limit,
+                self._H2_burial_limit,
+                self._H1_a_mort_tempC_min,
+                self._H1_a_mort_tempC_max,
+                self._H2_a_mort_tempC_min,
+                self._H2_a_mort_tempC_max,
+                self._W_a_mort_tempC_min,
+                self._W_a_mort_tempC_max,
+                self._RNG,
+            )
 
-            H1_a_senesce, H2_a_senesce, W_a_senesce = routine.senescence_prob(self._topo,
-                                                                              self._MHW,
-                                                                              self._x_s,
-                                                                              x_b,
-                                                                              self._sedimentation_balance_biweekly,
-                                                                              temperature_C,
-                                                                              extreme_temperature_C,
-                                                                              storm,
-                                                                              hwe_q,
-                                                                              W_a_removal,
-                                                                              self._H1_growth_tempC_min,
-                                                                              self._H1_growth_tempC_max,
-                                                                              self._H2_growth_tempC_min,
-                                                                              self._H2_growth_tempC_max,
-                                                                              self._W_growth_tempC_min,
-                                                                              self._W_growth_tempC_max,
-                                                                              self._H1_a_senesce_Pmin_tempC,
-                                                                              self._H1_a_senesce_Pmax_tempC,
-                                                                              self._H2_a_senesce_Pmin_tempC,
-                                                                              self._H2_a_senesce_Pmax_tempC,
-                                                                              self._W_a_senesce_Pmin_tempC,
-                                                                              self._W_a_senesce_Pmax_tempC,
-                                                                              self._H1_QHWE_min,
-                                                                              self._H1_QHWE_max,
-                                                                              self._H2_QHWE_min,
-                                                                              self._H2_QHWE_max,
-                                                                              self._W_QHWE_min,
-                                                                              self._W_QHWE_max,
-                                                                              self._H1_uproot_limit,
-                                                                              self._H2_uproot_limit,
-                                                                              self._H1_burial_limit,
-                                                                              self._H2_burial_limit,
-                                                                              self._H1_mort_tempC_min,
-                                                                              self._H1_mort_tempC_max,
-                                                                              self._H2_mort_tempC_min,
-                                                                              self._H2_mort_tempC_max,
-                                                                              self._W_a_mort_tempC_min,
-                                                                              self._W_a_mort_tempC_max,
-                                                                              self._RNG,
-                                                                              )
+            W_d_loss = routine.woody_dead_loss(
+                self._topo,
+                self._MHW,
+                self._x_s,
+                x_b,
+                sedimentation_balance_long_term_aggregate,
+                self._sedimentation_balance_biweekly[:, :, 0],
+                extreme_temperature_C,
+                storm,
+                cumulative_hwe_discharge,
+                np.mean(Rhigh),
+                self._W_uproot_limit,
+                self._W_burial_limit,
+                self._W_d_loss_Pmax_submerged_frozen,
+                self._W_QHWE_min,
+                self._W_QHWE_max,
+                self._W_TWL_min,
+                self._W_TWL_max,
+                self._W_d_loss_Pmin,
+                self._W_d_loss_Pmax_discharge,
+                self._W_d_loss_Pmax_twl,
+            )
 
-            W_d_loss = routine.woody_dead_loss(self._topo,
-                                               self._MHW,
-                                               self._x_s,
-                                               x_b,
-                                               self._sedimentation_balance_biweekly,
-                                               extreme_temperature_C,
-                                               storm,
-                                               hwe_q,
-                                               np.mean(Rhigh),
-                                               self._W_uproot_limit,
-                                               self._W_burial_limit,
-                                               self._W_d_loss_Pmax_submerged_frozen,
-                                               self._W_QHWE_min,
-                                               self._W_QHWE_max,
-                                               self._W_TWL_min,
-                                               self._W_TWL_max,
-                                               self._W_d_loss_Pmin,
-                                               self._W_d_loss_Pmax_discharge,
-                                               self._W_d_loss_Pmax_twl,
-                                               )
+            self._veg_fraction = routine.veg_matrix_mult(
+                self._veg_fraction,
+                H1_germ,
+                H2_germ,
+                W_germ,
+                H1_s_mort,
+                H2_s_mort,
+                W_s_mort,
+                H1_growth,
+                H2_growth,
+                W_growth,
+                W_a_removal,
+                H1_a_senesce,
+                H2_a_senesce,
+                W_a_senesce,
+                W_d_loss,
+                self._x_s,
+                x_b,
+            )
 
-            self._veg_fraction = routine.veg_matrix_mult(self._veg_fraction,
-                                                         H1_germ,
-                                                         H2_germ,
-                                                         W_germ,
-                                                         H1_s_mort,
-                                                         H2_s_mort,
-                                                         W_s_mort,
-                                                         H1_growth,
-                                                         H2_growth,
-                                                         W_growth,
-                                                         W_a_removal,
-                                                         H1_a_senesce,
-                                                         H2_a_senesce,
-                                                         W_a_senesce,
-                                                         W_d_loss
-                                                         )
-
-            # Reset sedimentation balance
+            # Reset biweekly sedimentation balance
             self._sedimentation_balance_biweekly *= 0
 
             # Determine effective vegetation cover by smoothing; represents effect of nearby vegetation on local wind
-            veggie = self._veg_fraction[:, :, 2] + self._veg_fraction[:, :, 4] + self._veg_fraction[:, :, 6] + self._veg_fraction[:, :, 7]  # Adults and dead shrubs
-            self._effective_veg = gaussian_filter(veggie, [self._effective_veg_sigma / self._cellsize, self._effective_veg_sigma / self._cellsize], mode='constant')
+            effective_veg_fraction = (self._veg_fraction[:, :, 2] * self._H1_a_relative_effectiveness
+                                      + self._veg_fraction[:, :, 4] * self._H2_a_relative_effectiveness
+                                      + self._veg_fraction[:, :, 6] * self._W_a_relative_effectiveness
+                                      + self._veg_fraction[:, :, 7] * self._W_d_relative_effectiveness)  # Adults and dead shrubs
+            self._effective_veg = gaussian_filter(effective_veg_fraction, [self._effective_veg_sigma / self._cellsize, self._effective_veg_sigma / self._cellsize], mode='constant')
 
         # --------------------------------------
         # RECORD VARIABLES PERIODICALLY
@@ -962,11 +1019,6 @@ class MEEB:
             self._MHW_TS[moment] = self._MHW
             self._inundated_output_aggregate *= False  # Reset for next output period
             self._veg_fraction_TS[:, :, :, moment] = self._veg_fraction
-
-        # --------------------------------------
-        # RESET DOMAINS
-
-        self._sedimentation_balance_year[:] = 0  # [m] Reset the balance map
 
     @property
     def name(self):
