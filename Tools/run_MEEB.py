@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 27 June 2025
+IRBR 29 July 2025
 """
 
 import numpy as np
@@ -289,13 +289,14 @@ plt.legend()
 ax_2 = Fig.add_subplot(212)
 plt.xlabel('Meters Alongshore')
 plt.ylabel('Shoreline Change Rate [m/yr]')
+ax_2.plot(np.arange(int(meeb.x_s_TS.shape[1] * cellsize)), np.zeros([int(meeb.x_s_TS.shape[1] * cellsize)]), 'k--', alpha=0.3, label='_Zero Line')
 long_term_shoreline_change_rate = (meeb.x_s_TS[-1, :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # [m/yr]
 long_term_shoreline_change_rate = np.repeat(long_term_shoreline_change_rate, cellsize)
-short_term_shoreline_change_rate = (meeb.x_s_TS[int(10 * meeb.storm_iterations_per_year), :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # First decade
-short_term_shoreline_change_rate = np.repeat(short_term_shoreline_change_rate, cellsize)
-ax_2.plot(np.arange(int(meeb.x_s_TS.shape[1] * cellsize)), np.zeros([int(meeb.x_s_TS.shape[1] * cellsize)]), 'k--', alpha=0.3, label='_Zero Line')
-ax_2.plot(short_term_shoreline_change_rate, 'cornflowerblue', label='Short-term Shoreline Change (First Decade)')
 ax_2.plot(long_term_shoreline_change_rate, 'darkred', label='Long-term Shoreline Change (Full Simulation Duration)')
+if sim_duration >= 10:
+    short_term_shoreline_change_rate = (meeb.x_s_TS[int(10 * meeb.storm_iterations_per_year), :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # First decade
+    short_term_shoreline_change_rate = np.repeat(short_term_shoreline_change_rate, cellsize)
+    ax_2.plot(short_term_shoreline_change_rate, 'cornflowerblue', label='Short-term Shoreline Change (First Decade)')
 plt.legend()
 
 # -----------------

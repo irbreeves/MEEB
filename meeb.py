@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 26 June 2025
+Last update: 29 July 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
 import gc
 from datetime import datetime, timedelta
+from netCDF4 import Dataset
 
 import routines_meeb as routine
 
@@ -26,7 +27,7 @@ class MEEB:
 
             # GENERAL
             name="default",
-            simnum=1,  # Reference number of the simulation. Used for personal reference.
+            simnum=1,  # Reference number of the simulation (optional)
             MHW=0.39,  # [m NAVD88] Initial mean high water
             RSLR=0.000,  # [m/yr] Relative sea-level rise rate
             aeolian_iterations_per_year=50,  # Number of aeolian updates in 1 model year
@@ -42,6 +43,7 @@ class MEEB:
             inputloc="Input/",  # Input file directory (end string with "/")
             outputloc="Output/",  # Output file directory (end string with "/")
             init_by_file=True,  # [bool] Whether to initialize model by providing filenames for numpy arrays that are read (True), or directly input arrays into model (False); the latter is MUCH better for parallel sims
+            init_filetype_NetCDF=False,  # [bool] True if using NetCDF .nc initial elevation/vegetation input file, False if using default .npy file
             init_filename="Init_NCB-NewDrum-Ocracoke_2018_PostFlorence_18400-23400.npy",  # [m NVD88] Name of initial topography and vegetation input file; requires input_by_file to be TRUE
             init_elev_array=np.array(np.nan),  # [m NAVD88] Numpy array of initial elevation; requires init_by_file to be False
             init_spec1_array=np.array(np.nan),  # [0-1] Numpy array of initial spec1 density; requires init_by_file to be False
@@ -271,7 +273,11 @@ class MEEB:
 
         # TOPOGRAPHY
         if init_by_file:
-            Init = np.float32(np.load(inputloc + init_filename))
+            if init_filetype_NetCDF:
+                init_nc = Dataset((inputloc + init_filename), 'r')
+                Init = init_nc.variables['init_values'][:].data  # Import as numpy array
+            else:
+                Init = np.float32(np.load(inputloc + init_filename))
             self._alongshore_domain_boundary_max = min(self._alongshore_domain_boundary_max, Init[0, :, :].shape[0])
             self._crossshore_domain_boundary_max = min(self._crossshore_domain_boundary_max, Init[0, :, :].shape[1])
             self._topo = Init[0, self._alongshore_domain_boundary_min: self._alongshore_domain_boundary_max, self._crossshore_domain_boundary_min: self._crossshore_domain_boundary_max]  # [m NAVD88] 2D array of initial topography
@@ -357,6 +363,8 @@ class MEEB:
         self._MHW_TS = np.zeros([int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1])  # Array for saving each MHW at specified frequency
 
         if init_by_file:
+            if init_filetype_NetCDF:
+                del init_nc
             del Init
             gc.collect()
         else:

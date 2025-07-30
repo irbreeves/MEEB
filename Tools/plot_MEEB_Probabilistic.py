@@ -1,7 +1,7 @@
 """
 Script for plotting output from datafiles of probabilistic MEEB simulation.
 
-IRBR 19 May 2025
+IRBR 29 July 2025
 """
 
 import numpy as np
@@ -10,6 +10,7 @@ import matplotlib.animation as animation
 import math
 import os
 from matplotlib import colors
+from netCDF4 import Dataset
 
 
 # __________________________________________________________________________________________________________________________________
@@ -1339,7 +1340,7 @@ def class_frequency_animation(class_probabilities, orientation='vertical'):
 # SIM SPECIFICATIONS
 
 # Classification Scheme - Choose from one or more of three currently available options: elevation, overwash_frequency, state
-classification_scheme = ['state', 'elevation', 'overwash_frequency']
+classification_scheme = ['elevation', 'state', 'overwash_frequency']
 
 name = ''  # Name of simulation suite
 sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
@@ -1352,31 +1353,34 @@ plot_start_step = 3  # [save_frequency] Time step at which to start timeline plo
 plot = True  # [bool]
 animate = False  # [bool]
 
-num_saves = int(np.floor(sim_duration/save_frequency)) + 1
-
 # __________________________________________________________________________________________________________________________________
 # LOAD PROBABILISTIC SIM DATA
 
-# Specify filenames located in /Output/SimData
-elev_class_probabilities_filename = ["ElevClassProbabilities_2-4Apr25_0-14000_meeb90-91-106.npy",
-                                     "ElevClassProbabilities_4Apr25_14000-32000_meeb92-93-107.npy"]
+# Specify filename(s) located in /Output/SimData: must be either NumPy (.npy) or NetCDF (.nc) filetypes
+elev_class_probabilities_filename = ["Elevation_FullProbabilistic_NCB_May2025.nc"]
 
-state_class_probabilities_filename = ["HabitatStateClassProbabilities_2-4Apr25_0-14000_meeb90-91-106.npy",
-                                      "HabitatStateClassProbabilities_4Apr25_14000-32000_meeb92-93-107.npy"]
+state_class_probabilities_filename = ["State_FullProbabilistic_NCB_May2025.nc"]
 
-overwash_class_probabilities_filename = ["OverwashFrequencyClassProbabilities_2-4Apr25_0-14000_meeb90-91-106.npy",
-                                         "OverwashFrequencyClassProbabilities_4Apr25_14000-32000_meeb92-93-107.npy"]
+overwash_class_probabilities_filename = ["Overwash_FullProbabilistic_NCB_May2025.nc"]
 
-# Specify extents of each file section
-xmin = [225, 100]  # [cells] Cross-shore extent minimum of domain, for each output file
-xmax = [675, 750]  # [cells] Cross-shore extent maximum of domain, for each output file
-y_length = [7000, 9000]  # [cells] Alongshore length of domain, for each output file
+# Specify if using numpy or NetCDF output files
+data_filetype_NetCDF = True  # True if using NetCDF .nc data files, False if using default .npy files
 
+# Specify extents of each file section, if stitching multiple files together
+xmin = [0]  # [cells] Cross-shore extent minimum of domain, for each output file
+xmax = [650]  # [cells] Cross-shore extent maximum of domain, for each output file
+y_length = [16000]  # [cells] Alongshore length of domain, for each output file
+
+# ----------
 # Load and resize array(s) to be equal in cross-shore dimensions
 xmin_targ = min(xmin)
 xmax_targ = max(xmax)
 if 'elevation' in classification_scheme:
-    elev_class_probabilities = np.load("Output/SimData/" + elev_class_probabilities_filename[0])
+    if data_filetype_NetCDF:
+        elevation_nc = Dataset("Output/SimData/" + elev_class_probabilities_filename[0], 'r')
+        elev_class_probabilities = elevation_nc.variables['elev_class_probability'][:].data
+    else:
+        elev_class_probabilities = np.load("Output/SimData/" + elev_class_probabilities_filename[0])
     add_front = np.zeros([elev_class_probabilities.shape[0], elev_class_probabilities.shape[1], y_length[0], (xmin[0] - xmin_targ)])
     add_back = np.zeros([elev_class_probabilities.shape[0], elev_class_probabilities.shape[1], y_length[0], (xmax_targ - xmax[0])])
     add_front[2, :, :, :] = 1
@@ -1387,7 +1391,11 @@ if 'elevation' in classification_scheme:
     # Stich multiple sections of probabilistic runs together in space (if applicable)
     if len(elev_class_probabilities_filename) > 0:
         for n in range(1, len(elev_class_probabilities_filename)):
-            elev_class_probabilities_addition = np.load("Output/SimData/" + elev_class_probabilities_filename[n])
+            if data_filetype_NetCDF:
+                elevation_nc = Dataset("Output/SimData/" + elev_class_probabilities_filename[n], 'r')
+                elev_class_probabilities_addition = elevation_nc.variables['elev_class_probability'][:].data
+            else:
+                elev_class_probabilities_addition = np.load("Output/SimData/" + elev_class_probabilities_filename[n])
             add_front = np.zeros([elev_class_probabilities_addition.shape[0], elev_class_probabilities_addition.shape[1], y_length[n], (xmin[n] - xmin_targ)])
             add_back = np.zeros([elev_class_probabilities_addition.shape[0], elev_class_probabilities_addition.shape[1], y_length[n], (xmax_targ - xmax[n])])
             add_front[2, :, :, :] = 1
@@ -1401,7 +1409,11 @@ if 'elevation' in classification_scheme:
     crossshore = elev_class_probabilities.shape[3]
 
 if 'state' in classification_scheme:
-    state_class_probabilities = np.load("Output/SimData/" + state_class_probabilities_filename[0])
+    if data_filetype_NetCDF:
+        state_nc = Dataset("Output/SimData/" + state_class_probabilities_filename[0], 'r')
+        state_class_probabilities = state_nc.variables['state_probability'][:].data
+    else:
+        state_class_probabilities = np.load("Output/SimData/" + state_class_probabilities_filename[0])
     add_front = np.zeros([state_class_probabilities.shape[0], state_class_probabilities.shape[1], y_length[0], (xmin[0] - xmin_targ)])
     add_back = np.zeros([state_class_probabilities.shape[0], state_class_probabilities.shape[1], y_length[0], (xmax_targ - xmax[0])])
     add_front[0, :, :, :] = 1
@@ -1412,7 +1424,11 @@ if 'state' in classification_scheme:
     # Stich multiple sections of probabilistic runs together in space (if applicable)
     if len(state_class_probabilities_filename) > 0:
         for n in range(1, len(state_class_probabilities_filename)):
-            state_class_probabilities_addition = np.load("Output/SimData/" + state_class_probabilities_filename[n])
+            if data_filetype_NetCDF:
+                state_nc = Dataset("Output/SimData/" + state_class_probabilities_filename[n], 'r')
+                state_class_probabilities_addition = state_nc.variables['state_probability'][:].data
+            else:
+                state_class_probabilities_addition = np.load("Output/SimData/" + state_class_probabilities_filename[n])
             add_front = np.zeros([state_class_probabilities_addition.shape[0], state_class_probabilities_addition.shape[1], y_length[n], (xmin[n] - xmin_targ)])
             add_back = np.zeros([state_class_probabilities_addition.shape[0], state_class_probabilities_addition.shape[1], y_length[n], (xmax_targ - xmax[n])])
             add_front[0, :, :, :] = 1
@@ -1426,7 +1442,11 @@ if 'state' in classification_scheme:
     crossshore = state_class_probabilities.shape[3]
 
 if 'overwash_frequency' in classification_scheme:
-    overwash_class_probabilities = np.load("Output/SimData/" + overwash_class_probabilities_filename[0])
+    if data_filetype_NetCDF:
+        overwash_nc = Dataset("Output/SimData/" + overwash_class_probabilities_filename[0], 'r')
+        overwash_class_probabilities = overwash_nc.variables['inundation_count'][:].data
+    else:
+        overwash_class_probabilities = np.load("Output/SimData/" + overwash_class_probabilities_filename[0])
     add_front = np.zeros([overwash_class_probabilities.shape[0], y_length[0], (xmin[0] - xmin_targ)])
     add_back = np.zeros([overwash_class_probabilities.shape[0], y_length[0], (xmax_targ - xmax[0])])
     overwash_class_probabilities = np.concatenate((add_front, overwash_class_probabilities), axis=2)
@@ -1435,7 +1455,11 @@ if 'overwash_frequency' in classification_scheme:
     # Stich multiple sections of probabilistic runs together in space (if applicable)
     if len(overwash_class_probabilities_filename) > 0:
         for n in range(1, len(overwash_class_probabilities_filename)):
-            overwash_class_probabilities_addition = np.load("Output/SimData/" + overwash_class_probabilities_filename[n])
+            if data_filetype_NetCDF:
+                overwash_nc = Dataset("Output/SimData/" + overwash_class_probabilities_filename[n], 'r')
+                overwash_class_probabilities_addition = overwash_nc.variables['inundation_count'][:].data
+            else:
+                overwash_class_probabilities_addition = np.load("Output/SimData/" + overwash_class_probabilities_filename[n])
             add_front = np.zeros([overwash_class_probabilities_addition.shape[0], y_length[n], (xmin[n] - xmin_targ)])
             add_back = np.zeros([overwash_class_probabilities_addition.shape[0], y_length[n], (xmax_targ - xmax[n])])
             overwash_class_probabilities_addition = np.concatenate((add_front, overwash_class_probabilities_addition), axis=2)
@@ -1445,6 +1469,8 @@ if 'overwash_frequency' in classification_scheme:
 
     longshore = overwash_class_probabilities.shape[1]
     crossshore = overwash_class_probabilities.shape[2]
+
+num_saves = int(np.floor(sim_duration/save_frequency)) + 1
 
 # __________________________________________________________________________________________________________________________________
 # CLASS SPECIFICATIONS - Labels & color schemes
