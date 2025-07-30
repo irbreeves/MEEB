@@ -6,13 +6,13 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 10 March 2025
+Last update: 22 July 2025
 
 __________________________________________________________________________________________________________________________________"""
 
 import matplotlib.colors as mcolors
 import numpy as np
-from math import floor, ceil, pi, tan, sqrt
+from math import floor, ceil, pi, tan, sqrt, gamma
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import savgol_filter
 from scipy.sparse import csr_matrix
@@ -397,140 +397,6 @@ def enforceslopes(topof, vegf, sh, anglesand, angleveg, th, MHW, cellsize, RNG):
     return topof_updated
 
 
-def growthfunction1_sens(species, sed, A1, B1, C1, D1, E1, P1):
-    """Grows (or reduces) vegetation by updating the vegetation effectiveness. Growth/reduction is based on sedimentation balance and growth curve.
-
-    For dune-growing grasses.
-
-    Parameters
-    ----------
-    species : ndarray
-        Map of vegetation effectiveness for specific species.
-    sed : ndarray
-        [m] Map of sedimentation balance (i.e., aggregate change in elevation) from last vegetation iteration.
-    A1
-    B1
-    C1
-    D1
-    E1
-    P1
-
-    Returns
-    ----------
-    spec :
-        Topography updated with enforced angles of repose.
-  """
-
-    # Physiological range (needs to be specified)
-    minimum = 0.0
-    maximum = 1.0
-
-    # Vertices (these need to be specified)
-    x1 = A1  # was x1 = -1.4
-    x2 = B1  # was x2 = 0.1
-    x3 = C1  # was x3 = 0.45
-    x4 = D1  # was x4 = 0.85
-    x5 = E1  # was x5 = 1.4
-    y1 = -1.0  # y1 = -1.0; y1 = -1.0
-    y2 = 0.0  # y2 = 0.0; y2 = 0.0
-    y3 = P1  # y3 = 0.4; y3 = P1;
-    y4 = 0.0  # y4 = 0.0; y4 = 0.0
-    y5 = -1.0  # y5 = -1.0; y5 = -1.0
-
-    # Slopes between vertices (calculated from vertices)
-    s12 = (y2 - y1) / (x2 - x1)
-    s23 = (y3 - y2) / (x3 - x2)
-    s34 = (y4 - y3) / (x4 - x3)
-    s45 = (y5 - y4) / (x5 - x4)
-
-    # Process sum in chunks to reduce memory consumption
-    for n in range(6):
-        if n == 0:
-            species += (sed < x1) * -1  # Left extension
-        elif n == 1:
-            species += (sed >= x1) * (sed < x2) * ((sed - x1) * s12 + y1)  # First leg
-        elif n == 2:
-            species += (sed >= x2) * (sed < x3) * ((sed - x2) * s23 + y2)  # Second leg
-        elif n == 3:
-            species += (sed >= x3) * (sed < x4) * ((sed - x3) * s34 + y3)  # Third leg
-        elif n == 4:
-            species += (sed >= x4) * (sed < x5) * ((sed - x4) * s45 + y4)  # Fourth leg
-        else:
-            species += (sed >= x5) * -1  # Right extension
-
-    species[species < minimum] = minimum
-    species[species > maximum] = maximum
-
-    return species
-
-
-def growthfunction2_sens(species, sed, A2, B2, C2, D2, E2, P2):
-    """Grows (or reduces) vegetation by updating the vegetation effectiveness. Growth/reduction is based on sedimentation balance and growth curve.
-
-    For woody vegetation.
-
-    Parameters
-    ----------
-    species : ndarray
-        Map of vegetation effectiveness for specific species.
-    sed : ndarray
-        [m] Map of sedimentation balance (i.e., aggregate change in elevation) from last vegetation iteration.
-    A2
-    B2
-    C2
-    D2
-    E2
-    P2
-    
-    Returns
-    ----------
-    spec :
-        Topography updated with enforced angles of repose.
-    """
-
-    # Physiological range (needs to be specified)
-    minimum = 0.0  # was -0.5
-    maximum = 1.0  # was 1.5
-
-    # Vertices (these need to be specified)
-    x1 = A2  # was x1 = -1.3
-    x2 = B2  # was x2 = -0.65
-    x3 = C2  # was x3 = 0
-    x4 = D2  # was x4 = 0.2
-    x5 = E2  # was x5 = 2.2
-    y1 = -1.0  # y1 = -1.0
-    y2 = 0.0  # y2 = 0.0
-    y3 = P2  # y3 = 0.1
-    y4 = 0.0  # y4 = 0.0
-    y5 = -1.0  # y5 = -1.0
-
-    # Slopes between vertices (calculated from vertices)
-    s12 = (y2 - y1) / (x2 - x1)
-    s23 = (y3 - y2) / (x3 - x2)
-    s34 = (y4 - y3) / (x4 - x3)
-    s45 = (y5 - y4) / (x5 - x4)
-
-    # Process sum in chunks to reduce memory consumption
-    for n in range(6):
-        if n == 0:
-            species += (sed < x1) * -1  # Left extension
-        elif n == 1:
-            species += (sed >= x1) * (sed < x2) * ((sed - x1) * s12 + y1)  # First leg
-        elif n == 2:
-            species += (sed >= x2) * (sed < x3) * ((sed - x2) * s23 + y2)  # Second leg
-        elif n == 3:
-            species += (sed >= x3) * (sed < x4) * ((sed - x3) * s34 + y3)  # Third leg
-        elif n == 4:
-            species += (sed >= x4) * (sed < x5) * ((sed - x4) * s45 + y4)  # Fourth leg
-        else:
-            species += (sed >= x5) * -1  # Right extension
-
-    species[species < minimum] = minimum
-    species[species > maximum] = maximum
-
-    return species
-
-
 def lateral_expansion(veg, dist, prob, RNG):
     """Implements lateral expansion of existing vegetation patches. Marks cells that lie within specified distance of existing vegetated cells and
     probabilistically determines whether veg can expanded to each of those cells.
@@ -539,7 +405,7 @@ def lateral_expansion(veg, dist, prob, RNG):
     ----------
     veg : ndarray
         Map of vegetation effectiveness for specific species.
-    dist : float
+    dist : int
         [cell_length] Distance vegetation can expand laterally over one vegetation iteration.
     prob : float
         Probability of lateral expansion of existing vegetation.
@@ -552,112 +418,23 @@ def lateral_expansion(veg, dist, prob, RNG):
     """
 
     # Pad vegetation matrix with zeros for rolling
-    veg = veg > 0
-    vegpad = np.zeros(np.add(veg.shape, (2, 2)), dtype=bool)
-    vegpad[1: -1, 1: -1] = veg
+    veg = veg > 0.02
+    vegpad = np.zeros(np.add(veg.shape, (dist * 2, dist * 2)), dtype=bool)
+    vegpad[dist: -dist, dist: -dist] = veg
     lateral_expansion_possible = vegpad.copy()
 
     # Add shifted matrices to initial matrix to include boundaries
-    for i in [-dist, 0, dist]:
-        for j in [-dist, 0, dist]:
-            # Only 4 neighbouring cells (Von Neumann neighbourhood)
+    for i in range(-dist, dist + 1):
+        for j in range(-dist, dist + 1):
             lateral_expansion_possible = np.logical_or(lateral_expansion_possible, np.roll(vegpad, (i, j), axis=(0, 1)))
 
-    lateral_expansion_possible = lateral_expansion_possible[1: -1, 1: -1]
+    lateral_expansion_possible = lateral_expansion_possible[dist: -dist, dist: -dist]
 
     # Lateral expansion only takes place in a fraction of the possible cells
     lateral_expansion_allowed = RNG.random(veg.shape) < (lateral_expansion_possible * prob)
     lateral_expansion_allowed = lateral_expansion_allowed > 0
 
     return lateral_expansion_allowed
-
-
-def establish_new_vegetation(topof, MHW, prob, RNG):
-    """Establishes pioneer vegetation in previously bare cells. Represents the germination and development of veg from seeds or rhizome fragments
-    distributed by water or wind.
-
-    Parameters
-    ----------
-    topof : ndarray
-        [m] Elevation domain.
-    MHW : float
-        [m] Mean high water.
-    prob : float
-        Probability of new pioneer vegetation establishing.
-    RNG :
-        Random Number Generator object.
-    Returns
-    ----------
-    pioneer_established : ndarray
-        [bool] Cells into which new vegetation has successfully established.
-    """
-
-    # Vertices (these need to be specified)
-    x1 = 0.0
-    x2 = 2.0
-    x3 = 3.0
-    x4 = 4.5
-    x5 = 20.0
-    y1 = prob
-    y2 = prob
-    y3 = prob
-    y4 = prob
-    y5 = prob
-
-    # Slopes between vertices (calculated from vertices)
-    s12 = (y2 - y1) / (x2 - x1)
-    s23 = (y3 - y2) / (x3 - x2)
-    s34 = (y4 - y3) / (x4 - x3)
-    s45 = (y5 - y4) / (x5 - x4)
-
-    # Process in chunks to reduce memory consumption
-    pioneer_establish_prob = np.zeros(topof.shape)  # Initialize
-    for n in range(6):
-        if n == 0:
-            leg = (topof - MHW < x1) * 0
-        elif n == 1:
-            leg = (topof - MHW >= x1) * (topof - MHW < x2) * ((topof - MHW - x1) * s12 + y1)
-        elif n == 2:
-            leg = (topof - MHW >= x2) * (topof - MHW < x3) * ((topof - MHW - x2) * s23 + y2)
-        elif n == 3:
-            leg = (topof - MHW >= x3) * (topof - MHW < x4) * ((topof - MHW - x3) * s34 + y3)
-        elif n == 4:
-            leg = (topof - MHW >= x4) * (topof - MHW < x5) * ((topof - MHW - x4) * s45 + y4)
-        else:
-            leg = (topof - MHW >= x5) * 0
-        pioneer_establish_prob += leg
-
-    pioneer_established = RNG.random(topof.shape) < pioneer_establish_prob
-
-    return pioneer_established
-
-
-def spec2_zonation(spec2, topo, min_elev, max_elev, dune_threshold, MHW, cellsize):
-    """Determines where across the model domain species2 can establish, based on elevation,
-    dune crestline, and elevation of fronting dune."""
-
-    dune_crestline, not_gap = foredune_crest(topo, MHW, cellsize)
-    longshore, crossshore = spec2.shape
-
-    # ---------
-    # Must be landward of the foredune crest
-    landward_of_dunecrest = np.zeros(topo.shape, dtype=bool)
-    for ls in range(longshore):
-        landward_of_dunecrest[ls, dune_crestline[ls]:] = True
-
-    # ---------
-    # Must be fronted by sufficiently tall dune
-    index = np.argmax(topo - MHW > dune_threshold, axis=1)
-    index[index == 0] = -1
-    fronting_low_dune = np.zeros(topo.shape, dtype=bool)
-    for ls in range(longshore):
-        fronting_low_dune[ls, :index[ls]] = True
-
-    # ---------
-    # Determine where spec2 can establish; must be landward of dunecrest, within elevation range, fronted by tall dune
-    shrub_allowed = landward_of_dunecrest * np.logical_and(topo - MHW > min_elev, topo - MHW <= max_elev) * ~fronting_low_dune
-
-    return shrub_allowed
 
 
 def shoreline_change_from_CST(
@@ -1332,10 +1109,10 @@ def storm_processes(
         beach_substeps,
         x_s,
         cellsize,
-        spec1,
-        spec2,
-        flow_reduction_max_spec1,
-        flow_reduction_max_spec2,
+        herbaceous_cover,
+        woody_cover,
+        H_flow_reduction_max,
+        W_flow_reduction_max,
 ):
     """Resolves topographical change from storm events. Landward of dune crest: overwashes barrier interior where storm water levels exceed
         pre-storm dune crests following Barrier3D (Reeves et al., 2021) flow routing. Seaward of dune crest: determines topographic change of beach
@@ -1383,13 +1160,13 @@ def storm_processes(
             Alongshore array of ocean shoreline locations.
         cellsize : float
             [m] Horizontal dimension of model grid cells
-        spec1 : ndarray
+        herbaceous_cover : ndarray
             [%] Map of  vegetation effectiveness for species 1
-        spec2 : ndarray
+        woody_cover : ndarray
             [%] Map of  vegetation effectiveness for species 2
-        flow_reduction_max_spec1 : float
+        H_flow_reduction_max : float
             Proportion of overwash flow reduction through a cell populated with species 1 at full effectiveness (i.e., full density)
-        flow_reduction_max_spec2 : float
+        W_flow_reduction_max : float
             Proportion of overwash flow reduction through a cell populated with species 2 at full effectiveness (i.e., full density)
 
         Returns
@@ -1398,12 +1175,12 @@ def storm_processes(
             [m NAVD88] Updated elevation domain.
         OWloss
             [m^3] Volume of overwash deposition landward of dune crest for each cell unit alongshore.
-        netDischarge
-            [m^3] Map of discharge aggregated for duration of entire storm.
         inundated
             [bool] Map of cells inundated during storm event
         BeachDune_Volume_Change
             [m^3/m] Dune & beach volumetric change summed for each row alongshore.
+        cumulative_discharge
+            [m^3] Map of discharge aggregated for duration of entire storm.
         """
 
     longshore, crossshore = topof.shape
@@ -1426,6 +1203,7 @@ def storm_processes(
 
     BeachDune_Volume_Change = np.zeros([longshore], dtype=np.float32)  # [m^3] Initialize dune/beach volume change: (-) loss, (+) gain
     inundated = np.zeros(topof.shape).astype(bool)  # Initialize
+    cumulative_discharge = np.zeros(topof.shape, dtype=np.float32)
 
     area_time_conversion = cell_area * substep
 
@@ -1440,7 +1218,7 @@ def storm_processes(
         # Landward of Dune Crest
 
         # Route Overwash
-        overwash_inundated, SedFluxDiff = route_overwash(
+        overwash_discharge, SedFluxDiff = route_overwash(
             Elevation,
             dune_crest_loc,
             MHW,
@@ -1456,10 +1234,10 @@ def storm_processes(
             Qs_min,
             Cbb,
             Qs_bb_min,
-            spec1,
-            spec2,
-            flow_reduction_max_spec1,
-            flow_reduction_max_spec2,
+            herbaceous_cover,
+            woody_cover,
+            H_flow_reduction_max,
+            W_flow_reduction_max,
             cellsize,
         )
 
@@ -1473,7 +1251,10 @@ def storm_processes(
         OWloss = OWloss + np.sum(ElevationChangeLandward, axis=1) * cell_area  # [m^3] For each cell alongshore
 
         # Record cells inundated from overwash
-        inundated[:, domain_width_start:] = np.logical_or(inundated[:, domain_width_start:], overwash_inundated)  # Update inundated map with cells landward of dune crest
+        inundated[:, domain_width_start:] = np.logical_or(inundated[:, domain_width_start:], overwash_discharge > 0)  # Update inundated map with cells landward of dune crest
+
+        # Aggreagate discharge from overwash
+        cumulative_discharge += overwash_discharge / substep  # [m^3]
 
         # ---------------------
         # Seaward of Dune Crest
@@ -1496,6 +1277,10 @@ def storm_processes(
 
         inundated[:, domain_width_start:] = np.logical_or(inundated[:, domain_width_start:], beach_inundated)  # Update inundated map with cells seaward of dune crest
 
+        # Aggreagate discharge from overwash
+        beach_inundated[overwash_discharge > 0] = False
+        cumulative_discharge += beach_inundated * 1000000  # [m^3]
+
         # ----------------
         # Update Elevation
 
@@ -1505,7 +1290,7 @@ def storm_processes(
     # Update Elevation Domain After Storm
     topof[:, domain_width_start:] += Elevation - topof[:, domain_width_start:]  # [m NAVD88] Add change in elevation of barrier
 
-    return topof, OWloss, inundated, BeachDune_Volume_Change
+    return topof, OWloss, inundated, BeachDune_Volume_Change, cumulative_discharge
 
 
 @njit(cache=True)
@@ -1676,8 +1461,8 @@ def route_overwash(
         Qs_bb_min,
         spec1,
         spec2,
-        flow_reduction_max_spec1,
-        flow_reduction_max_spec2,
+        H_flow_reduction_max,
+        W_flow_reduction_max,
         cellsize,
 ):
     """Routes overwash and sediment for one storm iteration based off of Barrier3D (Reeves et al., 2021)"""
@@ -1855,33 +1640,33 @@ def route_overwash(
                     # Cell 1
                     if i > 0:
                         if spec1[i - 1, d] > 0 and spec2[i - 1, d] > 0:
-                            flow_reduction_max_proportional = flow_reduction_max_spec1 * spec1[i - 1, d] / (spec1[i - 1, d] + spec2[i - 1, d]) + flow_reduction_max_spec2 * spec2[i - 1, d] / (spec1[i - 1, d] + spec2[i - 1, d])
+                            flow_reduction_max_proportional = H_flow_reduction_max * spec1[i - 1, d] / (spec1[i - 1, d] + spec2[i - 1, d]) + W_flow_reduction_max * spec2[i - 1, d] / (spec1[i - 1, d] + spec2[i - 1, d])
                             Q1 = Q1 * (1 - (flow_reduction_max_proportional * (spec1[i - 1, d] + spec2[i - 1, d])))
                         elif spec1[i - 1, d] > 0:
-                            Q1 = Q1 * (1 - (flow_reduction_max_spec1 * spec1[i - 1, d]))
+                            Q1 = Q1 * (1 - (H_flow_reduction_max * spec1[i - 1, d]))
                         else:
-                            Q1 = Q1 * (1 - (flow_reduction_max_spec2 * spec2[i - 1, d]))
+                            Q1 = Q1 * (1 - (W_flow_reduction_max * spec2[i - 1, d]))
                         Discharge[i - 1, d + 1] += Q1
 
                     # Cell 2
                     if spec1[i, d] > 0 and spec2[i, d] > 0:
-                        flow_reduction_max_proportional = flow_reduction_max_spec1 * spec1[i, d] / (spec1[i, d] + spec2[i, d]) + flow_reduction_max_spec2 * spec2[i, d] / (spec1[i, d] + spec2[i, d])
+                        flow_reduction_max_proportional = H_flow_reduction_max * spec1[i, d] / (spec1[i, d] + spec2[i, d]) + W_flow_reduction_max * spec2[i, d] / (spec1[i, d] + spec2[i, d])
                         Q1 = Q1 * (1 - (flow_reduction_max_proportional * (spec1[i, d] + spec2[i, d])))
                     elif spec1[i, d] > 0:
-                        Q2 = Q2 * (1 - (flow_reduction_max_spec1 * spec1[i, d]))
+                        Q2 = Q2 * (1 - (H_flow_reduction_max * spec1[i, d]))
                     else:
-                        Q2 = Q2 * (1 - (flow_reduction_max_spec2 * spec2[i, d]))
+                        Q2 = Q2 * (1 - (W_flow_reduction_max * spec2[i, d]))
                     Discharge[i, d + 1] += Q2
 
                     # Cell 3
                     if i < (longshore - 1):
                         if spec1[i + 1, d] > 0 and spec2[i + 1, d] > 0:
-                            flow_reduction_max_proportional = flow_reduction_max_spec1 * spec1[i + 1, d] / (spec1[i + 1, d] + spec2[i + 1, d]) + flow_reduction_max_spec2 * spec2[i + 1, d] / (spec1[i + 1, d] + spec2[i + 1, d])
+                            flow_reduction_max_proportional = H_flow_reduction_max * spec1[i + 1, d] / (spec1[i + 1, d] + spec2[i + 1, d]) + W_flow_reduction_max * spec2[i + 1, d] / (spec1[i + 1, d] + spec2[i + 1, d])
                             Q1 = Q1 * (1 - (flow_reduction_max_proportional * (spec1[i + 1, d] + spec2[i + 1, d])))
                         elif spec1[i + 1, d] > 0:
-                            Q3 = Q3 * (1 - (flow_reduction_max_spec1 * spec1[i + 1, d]))
+                            Q3 = Q3 * (1 - (H_flow_reduction_max * spec1[i + 1, d]))
                         else:
-                            Q3 = Q3 * (1 - (flow_reduction_max_spec2 * spec2[i + 1, d]))
+                            Q3 = Q3 * (1 - (W_flow_reduction_max * spec2[i + 1, d]))
                         Discharge[i + 1, d + 1] += Q3
 
                     # Calculate Sed Movement
@@ -1952,7 +1737,7 @@ def route_overwash(
                         Qs_out = Qs1 + Qs2 + Qs3
                         SedFluxOut[i, d] = Qs_out
 
-    return Discharge > 0, SedFluxIn - SedFluxOut
+    return Discharge, SedFluxIn - SedFluxOut
 
 
 def init_AST_environment(wave_asymmetry,
@@ -2345,3 +2130,697 @@ def tqdm_joblib(tqdm_object):
     finally:
         joblib.parallel.BatchCompletionCallBack = old_batch_callback
         tqdm_object.close()
+
+
+@njit(cache=True)
+def gamma_pdf(x, alpha, scale, loc):
+    if loc <= 0:
+        raise ValueError("'loc' param must be greater than 0")
+    elif x <= loc:
+        return 0
+    return ((1 / scale) ** alpha * (x - loc) ** (alpha - 1) * np.exp(-(1 / scale) * (x - loc))) / gamma(alpha)
+
+
+@njit(cache=True)
+def germination_prob(temperature,
+                     topo,
+                     MHW,
+                     HWE,
+                     HWE_Q,
+                     x_s,
+                     x_b,
+                     fronting_dune_elevations,
+                     dune_crest_loc,
+                     cellsize,
+                     veg_fraction,
+                     sedimentation_balance_long_term,
+                     sedimentation_balance_short_term,
+                     germination_erosion_limit,
+                     germination_burial_limit,
+                     H1_germ_tempC_max,
+                     H1_germ_tempC_min,
+                     H2_germ_tempC_max,
+                     H2_germ_tempC_min,
+                     W_germ_tempC_max,
+                     W_germ_tempC_min,
+                     H1_growth_woody_comp_max,
+                     H2_growth_woody_comp_max,
+                     W_germ_Pmin_herbaceous_facil,
+                     W_germ_herbaceous_facil_max,
+                     W_dune_elev_min,
+                     W_dune_elev_max,
+                     W_shoreline_distance_min,
+                     W_shoreline_distance_max,
+                     H1_germ_Pmax_tempC,
+                     H2_germ_Pmax_tempC,
+                     W_germ_Pmax_tempC,
+                     H1_germ_allowed,
+                     H2_germ_allowed,
+                     W_germ_allowed,
+                     RNG,
+                     ):
+
+    H1_germ_eff = np.zeros(topo.shape, dtype=np.float32)
+    H2_germ_eff = np.zeros(topo.shape, dtype=np.float32)
+    W_germ_eff = np.zeros(topo.shape, dtype=np.float32)
+
+    for ls in range(topo.shape[0]):
+        for cs in range(x_s[ls], x_b[ls] + 1):
+
+            if HWE and HWE_Q[ls, cs] > 0:
+                H1_germ_eff[ls, cs] = 0
+                H2_germ_eff[ls, cs] = 0
+                W_germ_eff[ls, cs] = 0
+
+            # Burial or Uprooting
+            elif germination_erosion_limit > sedimentation_balance_long_term[ls, cs] or germination_erosion_limit > sedimentation_balance_short_term[ls, cs] or sedimentation_balance_long_term[ls, cs] > germination_burial_limit:
+                H1_germ_eff[ls, cs] = 0
+                H2_germ_eff[ls, cs] = 0
+                W_germ_eff[ls, cs] = 0
+
+            # RSLR Submergence
+            elif topo[ls, cs] < MHW:
+                H1_germ_eff[ls, cs] = 0
+                H2_germ_eff[ls, cs] = 0
+                W_germ_eff[ls, cs] = 0
+
+            else:
+                # Temperature
+                H1_Germ_tempC = (1 - (1 / ((H1_germ_tempC_max - ((H1_germ_tempC_max + H1_germ_tempC_min) / 2)) ** 2)) * (temperature - ((H1_germ_tempC_max + H1_germ_tempC_min) / 2)) ** 2) if H1_germ_tempC_min < temperature < H1_germ_tempC_max else 0  # Parabolic
+                H2_Germ_tempC = (1 - (1 / ((H2_germ_tempC_max - ((H2_germ_tempC_max + H2_germ_tempC_min) / 2)) ** 2)) * (temperature - ((H2_germ_tempC_max + H2_germ_tempC_min) / 2)) ** 2) if H2_germ_tempC_min < temperature < H2_germ_tempC_max else 0  # Parabolic
+                W_Germ_tempC = (1 - (1 / ((W_germ_tempC_max - ((W_germ_tempC_max + W_germ_tempC_min) / 2)) ** 2)) * (temperature - ((W_germ_tempC_max + W_germ_tempC_min) / 2)) ** 2) if W_germ_tempC_min < temperature < W_germ_tempC_max else 0  # Parabolic
+
+                # Competition
+                H1_Germ_wcomp = max(0, 1 - (1 / H1_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
+                H2_Germ_wcomp = max(0, 1 - (1 / H2_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
+
+                # Facilitation
+                W_Germ_hfacil = min(1, ((1 - W_germ_Pmin_herbaceous_facil) / W_germ_herbaceous_facil_max) * (veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) + W_germ_Pmin_herbaceous_facil)
+
+                # Fronting Dune Elevation
+                fronting_dune_elev = fronting_dune_elevations[ls]  # [m MHW] Elevation along foredune crestline fronting this cell
+                if fronting_dune_elev < W_dune_elev_min or fronting_dune_elev <= topo[ls, cs] or cs <= dune_crest_loc[ls]:  # No fronting topography higher than this cell, or seaward of crestline
+                    W_Germ_dune = 0
+                elif fronting_dune_elev > W_dune_elev_max:
+                    W_Germ_dune = 1
+                else:
+                    W_Germ_dune = fronting_dune_elev / (W_dune_elev_max - W_dune_elev_min) - W_dune_elev_min / (W_dune_elev_max - W_dune_elev_min)
+
+                # Distance From Ocean Shoreline
+                distance_from_ocean_shoreline = (cs - x_s[ls]) * cellsize  # [m]
+                if RNG.random() < 0.5:  # Only 50% of shrubs survive
+                    W_Germ_shoreline = 0
+                elif distance_from_ocean_shoreline < W_shoreline_distance_min:
+                    W_Germ_shoreline = 0
+                elif distance_from_ocean_shoreline > W_shoreline_distance_max:
+                    W_Germ_shoreline = 1
+                else:
+                    W_Germ_shoreline = distance_from_ocean_shoreline / (W_shoreline_distance_max - W_shoreline_distance_min) - W_shoreline_distance_min / (W_shoreline_distance_max - W_shoreline_distance_min)
+
+                # Calculate Effective Germination
+                H1_germ_eff[ls, cs] = H1_germ_Pmax_tempC * H1_Germ_tempC * H1_Germ_wcomp
+                H2_germ_eff[ls, cs] = H2_germ_Pmax_tempC * H2_Germ_tempC * H2_Germ_wcomp
+                W_germ_eff[ls, cs] = W_germ_Pmax_tempC * W_Germ_tempC * max(W_Germ_dune, W_Germ_shoreline) * W_Germ_hfacil
+
+    # Constrain Germination to Cells Where Dispersal is Allowed
+    H1_germ_eff *= H1_germ_allowed
+    H2_germ_eff *= H2_germ_allowed
+    W_germ_eff *= W_germ_allowed
+
+    return H1_germ_eff, H2_germ_eff, W_germ_eff
+
+
+@njit(cache=True)
+def seedling_mortality_prob(topo,
+                            MHW,
+                            x_s,
+                            x_b,
+                            fronting_dune_elevations,
+                            dune_crest_loc,
+                            cellsize,
+                            sedimentation_balance_long_term,
+                            sedimentation_balance_short_term,
+                            temperature,
+                            extreme_temperature,
+                            HWE,
+                            HWE_Q,
+                            seedling_erosion_limit,
+                            seedling_burial_limit,
+                            H1_growth_tempC_min,
+                            H1_growth_tempC_max,
+                            H2_growth_tempC_min,
+                            H2_growth_tempC_max,
+                            W_growth_tempC_min,
+                            W_growth_tempC_max,
+                            W_dune_elev_min,
+                            W_dune_elev_max,
+                            W_shoreline_distance_min,
+                            W_shoreline_distance_max,
+                            H1_s_mort_Pmax_tempC,
+                            H2_s_mort_Pmax_tempC,
+                            W_s_mort_Pmax_tempC,
+                            H1_QHWE_min,
+                            H1_QHWE_max,
+                            H2_QHWE_min,
+                            H2_QHWE_max,
+                            W_QHWE_min,
+                            W_QHWE_max,
+                            H1_mort_tempC_min,
+                            H1_mort_tempC_max,
+                            H2_mort_tempC_min,
+                            H2_mort_tempC_max,
+                            W_s_mort_tempC_min,
+                            W_s_mort_tempC_max,
+                            RNG,
+                            ):
+
+    H1_s_mort_eff = np.ones(topo.shape, dtype=np.float32)
+    H2_s_mort_eff = np.ones(topo.shape, dtype=np.float32)
+    W_s_mort_eff = np.ones(topo.shape, dtype=np.float32)
+
+    for ls in range(topo.shape[0]):
+        for cs in range(x_s[ls], x_b[ls] + 1):
+
+            # Burial or Uprooting
+            if seedling_erosion_limit > sedimentation_balance_long_term[ls, cs] or seedling_erosion_limit > sedimentation_balance_short_term[ls, cs] or sedimentation_balance_long_term[ls, cs] > seedling_burial_limit:
+                H1_s_mort_eff[ls, cs] = 1
+                H2_s_mort_eff[ls, cs] = 1
+                W_s_mort_eff[ls, cs] = 1
+
+            # RSLR Submergence
+            elif topo[ls, cs] < MHW:
+                H1_s_mort_eff[ls, cs] = 1
+                H2_s_mort_eff[ls, cs] = 1
+                W_s_mort_eff[ls, cs] = 1
+
+            else:
+                # Temperature
+                H1_Mort_tempC = (1 / ((H1_growth_tempC_max - ((H1_growth_tempC_max + H1_growth_tempC_min) / 2)) ** 2)) * (temperature - ((H1_growth_tempC_max + H1_growth_tempC_min) / 2)) ** 2 if H1_growth_tempC_min < temperature < H1_growth_tempC_max else 1  # Parabolic
+                H2_Mort_tempC = (1 / ((H2_growth_tempC_max - ((H2_growth_tempC_max + H2_growth_tempC_min) / 2)) ** 2)) * (temperature - ((H2_growth_tempC_max + H2_growth_tempC_min) / 2)) ** 2 if H2_growth_tempC_min < temperature < H2_growth_tempC_max else 1  # Parabolic
+                W_Mort_tempC = (1 / ((W_growth_tempC_max - ((W_growth_tempC_max + W_growth_tempC_min) / 2)) ** 2)) * (temperature - ((W_growth_tempC_max + W_growth_tempC_min) / 2)) ** 2 if W_growth_tempC_min < temperature < W_growth_tempC_max else 1  # Parabolic
+
+                # Fronting Dune Elevation and Distance From Ocean Shoreline
+                distance_from_ocean_shoreline = (cs - x_s[ls]) * cellsize  # [m]
+                fronting_dune_elev = fronting_dune_elevations[ls]  # [m MHW] Elevation along foredune crestline fronting this cell
+                if fronting_dune_elev >= W_dune_elev_max and cs > dune_crest_loc[ls]:  # Sufficiently tall dune for max woody seedling survival, and landward of dune crestline
+                    # Calculate Effective Germination
+                    H1_s_mort_eff[ls, cs] = H1_s_mort_Pmax_tempC * H1_Mort_tempC
+                    H2_s_mort_eff[ls, cs] = H2_s_mort_Pmax_tempC * H2_Mort_tempC
+                    W_s_mort_eff[ls, cs] = W_s_mort_Pmax_tempC * W_Mort_tempC
+
+                elif distance_from_ocean_shoreline >= W_shoreline_distance_max:  # Sufficiently far from ocean shoreline for max woody seedling survival
+                    # Calculate Effective Germination
+                    H1_s_mort_eff[ls, cs] = H1_s_mort_Pmax_tempC * H1_Mort_tempC
+                    H2_s_mort_eff[ls, cs] = H2_s_mort_Pmax_tempC * H2_Mort_tempC
+                    W_s_mort_eff[ls, cs] = W_s_mort_Pmax_tempC * W_Mort_tempC
+
+                elif W_dune_elev_min < fronting_dune_elev < W_dune_elev_max or W_shoreline_distance_min < distance_from_ocean_shoreline < W_shoreline_distance_max:  # Sufficient dune or shoreline distance for limited woody seedling survival
+
+                    if W_dune_elev_min < fronting_dune_elev < W_dune_elev_max and cs > dune_crest_loc[ls]:
+                        W_Mort_dune = -fronting_dune_elev / (W_dune_elev_max - W_dune_elev_min) - W_dune_elev_max / (W_dune_elev_min - W_dune_elev_max)
+                    else:
+                        W_Mort_dune = 0
+
+                    if W_shoreline_distance_min < distance_from_ocean_shoreline < W_shoreline_distance_max and cs > dune_crest_loc[ls]:
+                        W_Mort_shoreline = -distance_from_ocean_shoreline / (W_shoreline_distance_max - W_shoreline_distance_min) - W_shoreline_distance_max / (W_shoreline_distance_min - W_shoreline_distance_max)
+                    else:
+                        W_Mort_shoreline = 0
+
+                    # Calculate Effective Germination
+                    H1_s_mort_eff[ls, cs] = H1_s_mort_Pmax_tempC * H1_Mort_tempC
+                    H2_s_mort_eff[ls, cs] = H2_s_mort_Pmax_tempC * H2_Mort_tempC
+                    W_s_mort_eff[ls, cs] = W_s_mort_Pmax_tempC * W_Mort_tempC * max(W_Mort_dune, W_Mort_shoreline)
+
+                else:  # Insufficient dune or shoreline distance for woody seedling survival or seaward of dune crestline
+                    # Calculate Effective Germination
+                    H1_s_mort_eff[ls, cs] = H1_s_mort_Pmax_tempC * H1_Mort_tempC
+                    H2_s_mort_eff[ls, cs] = H2_s_mort_Pmax_tempC * H2_Mort_tempC
+                    W_s_mort_eff[ls, cs] = 1
+
+                # HWE Inundation
+                if HWE and HWE_Q[ls, cs] > 0:
+                    if HWE_Q[ls, cs] > H1_QHWE_max:  # Large discharge kills all seedlings
+                        H1_s_mort_eff[ls, cs] = 1
+                    elif HWE_Q[ls, cs] > H1_QHWE_min:  # Moderate discharge kills some seedlings
+                        H1_s_mort_eff[ls, cs] = (1 - H1_s_mort_eff[ls, cs]) / (H1_QHWE_max - H1_QHWE_min) * (HWE_Q[ls, cs] - H1_QHWE_min) + H1_s_mort_eff[ls, cs]  # Increase effective germination beyond that calculated for temperature, shoreline distance, & dune elevation
+
+                    if HWE_Q[ls, cs] > H2_QHWE_max:
+                        H2_s_mort_eff[ls, cs] = 1
+                    elif HWE_Q[ls, cs] > H2_QHWE_min:
+                        H2_s_mort_eff[ls, cs] = (1 - H2_s_mort_eff[ls, cs]) / (H2_QHWE_max - H2_QHWE_min) * (HWE_Q[ls, cs] - H2_QHWE_min) + H2_s_mort_eff[ls, cs]
+
+                    if HWE_Q[ls, cs] > W_QHWE_max:
+                        W_s_mort_eff[ls, cs] = 1
+                    elif HWE_Q[ls, cs] > W_QHWE_min:
+                        W_s_mort_eff[ls, cs] = (1 - W_s_mort_eff[ls, cs]) / (W_QHWE_max - W_QHWE_min) * (HWE_Q[ls, cs] - W_QHWE_min) + W_s_mort_eff[ls, cs]
+
+            # Extreme Temperatures
+            if extreme_temperature < H1_mort_tempC_min or extreme_temperature > H1_mort_tempC_max:
+                H1_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.4, 1.1))
+            if extreme_temperature < H2_mort_tempC_min or extreme_temperature > H2_mort_tempC_max:
+                H2_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.4, 1.1))
+            if extreme_temperature < W_s_mort_tempC_min or extreme_temperature > W_s_mort_tempC_max:
+                W_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.4, 1.1))
+
+    return H1_s_mort_eff, H2_s_mort_eff, W_s_mort_eff
+
+
+@njit(cache=True)
+def growth_prob(topo,
+                MHW,
+                x_s,
+                x_b,
+                sedimentation_balance,
+                temperature,
+                HWE,
+                HWE_Q,
+                veg_fraction,
+                H1_growth_tempC_min,
+                H1_growth_tempC_max,
+                H2_growth_tempC_min,
+                H2_growth_tempC_max,
+                W_growth_tempC_min,
+                W_growth_tempC_max,
+                H1_stim_min,
+                H1_stim_max,
+                H2_stim_min,
+                H2_stim_max,
+                W_stim_min,
+                W_stim_max,
+                H1_elev_gamma_a,
+                H1_elev_gamma_scale,
+                H1_elev_gamma_loc,
+                H2_elev_gamma_a,
+                H2_elev_gamma_scale,
+                H2_elev_gamma_loc,
+                W_elev_gamma_a,
+                W_elev_gamma_scale,
+                W_elev_gamma_loc,
+                H1_growth_woody_comp_max,
+                H2_growth_woody_comp_max,
+                H1_growth_Pmax_tempC,
+                H2_growth_Pmax_tempC,
+                W_growth_Pmax_tempC,
+                H1_growth_Pmin_stim,
+                H2_growth_Pmin_stim,
+                W_growth_Pmin_stim,
+                H1_growth_Pmax_elev,
+                H2_growth_Pmax_elev,
+                W_growth_Pmax_elev,
+                H1_s_mort,
+                H2_s_mort,
+                W_s_mort,
+                ):
+
+    H1_growth_eff = np.zeros(topo.shape, dtype=np.float32)
+    H2_growth_eff = np.zeros(topo.shape, dtype=np.float32)
+    W_growth_eff = np.zeros(topo.shape, dtype=np.float32)
+
+    for ls in range(topo.shape[0]):
+        for cs in range(x_s[ls], x_b[ls] + 1):
+
+            if HWE and HWE_Q[ls, cs] > 0:
+                H1_growth_eff[ls, cs] = 0
+                H2_growth_eff[ls, cs] = 0
+                W_growth_eff[ls, cs] = 0
+
+            else:
+                # Temperature
+                H1_Growth_tempC = (1 - (1 / ((H1_growth_tempC_max - ((H1_growth_tempC_max + H1_growth_tempC_min) / 2)) ** 2)) * (temperature - ((H1_growth_tempC_max + H1_growth_tempC_min) / 2)) ** 2) if H1_growth_tempC_min < temperature < H1_growth_tempC_max else 0  # Parabolic
+                H2_Growth_tempC = (1 - (1 / ((H2_growth_tempC_max - ((H2_growth_tempC_max + H2_growth_tempC_min) / 2)) ** 2)) * (temperature - ((H2_growth_tempC_max + H2_growth_tempC_min) / 2)) ** 2) if H2_growth_tempC_min < temperature < H2_growth_tempC_max else 0  # Parabolic
+                W_Growth_tempC = (1 - (1 / ((W_growth_tempC_max - ((W_growth_tempC_max + W_growth_tempC_min) / 2)) ** 2)) * (temperature - ((W_growth_tempC_max + W_growth_tempC_min) / 2)) ** 2) if W_growth_tempC_min < temperature < W_growth_tempC_max else 0  # Parabolic
+
+                # Stimulation From Deposition
+                H1_Growth_stim = (1 - (1 / ((H1_stim_max - ((H1_stim_max + H1_stim_min) / 2)) ** 2)) * (sedimentation_balance[ls, cs] - ((H1_stim_max + H1_stim_min) / 2)) ** 2) if H1_stim_min < sedimentation_balance[ls, cs] < H1_stim_max else 0  # Parabolic
+                H2_Growth_stim = (1 - (1 / ((H2_stim_max - ((H2_stim_max + H2_stim_min) / 2)) ** 2)) * (sedimentation_balance[ls, cs] - ((H2_stim_max + H2_stim_min) / 2)) ** 2) if H2_stim_min < sedimentation_balance[ls, cs] < H2_stim_max else 0  # Parabolic
+                W_Growth_stim = (1 - (1 / ((W_stim_max - ((W_stim_max + W_stim_min) / 2)) ** 2)) * (sedimentation_balance[ls, cs] - ((W_stim_max + W_stim_min) / 2)) ** 2) if W_stim_min < sedimentation_balance[ls, cs] < W_stim_max else 0  # Parabolic
+
+                # Elevation Range
+                H1_Growth_elev = gamma_pdf(topo[ls, cs] - MHW, H1_elev_gamma_a, H1_elev_gamma_scale, H1_elev_gamma_loc) / gamma_pdf((H1_elev_gamma_a - 1) * H1_elev_gamma_scale + H1_elev_gamma_loc, H1_elev_gamma_a, H1_elev_gamma_scale, H1_elev_gamma_loc)
+                H2_Growth_elev = gamma_pdf(topo[ls, cs] - MHW, H2_elev_gamma_a, H2_elev_gamma_scale, H2_elev_gamma_loc) / gamma_pdf((H2_elev_gamma_a - 1) * H2_elev_gamma_scale + H2_elev_gamma_loc, H2_elev_gamma_a, H2_elev_gamma_scale, H2_elev_gamma_loc)
+                W_Growth_elev = gamma_pdf(topo[ls, cs] - MHW, W_elev_gamma_a, W_elev_gamma_scale, W_elev_gamma_loc) / gamma_pdf((W_elev_gamma_a - 1) * W_elev_gamma_scale + W_elev_gamma_loc, W_elev_gamma_a, W_elev_gamma_scale, W_elev_gamma_loc)
+
+                # Competition
+                H1_Growth_wcomp = max(0, 1 - (1 / H1_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
+                H2_Growth_wcomp = max(0, 1 - (1 / H2_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
+
+                # Woody logistic
+                W_Growth_logistic = 1 / (1 + np.exp(-8 * ((veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]) - 0.4)))  # Logistic curve to emulate real-world logistcic nature of shrub growth
+
+                # Calculate Effective Growth
+                H1_growth_eff[ls, cs] = (H1_growth_Pmax_tempC * H1_Growth_tempC) * (H1_growth_Pmax_elev * H1_Growth_elev) * H1_Growth_wcomp * (H1_growth_Pmin_stim + (1 - H1_growth_Pmin_stim) * H1_Growth_stim)
+                H2_growth_eff[ls, cs] = (H2_growth_Pmax_tempC * H2_Growth_tempC) * (H2_growth_Pmax_elev * H2_Growth_elev) * H2_Growth_wcomp * (H2_growth_Pmin_stim + (1 - H2_growth_Pmin_stim) * H2_Growth_stim)
+                W_growth_eff[ls, cs] = (W_growth_Pmax_tempC * W_Growth_tempC) * (W_growth_Pmax_elev * W_Growth_elev) * (W_growth_Pmin_stim + (1 - W_growth_Pmin_stim) * W_Growth_stim) * W_Growth_logistic
+
+    H1_growth_eff = np.minimum(1 - H1_s_mort, H1_growth_eff)
+    H2_growth_eff = np.minimum(1 - H2_s_mort, H2_growth_eff)
+    W_growth_eff = np.minimum(1 - W_s_mort, W_growth_eff)
+
+    return H1_growth_eff, H2_growth_eff, W_growth_eff
+
+
+@njit(cache=True)
+def senescence_prob(topo,
+                    MHW,
+                    x_s,
+                    x_b,
+                    sedimentation_balance_long_term,
+                    sedimentation_balance_short_term,
+                    temperature,
+                    extreme_temperature,
+                    HWE,
+                    HWE_Q,
+                    W_a_removal_eff,
+                    H1_growth_tempC_min,
+                    H1_growth_tempC_max,
+                    H2_growth_tempC_min,
+                    H2_growth_tempC_max,
+                    W_growth_tempC_min,
+                    W_growth_tempC_max,
+                    H1_a_senesce_Pmin_tempC,
+                    H1_a_senesce_Pmax_tempC,
+                    H2_a_senesce_Pmin_tempC,
+                    H2_a_senesce_Pmax_tempC,
+                    W_a_senesce_Pmin_tempC,
+                    W_a_senesce_Pmax_tempC,
+                    H1_QHWE_min,
+                    H1_QHWE_max,
+                    H2_QHWE_min,
+                    H2_QHWE_max,
+                    W_QHWE_min,
+                    W_QHWE_max,
+                    H1_uproot_limit,
+                    H2_uproot_limit,
+                    H1_burial_limit,
+                    H2_burial_limit,
+                    H1_mort_tempC_min,
+                    H1_mort_tempC_max,
+                    H2_mort_tempC_min,
+                    H2_mort_tempC_max,
+                    W_a_mort_tempC_min,
+                    W_a_mort_tempC_max,
+                    RNG,
+                    ):
+
+    H1_a_senesce_eff = np.ones(topo.shape, dtype=np.float32)
+    H2_a_senesce_eff = np.ones(topo.shape, dtype=np.float32)
+    W_a_senesce_eff = np.ones(topo.shape, dtype=np.float32)
+
+    for ls in range(topo.shape[0]):
+        for cs in range(x_s[ls], x_b[ls] + 1):
+
+            # RSLR Submergence
+            if topo[ls, cs] < MHW:
+                H1_a_senesce_eff[ls, cs] = 1
+                H2_a_senesce_eff[ls, cs] = 1
+                W_a_senesce_eff[ls, cs] = RNG.uniform(0.6, 0.8) * (1 - W_a_removal_eff[ls, cs])
+
+            else:
+                # Temperature
+                H1_Senesce_tempC = (1 / ((H1_growth_tempC_max - ((H1_growth_tempC_max + H1_growth_tempC_min) / 2)) ** 2)) * (temperature - ((H1_growth_tempC_max + H1_growth_tempC_min) / 2)) ** 2 if H1_growth_tempC_min < temperature < H1_growth_tempC_max else 1  # Parabolic
+                H2_Senesce_tempC = (1 / ((H2_growth_tempC_max - ((H2_growth_tempC_max + H2_growth_tempC_min) / 2)) ** 2)) * (temperature - ((H2_growth_tempC_max + H2_growth_tempC_min) / 2)) ** 2 if H2_growth_tempC_min < temperature < H2_growth_tempC_max else 1  # Parabolic
+                W_Senesce_tempC = (1 / ((W_growth_tempC_max - ((W_growth_tempC_max + W_growth_tempC_min) / 2)) ** 2)) * (temperature - ((W_growth_tempC_max + W_growth_tempC_min) / 2)) ** 2 if W_growth_tempC_min < temperature < W_growth_tempC_max else 1  # Parabolic
+
+                # Calculate Effective Senescence
+                H1_a_senesce_eff[ls, cs] = H1_a_senesce_Pmin_tempC + (H1_a_senesce_Pmax_tempC - H1_a_senesce_Pmin_tempC) * H1_Senesce_tempC
+                H2_a_senesce_eff[ls, cs] = H2_a_senesce_Pmin_tempC + (H2_a_senesce_Pmax_tempC - H2_a_senesce_Pmin_tempC) * H2_Senesce_tempC
+                W_a_senesce_eff[ls, cs] = W_a_senesce_Pmin_tempC + (W_a_senesce_Pmax_tempC - W_a_senesce_Pmin_tempC) * W_Senesce_tempC
+
+                if HWE and HWE_Q[ls, cs] > 0:
+                    if HWE_Q[ls, cs] > H1_QHWE_max:  # Large discharge kills all veg
+                        H1_a_senesce_eff[ls, cs] = 1
+                    elif HWE_Q[ls, cs] > H1_QHWE_min:  # Moderate discharge kills some veg
+                        H1_a_senesce_eff[ls, cs] = (1 - H1_a_senesce_eff[ls, cs]) / (H1_QHWE_max - H1_QHWE_min) * (HWE_Q[ls, cs] - H1_QHWE_min) + H1_a_senesce_eff[ls, cs]  # Increase effective germination beyond that calculated for temperature, shoreline distance, & dune elevation
+
+                    if HWE_Q[ls, cs] > H2_QHWE_max:
+                        H2_a_senesce_eff[ls, cs] = 1
+                    elif HWE_Q[ls, cs] > H2_QHWE_max:
+                        H2_a_senesce_eff[ls, cs] = (1 - H2_a_senesce_eff[ls, cs]) / (H2_QHWE_max - H2_QHWE_min) * (HWE_Q[ls, cs] - H2_QHWE_min) + H2_a_senesce_eff[ls, cs]
+
+                    if HWE_Q[ls, cs] < W_QHWE_min:
+                        W_a_senesce_eff[ls, cs] = W_a_senesce_eff[ls, cs] * (1 - W_a_removal_eff[ls, cs])
+                    elif HWE_Q[ls, cs] > W_QHWE_max:
+                        W_a_senesce_eff[ls, cs] = 1 * (1 - W_a_removal_eff[ls, cs])  # Relies upon W_a_removal_eff
+                    else:
+                        W_a_senesce_eff[ls, cs] = ((1 - W_a_senesce_eff[ls, cs]) / (W_QHWE_max - W_QHWE_min) * (HWE_Q[ls, cs] - W_QHWE_min) + W_a_senesce_eff[ls, cs]) * (1 - W_a_removal_eff[ls, cs])  # Relies upon W_a_removal_eff
+
+                else:
+                    W_a_senesce_eff[ls, cs] = W_a_senesce_eff[ls, cs] * (1 - W_a_removal_eff[ls, cs])
+
+                # Burial/Uprooting (Burial/uprooting for woody species results in removal, not senescence)
+                if sedimentation_balance_long_term[ls, cs] < H1_uproot_limit or sedimentation_balance_short_term[ls, cs] < H1_uproot_limit or sedimentation_balance_long_term[ls, cs] > H1_burial_limit:
+                    H1_a_senesce_eff[ls, cs] = 1
+                if sedimentation_balance_long_term[ls, cs] < H2_uproot_limit or sedimentation_balance_short_term[ls, cs] < H2_uproot_limit or sedimentation_balance_long_term[ls, cs] > H2_burial_limit:
+                    H2_a_senesce_eff[ls, cs] = 1
+
+            # Extreme Temperatures
+            if extreme_temperature < H1_mort_tempC_min or extreme_temperature > H1_mort_tempC_max:
+                H1_a_senesce_eff[ls, cs] = min(1, RNG.uniform(0.4, 1.1))
+            if extreme_temperature < H2_mort_tempC_min or extreme_temperature > H2_mort_tempC_max:
+                H2_a_senesce_eff[ls, cs] = min(1, RNG.uniform(0.4, 1.1))
+            if extreme_temperature < W_a_mort_tempC_min or extreme_temperature > W_a_mort_tempC_max:
+                W_a_senesce_eff[ls, cs] = max(0, min(1, RNG.uniform(0.4, 1.1)) - W_a_removal_eff[ls, cs])  # Relies upon W_a_removal_eff
+
+    return H1_a_senesce_eff, H2_a_senesce_eff, W_a_senesce_eff
+
+
+def woody_removal_prob(sedimentation_balance_long_term,
+                       sedimentation_balance_short_term,
+                       W_burial_limit,
+                       W_uproot_limit,
+                       RNG):
+
+    buried_or_uprooted = np.logical_or(W_burial_limit < sedimentation_balance_long_term, np.logical_or(sedimentation_balance_long_term < W_uproot_limit, sedimentation_balance_short_term < W_uproot_limit))  # [bool] Burial or uprooting kills most woody
+    W_a_removal_eff = RNG.uniform(0.9, 1, sedimentation_balance_long_term.shape).astype(np.float32) * buried_or_uprooted
+
+    return W_a_removal_eff
+
+
+@njit(cache=True)
+def woody_dead_loss(topo,
+                    MHW,
+                    x_s,
+                    x_b,
+                    sedimentation_balance_long_term,
+                    sedimentation_balance_short_term,
+                    extreme_temperature,
+                    HWE,
+                    HWE_Q,
+                    HWE_TWL,
+                    W_uproot_limit,
+                    W_burial_limit,
+                    W_d_loss_Pmax_submerged_frozen,
+                    W_QHWE_min,
+                    W_QHWE_max,
+                    W_TWL_min,
+                    W_TWL_max,
+                    W_d_loss_Pmin,
+                    W_d_loss_Pmax_discharge,
+                    W_d_loss_Pmax_twl,
+                    ):
+
+    W_d_loss_eff = np.ones(topo.shape, dtype=np.float32)
+
+    for ls in range(topo.shape[0]):
+        for cs in range(x_s[ls], x_b[ls] + 1):
+
+            if sedimentation_balance_long_term[ls, cs] < W_uproot_limit or sedimentation_balance_short_term[ls, cs] < W_uproot_limit or sedimentation_balance_long_term[ls, cs] > W_burial_limit:
+                W_d_loss_eff[ls, cs] = 1
+
+            # Submergence or freezing temperatures
+            elif topo[ls, cs] < MHW or extreme_temperature < 0:
+                W_d_loss_eff[ls, cs] = W_d_loss_Pmax_submerged_frozen
+
+            elif HWE and HWE_Q[ls, cs] > 0:
+                # Discharge
+                if HWE_Q[ls, cs] < W_QHWE_min:
+                    W_Loss_discharge = 0
+                elif HWE_Q[ls, cs] > W_QHWE_max:
+                    W_Loss_discharge = 1
+                else:
+                    W_Loss_discharge = HWE_Q[ls, cs] / (W_QHWE_max - W_QHWE_min) - W_QHWE_min / (W_QHWE_max - W_QHWE_min)
+
+                # TWL (Proxy For Wind Strength)
+                if HWE_TWL < W_TWL_min:
+                    W_Loss_twl = 0
+                elif HWE_TWL > W_TWL_max:
+                    W_Loss_twl = 1
+                else:
+                    W_Loss_twl = HWE_TWL / (W_TWL_max - W_TWL_min) - W_TWL_min / (W_TWL_max - W_TWL_min)
+
+                # Calculate Effective Dead Loss
+                W_d_loss_eff[ls, cs] = (W_d_loss_Pmin + (W_d_loss_Pmax_discharge - W_d_loss_Pmin) * W_Loss_discharge) * (W_d_loss_Pmin + (W_d_loss_Pmax_twl - W_d_loss_Pmin) * W_Loss_twl)
+
+            else:
+                W_d_loss_eff[ls, cs] = W_d_loss_Pmin
+
+    return W_d_loss_eff
+
+
+@njit(cache=True)
+def veg_matrix_mult(veg_fraction, H1_germ, H2_germ, W_germ, H1_s_mort, H2_s_mort, W_s_mort, H1_growth, H2_growth, W_growth, W_a_removal, H1_a_senesce, H2_a_senesce, W_a_senesce, W_d_loss, x_s, x_b):
+
+    for ls in range(H1_germ.shape[0]):
+        for cs in range(x_s[ls], x_b[ls] + 1):
+
+            # Transition Matrix
+            TM = np.asarray([
+                [1 - H1_germ[ls, cs] - H2_germ[ls, cs] - W_germ[ls, cs],    H1_s_mort[ls, cs],                          H1_a_senesce[ls, cs],       H2_s_mort[ls, cs],                          H2_a_senesce[ls, cs],       W_s_mort[ls, cs],                           W_a_removal[ls, cs],                            W_d_loss[ls, cs]],
+                [H1_germ[ls, cs],                                           1 - H1_s_mort[ls, cs] - H1_growth[ls, cs],  0,                          0,                                          0,                          0,                                          0,                                              0],
+                [0,                                                         H1_growth[ls, cs],                          1 - H1_a_senesce[ls, cs],   0,                                          0,                          0,                                          0,                                              0],
+                [H2_germ[ls, cs],                                           0,                                          0,                          1 - H2_s_mort[ls, cs] - H2_growth[ls, cs],  0,                          0,                                          0,                                              0],
+                [0,                                                         0,                                          0,                          H2_growth[ls, cs],                          1 - H2_a_senesce[ls, cs],   0,                                          0,                                              0],
+                [W_germ[ls, cs],                                            0,                                          0,                          0,                                          0,                          1 - W_s_mort[ls, cs] - W_growth[ls, cs],    0,                                              0],
+                [0,                                                         0,                                          0,                          0,                                          0,                          W_growth[ls, cs],                           1 - W_a_removal[ls, cs] - W_a_senesce[ls, cs],  0],
+                [0,                                                         0,                                          0,                          0,                                          0,                          0,                                          W_a_senesce[ls, cs],                            1 - W_d_loss[ls, cs]],
+            ],
+                dtype=np.float32
+            )
+
+            veg_fraction[ls, cs, :] = TM @ veg_fraction[ls, cs, :]
+
+            # -------------
+            # Just for model development; remove after complete to save runtime
+            if np.sum(veg_fraction[ls, cs, :] < -0.00001) > 0:
+                print("WARNING: veg_fraction below 0")
+            if np.sum(veg_fraction[ls, cs, :] > 1.00001) > 0:
+                print("WARNING: veg_fraction above 1")
+
+            veg_fraction[ls, cs, :][veg_fraction[ls, cs, :] < 0] = 0
+            veg_fraction[ls, cs, :][veg_fraction[ls, cs, :] > 1] = 1
+            # -------------
+
+    return veg_fraction
+
+
+def herbaceous_dispersal(veg_fraction, H1_pioneer_probability, H1_lateral_probability, H2_pioneer_probability, H2_lateral_probability, RNG):
+
+    H1_currently_vegetated = veg_fraction[:, :, 1] + veg_fraction[:, :, 2] > 0.02  # Cells that are currently vegetated
+    H2_currently_vegetated = veg_fraction[:, :, 3] + veg_fraction[:, :, 4] > 0.02  # Cells that are currently vegetated
+
+    # Pioneer Colonization via Seeds & Rhizome Fragments
+    H1_pioneer = RNG.random(H1_currently_vegetated.shape) < H1_pioneer_probability
+    H2_pioneer = RNG.random(H1_currently_vegetated.shape) < H2_pioneer_probability
+
+    # Lateral Expansion
+    H1_lateral = lateral_expansion(veg_fraction[:, :, 1] + veg_fraction[:, :, 2], 1, H1_lateral_probability, RNG)
+    H2_lateral = lateral_expansion(veg_fraction[:, :, 3] + veg_fraction[:, :, 4], 1, H2_lateral_probability, RNG)
+
+    # Determine Where Disperal is Allowed
+    H1_germ_allowed = np.logical_or(np.logical_or(H1_pioneer, H1_lateral), H1_currently_vegetated)
+    H2_germ_allowed = np.logical_or(np.logical_or(H2_pioneer, H2_lateral), H2_currently_vegetated)
+
+    return H1_germ_allowed, H2_germ_allowed
+
+
+@njit(cache=True)
+def woody_dispersal(veg_fraction, W_pioneer_probability, W_seed_min, W_seed_max, W_dispersal_mean, W_dispersal_sigma, cellsize, RNG):
+
+    longshore = veg_fraction.shape[0]
+    crossshore = veg_fraction.shape[1]
+
+    # ----------------
+    # Avian-Based Long-Distance Dispersal
+
+    W_avian = np.zeros(veg_fraction[:, :, 0].shape)
+
+    for ls in range(longshore):
+
+        # Shrubs must be 5 years or older and female to produce seeds
+        adult_female_shrubs = veg_fraction[ls, :, 6] * RNG.integers(low=0, high=2, size=crossshore)  # Randomly excludes 50% of shrubs to account for 50% of shrubs being female (seed-producing)
+        woody_index = [index for index, value in enumerate(adult_female_shrubs) if value >= 0.4]  # Threshold of 0.4 cover a proxy for shrubs grater than 5 years old (seed-producing)
+
+        num_shrub_cells = len(woody_index)
+        seeds = RNG.integers(low=W_seed_min, high=W_seed_max + 1, size=num_shrub_cells)  # Produce random number of seeds
+
+        for i in range(num_shrub_cells):
+
+            # Determine distance, in units of cellsize, rounding to nearest integer
+            dispersal_distance = RNG.lognormal(W_dispersal_mean, W_dispersal_sigma, seeds[i]) * 10 / cellsize  # [cells]
+            random_direction_degrees = RNG.integers(low=0, high=360, size=len(dispersal_distance))
+
+            # Create a meshgrid to find coordinates of all points that are dropdistance from origin
+            for j in range(len(dispersal_distance + 1)):  # Loop through each individual seed to disperse
+
+                target_ls, target_cs = find_cell_from_polar((ls, woody_index[i]), dispersal_distance[j], random_direction_degrees[j])
+                if 0 <= target_cs < crossshore and 0 <= target_ls < longshore:
+                    W_avian[target_ls, target_cs] = True
+
+    # ----------------
+    # Random Seed Rain
+    W_pioneer = RNG.random(veg_fraction[:, :, 0].shape) < W_pioneer_probability
+
+    # ----------------
+    # Combined
+    W_germ_allowed = np.logical_or(np.logical_or(W_avian, W_pioneer), veg_fraction[:, :, 5] + veg_fraction[:, :, 6] > 0)
+
+    return W_germ_allowed
+
+
+@njit(cache=True)
+def find_cell_from_polar(origin_point, distance, angle_degrees):
+    """
+    Finds a cell (Cartesian coordinate) for a specific distance and angle away from an origin point.
+
+    Parameters
+    ----------
+    origin_point : tuple
+        [x, y] coordinates of the starting point.
+    distance : float
+        [cells] The desired distance from the origin_point.
+    angle_degrees : float
+        [deg] The desired angle in degrees (measured counterclockwise from the positive x-axis).
+
+    Returns
+    ----------
+    tuple
+        [x, y] coordinates of the cell at the specified distance and angle.
+    """
+
+    # Convert angle from degrees to radians
+    angle_radians = np.deg2rad(angle_degrees)
+
+    # Calculate change in x and y based on distance and angle
+    delta_x = distance * np.cos(angle_radians)
+    delta_y = distance * np.sin(angle_radians)
+
+    # Calculate the final x and y coordinates
+    target_x = int(origin_point[0] + delta_x)
+    target_y = int(origin_point[1] + delta_y)
+
+    return target_x, target_y
+
+
+def calc_fronting_dune_elevations(topo, dune_crest_loc, MHW, window=51):
+    """
+    Finds the moving-averaged elevation of the foredune crestline for each row alongshore.
+
+    Parameters
+    ----------
+    topo : ndarray
+        [m NAVD88] Elevation.
+    dune_crest_loc : ndarray
+        [cells] Cross-shore location of the foredune crestline for each row alongshore.
+    MHW : float
+        [m NAVD88] Mean high water elevation.
+    window : int
+        [cells] The size of the moving average window.
+
+    Returns
+    ----------
+    ndarray
+        [m MHW] Moving-averaged elevation of the foredune crestline for each row alongshore.
+    """
+
+    dune_crest_elevations = topo[np.arange(topo.shape[0]), dune_crest_loc]  # [m NAVD88] Elevations along dune crestline
+
+    if len(dune_crest_elevations) < window <= 0:
+        raise ValueError("Window size must be greater than 0 and less than alongshore length of domain.")
+
+    padded_elevations = np.pad(dune_crest_elevations, pad_width=window // 2, mode='reflect')  # Pad array of crestline elevations
+
+    fronting_dune_elevations = np.convolve(padded_elevations, np.ones(window) / window, mode='valid')  # Running mean of crestline elevations
+
+    fronting_dune_elevations -= MHW  # [m MHW] Convert to MHW
+
+    return fronting_dune_elevations

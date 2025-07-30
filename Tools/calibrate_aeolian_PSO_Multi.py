@@ -4,7 +4,7 @@ Script for calibrating MEEB aeolian parameters using Particle Swarms Optimizatio
 Calibrates based on fitess score for morphologic change between two observation, and incorporates multiple
 timeframes and/or locations into each fitness score.
 
-IRBR 4 April 2025
+IRBR 22 July 2025
 """
 
 import numpy as np
@@ -153,29 +153,9 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         beach_equilibrium_slope=0.021,
         swash_erosive_timescale=1.51,
         beach_substeps=1,
-        flow_reduction_max_spec1=0.002,
-        flow_reduction_max_spec2=0.02,
         # --- Shoreline --- #
         shoreline_diffusivity_coefficient=0.07,
         # --- Veg --- #
-        sp1_lateral_probability=0.2,
-        sp2_lateral_probability=0.2,
-        sp1_pioneer_probability=0.05,
-        sp2_pioneer_probability=0.03,
-        # MY GRASS
-        sp1_a=-1.2,
-        sp1_b=-0.067,  # Mullins et al. (2019)
-        sp1_c=0.5,
-        sp1_d=1.2,
-        sp1_e=2.1,
-        sp1_peak=0.2,
-        # MY SHRUB
-        sp2_a=-1.0,
-        sp2_b=-0.2,  # Conn and Day (1993)
-        sp2_c=0.0,
-        sp2_d=0.2,
-        sp2_e=2.1,
-        sp2_peak=0.05,
     )
 
     # Loop through time

@@ -1,6 +1,6 @@
 """
 Script for testing MEEB overwash function.
-IRBR 1 April 2025
+IRBR 22 July 2025
 """
 
 import numpy as np
@@ -144,10 +144,8 @@ sim_topo_post_storm, OWflux, inundated, Qbe = routine.storm_processes(
     beach_substeps=1,
     x_s=x_s,
     cellsize=cellsize,
-    spec1=spec1,
-    spec2=spec2,
-    flow_reduction_max_spec1=0.002,
-    flow_reduction_max_spec2=0.02,
+    herbaceous_cover=spec1,
+    woody_cover=spec2,
 )
 
 sim_topo_final = routine.enforceslopes(sim_topo_post_storm, veg, sh=0.02, anglesand=20, angleveg=30, th=0.37, MHW=MHW, cellsize=cellsize, RNG=RNG)  # Enforce angles of repose

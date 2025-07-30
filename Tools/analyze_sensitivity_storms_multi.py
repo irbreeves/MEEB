@@ -3,7 +3,7 @@ Script for running sensitivity analyses of MEEB storm parameters using SALib.
 
 Model output used in sensitivity analysis is the Brier Skill Score for elevation.
 
-IRBR 27 June 2025
+IRBR 22 July 2025
 """
 
 import numpy as np
@@ -101,10 +101,10 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, s
         beach_substeps=1,
         x_s=x_s,
         cellsize=cellsize,
-        spec1=spec1,
-        spec2=spec2,
-        flow_reduction_max_spec1=solution[6],  # Grass
-        flow_reduction_max_spec2=solution[7],  # Shrub
+        herbaceous_cover=spec1,
+        woody_cover=spec2,
+        H_flow_reduction_max=solution[6],  # Grass
+        W_flow_reduction_max=solution[7],  # Shrub
     )
 
     topo_end_sim = routine.enforceslopes(sim_topo_final, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, cellsize=cellsize, RNG=RNG)

@@ -4,7 +4,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 Calibrates based on fitess score for all beach/dune/overwash morphologic change, and incorporates multiple
 storm events and/or locations into each fitness score.
 
-IRBR 1 April 2025
+IRBR 22 July 2025
 """
 
 import numpy as np
@@ -98,10 +98,10 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, s
         beach_substeps=1,
         x_s=x_s,
         cellsize=cellsize,
-        spec1=spec1,
-        spec2=spec2,
-        flow_reduction_max_spec1=0.002,  # Grass
-        flow_reduction_max_spec2=0.02,  # Shrub
+        herbaceous_cover=spec1,
+        woody_cover=spec2,
+        H_flow_reduction_max=0.002,  # Grass
+        W_flow_reduction_max=0.02,  # Shrub
     )
 
     topo_end_sim = routine.enforceslopes(sim_topo_final, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, cellsize=cellsize, RNG=RNG)
