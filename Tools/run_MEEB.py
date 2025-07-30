@@ -269,37 +269,38 @@ ax2.matshow(wcs, cmap=cmap3, vmin=-1, vmax=1)
 # plt.title(name + ", x =" + str(profx))
 
 # -----------------
-# # Shoreline Position Over Time
-# Fig = plt.figure()
-# plt.tight_layout()
-# ax_1 = Fig.add_subplot(211)
-# plt.ylabel('Meters Cross-Shore')
-#
-# color = plt.cm.viridis(np.arange(meeb.x_s_TS.shape[0]))
-#
-# for it in range(meeb.x_s_TS.shape[0]):
-#     shoreline_it = meeb.x_s_TS[it, :] * cellsize  # Find relative ocean shoreline positions and convert y-axis to meters
-#     shoreline_it = np.repeat(shoreline_it, cellsize)  # Convert x-axis to meters
-#     if it == 0:
-#         ax_1.plot(shoreline_it, c=color[it], label='Start')
-#     if it == meeb.x_s_TS.shape[0] - 1:
-#         ax_1.plot(shoreline_it, c=color[it], label='End')
-#     else:
-#         ax_1.plot(shoreline_it, c=color[it], label='_')
-# plt.legend()
+# Shoreline Position Over Time
+Fig = plt.figure()
+plt.tight_layout()
+ax_1 = Fig.add_subplot(211)
+plt.ylabel('Meters Cross-Shore')
 
-# # Short and long-term shoreline change
-# ax_2 = Fig.add_subplot(212)
-# plt.xlabel('Meters Alongshore')
-# plt.ylabel('Shoreline Change Rate [m/yr]')
-# long_term_shoreline_change_rate = (meeb.x_s_TS[-1, :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # [m/yr]
-# long_term_shoreline_change_rate = np.repeat(long_term_shoreline_change_rate, cellsize)
-# short_term_shoreline_change_rate = (meeb.x_s_TS[int(10 * meeb.storm_iterations_per_year), :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # First decade
-# short_term_shoreline_change_rate = np.repeat(short_term_shoreline_change_rate, cellsize)
-# ax_2.plot(np.arange(int(meeb.x_s_TS.shape[1] * cellsize)), np.zeros([int(meeb.x_s_TS.shape[1] * cellsize)]), 'k--', alpha=0.3, label='_Zero Line')
-# ax_2.plot(short_term_shoreline_change_rate, 'cornflowerblue', label='Short-term Shoreline Change (First Decade)')
-# ax_2.plot(long_term_shoreline_change_rate, 'darkred', label='Long-term Shoreline Change (Full Simulation Duration)')
-# plt.legend()
+color = plt.cm.viridis(np.arange(meeb.x_s_TS.shape[0]))
+
+for it in range(meeb.x_s_TS.shape[0]):
+    shoreline_it = meeb.x_s_TS[it, :] * cellsize  # Find relative ocean shoreline positions and convert y-axis to meters
+    shoreline_it = np.repeat(shoreline_it, cellsize)  # Convert x-axis to meters
+    if it == 0:
+        ax_1.plot(shoreline_it, c=color[it], label='Start')
+    if it == meeb.x_s_TS.shape[0] - 1:
+        ax_1.plot(shoreline_it, c=color[it], label='End')
+    else:
+        ax_1.plot(shoreline_it, c=color[it], label='_')
+plt.legend()
+
+# Short and long-term shoreline change
+ax_2 = Fig.add_subplot(212)
+plt.xlabel('Meters Alongshore')
+plt.ylabel('Shoreline Change Rate [m/yr]')
+ax_2.plot(np.arange(int(meeb.x_s_TS.shape[1] * cellsize)), np.zeros([int(meeb.x_s_TS.shape[1] * cellsize)]), 'k--', alpha=0.3, label='_Zero Line')
+long_term_shoreline_change_rate = (meeb.x_s_TS[-1, :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # [m/yr]
+long_term_shoreline_change_rate = np.repeat(long_term_shoreline_change_rate, cellsize)
+ax_2.plot(long_term_shoreline_change_rate, 'darkred', label='Long-term Shoreline Change (Full Simulation Duration)')
+if sim_duration >= 10:
+    short_term_shoreline_change_rate = (meeb.x_s_TS[int(10 * meeb.storm_iterations_per_year), :] - meeb.x_s_TS[0, :]) / (meeb.x_s_TS.shape[0] / meeb.storm_iterations_per_year) * cellsize  # First decade
+    short_term_shoreline_change_rate = np.repeat(short_term_shoreline_change_rate, cellsize)
+    ax_2.plot(short_term_shoreline_change_rate, 'cornflowerblue', label='Short-term Shoreline Change (First Decade)')
+plt.legend()
 
 # -----------------
 # # Storm Sequence
