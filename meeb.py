@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 22 July 2025
+Last update: 29 July 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -121,7 +121,7 @@ class MEEB:
             W_d_relative_effectiveness=0.85,  # [0-1] Geomorphic effectiveness of dead woody species, relative to other species
 
             # Dispersal and Flow
-            H1_lateral_probability=0.008,  # [0-1] Probability of lateral expansion of existing vegetation, herbaceous species 1
+            H1_lateral_probability=0.05,  # [0-1] Probability of lateral expansion of existing vegetation, herbaceous species 1
             H2_lateral_probability=0.01,  # [0-1] Probability of lateral expansion of existing vegetation, herbaceous species 2
             H1_pioneer_probability=0.002,  # [0-1] Probability of occurrence of new pioneering vegetation, herbaceous species 1
             H2_pioneer_probability=0.0012,  # [0-1] Probability of occurrence of new pioneering vegetation, herbaceous species 2
@@ -175,15 +175,15 @@ class MEEB:
             W_TWL_max=3,  # [m MHW] Maximum HWE total water level below which woody loss to bare is 100%
 
             # Erosion/Deposition Thresholds
-            germination_erosion_limit=-0.06,  # [m, negative] Maximum depth of erosion beyond which germination probability is 0%, all species
-            germination_burial_limit=0.06,  # [m, positive] Maximum depth of burial beyond which germination probability is 0%, all species
+            germination_erosion_limit=-0.1,  # [m, negative] Maximum depth of erosion beyond which germination probability is 0%, all species
+            germination_burial_limit=0.1,  # [m, positive] Maximum depth of burial beyond which germination probability is 0%, all species
             seedling_erosion_limit=-0.1,  # [m, negative] Maximum depth of erosion beyond which seedling mortality probability is 100%, all species
             seedling_burial_limit=0.1,  # [m, positive] Maximum depth of deposition beyond which seedling mortality probability is 100%, all species
             H1_uproot_limit=-0.4,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 1
             H1_burial_limit=0.8,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, herbaceous species 1
             H2_uproot_limit=-0.4,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 2
             H2_burial_limit=0.8,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, herbaceous species 2
-            W_uproot_limit=-0.3,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, woody species
+            W_uproot_limit=-0.2,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, woody species
             W_burial_limit=4.0,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, woody species
 
             # Elevation Thresholds & Parameters
@@ -233,7 +233,7 @@ class MEEB:
             W_stim_max=0.04,  # [m/timestep] Maximum deposition for stimulation from deposition, woody species
 
             # Woody Fronting Dune Elevation and Shoreline Distance Thresholds
-            W_dune_elev_min=1.85,  # [m MHW] Frontingf dune elevation below which woody establishment (germination and growth) is 0%
+            W_dune_elev_min=1.85,  # [m MHW] Fronting dune elevation below which woody establishment (germination and growth) is 0%
             W_dune_elev_max=2.25,  # [m MHW] Fronting dune elevation above which woody establishment (germination and growth) is 100%
             W_shoreline_distance_min=170,  # [m] Distance from ocean shoreline below which woody establishment (germination and growth) is 0% in absence of sufficiently tall dune
             W_shoreline_distance_max=200,  # [m] Distance from ocean shoreline above which woody establishment (germination and growth) is 100% in absence of sufficiently tall dune
