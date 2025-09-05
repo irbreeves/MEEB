@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 22 July 2025
+Last update: 29 August 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -2166,6 +2166,7 @@ def germination_prob(temperature,
                      H1_growth_woody_comp_max,
                      H2_growth_woody_comp_max,
                      W_germ_Pmin_herbaceous_facil,
+                     W_germ_herbaceous_facil_min,
                      W_germ_herbaceous_facil_max,
                      W_dune_elev_min,
                      W_dune_elev_max,
@@ -2174,6 +2175,15 @@ def germination_prob(temperature,
                      H1_germ_Pmax_tempC,
                      H2_germ_Pmax_tempC,
                      W_germ_Pmax_tempC,
+                     H1_elev_gamma_a,
+                     H1_elev_gamma_scale,
+                     H1_elev_gamma_loc,
+                     H2_elev_gamma_a,
+                     H2_elev_gamma_scale,
+                     H2_elev_gamma_loc,
+                     W_elev_gamma_a,
+                     W_elev_gamma_scale,
+                     W_elev_gamma_loc,
                      H1_germ_allowed,
                      H2_germ_allowed,
                      W_germ_allowed,
@@ -2210,12 +2220,17 @@ def germination_prob(temperature,
                 H2_Germ_tempC = (1 - (1 / ((H2_germ_tempC_max - ((H2_germ_tempC_max + H2_germ_tempC_min) / 2)) ** 2)) * (temperature - ((H2_germ_tempC_max + H2_germ_tempC_min) / 2)) ** 2) if H2_germ_tempC_min < temperature < H2_germ_tempC_max else 0  # Parabolic
                 W_Germ_tempC = (1 - (1 / ((W_germ_tempC_max - ((W_germ_tempC_max + W_germ_tempC_min) / 2)) ** 2)) * (temperature - ((W_germ_tempC_max + W_germ_tempC_min) / 2)) ** 2) if W_germ_tempC_min < temperature < W_germ_tempC_max else 0  # Parabolic
 
+                # Elevation (boolean)
+                H1_Germ_elev = 1 if gamma_pdf(topo[ls, cs] - MHW, H1_elev_gamma_a, H1_elev_gamma_scale, H1_elev_gamma_loc) / gamma_pdf((H1_elev_gamma_a - 1) * H1_elev_gamma_scale + H1_elev_gamma_loc, H1_elev_gamma_a, H1_elev_gamma_scale, H1_elev_gamma_loc) > 0.01 else 0
+                H2_Germ_elev = 1 if gamma_pdf(topo[ls, cs] - MHW, H2_elev_gamma_a, H2_elev_gamma_scale, H2_elev_gamma_loc) / gamma_pdf((H2_elev_gamma_a - 1) * H2_elev_gamma_scale + H2_elev_gamma_loc, H2_elev_gamma_a, H2_elev_gamma_scale, H2_elev_gamma_loc) > 0.01 else 0
+                W_Germ_elev = 1 if gamma_pdf(topo[ls, cs] - MHW, W_elev_gamma_a, W_elev_gamma_scale, W_elev_gamma_loc) / gamma_pdf((W_elev_gamma_a - 1) * W_elev_gamma_scale + W_elev_gamma_loc, W_elev_gamma_a, W_elev_gamma_scale, W_elev_gamma_loc) > 0.01 else 0
+
                 # Competition
                 H1_Germ_wcomp = max(0, 1 - (1 / H1_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
                 H2_Germ_wcomp = max(0, 1 - (1 / H2_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
 
                 # Facilitation
-                W_Germ_hfacil = min(1, ((1 - W_germ_Pmin_herbaceous_facil) / W_germ_herbaceous_facil_max) * (veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) + W_germ_Pmin_herbaceous_facil)
+                W_Germ_hfacil = (1 - (1 / ((W_germ_herbaceous_facil_max - ((W_germ_herbaceous_facil_max + W_germ_herbaceous_facil_min) / 2)) ** 2)) * ((veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) - ((W_germ_herbaceous_facil_max + W_germ_herbaceous_facil_min) / 2)) ** 2) * (1 - W_germ_Pmin_herbaceous_facil) + W_germ_Pmin_herbaceous_facil if W_germ_herbaceous_facil_min < (veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) < W_germ_herbaceous_facil_max else W_germ_Pmin_herbaceous_facil  # Parabolic
 
                 # Fronting Dune Elevation
                 fronting_dune_elev = fronting_dune_elevations[ls]  # [m MHW] Elevation along foredune crestline fronting this cell
@@ -2238,9 +2253,9 @@ def germination_prob(temperature,
                     W_Germ_shoreline = distance_from_ocean_shoreline / (W_shoreline_distance_max - W_shoreline_distance_min) - W_shoreline_distance_min / (W_shoreline_distance_max - W_shoreline_distance_min)
 
                 # Calculate Effective Germination
-                H1_germ_eff[ls, cs] = H1_germ_Pmax_tempC * H1_Germ_tempC * H1_Germ_wcomp
-                H2_germ_eff[ls, cs] = H2_germ_Pmax_tempC * H2_Germ_tempC * H2_Germ_wcomp
-                W_germ_eff[ls, cs] = W_germ_Pmax_tempC * W_Germ_tempC * max(W_Germ_dune, W_Germ_shoreline) * W_Germ_hfacil
+                H1_germ_eff[ls, cs] = H1_germ_Pmax_tempC * H1_Germ_tempC * H1_Germ_wcomp * H1_Germ_elev
+                H2_germ_eff[ls, cs] = H2_germ_Pmax_tempC * H2_Germ_tempC * H2_Germ_wcomp * H2_Germ_elev
+                W_germ_eff[ls, cs] = W_germ_Pmax_tempC * W_Germ_tempC * max(W_Germ_dune, W_Germ_shoreline) * W_Germ_hfacil * W_Germ_elev
 
     # Constrain Germination to Cells Where Dispersal is Allowed
     H1_germ_eff *= H1_germ_allowed
@@ -2261,7 +2276,8 @@ def seedling_mortality_prob(topo,
                             sedimentation_balance_long_term,
                             sedimentation_balance_short_term,
                             temperature,
-                            extreme_temperature,
+                            extreme_high_temperature,
+                            extreme_low_temperature,
                             HWE,
                             HWE_Q,
                             seedling_erosion_limit,
@@ -2279,6 +2295,9 @@ def seedling_mortality_prob(topo,
                             H1_s_mort_Pmax_tempC,
                             H2_s_mort_Pmax_tempC,
                             W_s_mort_Pmax_tempC,
+                            woody_microclimate,
+                            microclimate_moderation_winter_tempC,
+                            microclimate_moderation_summer_tempC,
                             H1_QHWE_min,
                             H1_QHWE_max,
                             H2_QHWE_min,
@@ -2375,12 +2394,21 @@ def seedling_mortality_prob(topo,
                         W_s_mort_eff[ls, cs] = (1 - W_s_mort_eff[ls, cs]) / (W_QHWE_max - W_QHWE_min) * (HWE_Q[ls, cs] - W_QHWE_min) + W_s_mort_eff[ls, cs]
 
             # Extreme Temperatures
-            if extreme_temperature < H1_mort_tempC_min or extreme_temperature > H1_mort_tempC_max:
-                H1_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.4, 1.1))
-            if extreme_temperature < H2_mort_tempC_min or extreme_temperature > H2_mort_tempC_max:
-                H2_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.4, 1.1))
-            if extreme_temperature < W_s_mort_tempC_min or extreme_temperature > W_s_mort_tempC_max:
-                W_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.4, 1.1))
+            if woody_microclimate[ls, cs]:  # If within woody microclimate, ameliorate extreme temp
+                if extreme_low_temperature + microclimate_moderation_winter_tempC < H1_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > H1_mort_tempC_max:
+                    H1_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.95, 1.1))
+                if extreme_low_temperature + microclimate_moderation_winter_tempC < H2_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > H2_mort_tempC_max:
+                    H2_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.95, 1.1))
+                # if extreme_low_temperature + microclimate_moderation_winter_tempC < W_s_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > W_s_mort_tempC_max:
+                if extreme_low_temperature < W_s_mort_tempC_min or extreme_high_temperature > W_s_mort_tempC_max:
+                    W_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.95, 1.1))
+            else:
+                if extreme_low_temperature < H1_mort_tempC_min or extreme_high_temperature > H1_mort_tempC_max:
+                    H1_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.95, 1.1))
+                if extreme_low_temperature < H2_mort_tempC_min or extreme_high_temperature > H2_mort_tempC_max:
+                    H2_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.95, 1.1))
+                if extreme_low_temperature < W_s_mort_tempC_min or extreme_high_temperature > W_s_mort_tempC_max:
+                    W_s_mort_eff[ls, cs] = min(1, RNG.uniform(0.95, 1.1))
 
     return H1_s_mort_eff, H2_s_mort_eff, W_s_mort_eff
 
@@ -2487,7 +2515,8 @@ def senescence_prob(topo,
                     sedimentation_balance_long_term,
                     sedimentation_balance_short_term,
                     temperature,
-                    extreme_temperature,
+                    extreme_high_temperature,
+                    extreme_low_temperature,
                     HWE,
                     HWE_Q,
                     W_a_removal_eff,
@@ -2503,6 +2532,9 @@ def senescence_prob(topo,
                     H2_a_senesce_Pmax_tempC,
                     W_a_senesce_Pmin_tempC,
                     W_a_senesce_Pmax_tempC,
+                    woody_microclimate,
+                    microclimate_moderation_winter_tempC,
+                    microclimate_moderation_summer_tempC,
                     H1_QHWE_min,
                     H1_QHWE_max,
                     H2_QHWE_min,
@@ -2574,12 +2606,21 @@ def senescence_prob(topo,
                     H2_a_senesce_eff[ls, cs] = 1
 
             # Extreme Temperatures
-            if extreme_temperature < H1_mort_tempC_min or extreme_temperature > H1_mort_tempC_max:
-                H1_a_senesce_eff[ls, cs] = min(1, RNG.uniform(0.4, 1.1))
-            if extreme_temperature < H2_mort_tempC_min or extreme_temperature > H2_mort_tempC_max:
-                H2_a_senesce_eff[ls, cs] = min(1, RNG.uniform(0.4, 1.1))
-            if extreme_temperature < W_a_mort_tempC_min or extreme_temperature > W_a_mort_tempC_max:
-                W_a_senesce_eff[ls, cs] = max(0, min(1, RNG.uniform(0.4, 1.1)) - W_a_removal_eff[ls, cs])  # Relies upon W_a_removal_eff
+            if woody_microclimate[ls, cs]:  # If within woody microclimate, ameliorate extreme temp
+                if extreme_low_temperature + microclimate_moderation_winter_tempC < H1_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > H1_mort_tempC_max:
+                    H1_a_senesce_eff[ls, cs] = min(1, RNG.uniform(0.95, 1.1))
+                if extreme_low_temperature + microclimate_moderation_winter_tempC < H2_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > H2_mort_tempC_max:
+                    H2_a_senesce_eff[ls, cs] = min(1, RNG.uniform(0.95, 1.1))
+                # if extreme_low_temperature + microclimate_moderation_winter_tempC < W_a_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > W_a_mort_tempC_max:
+                if extreme_low_temperature < W_a_mort_tempC_min or extreme_high_temperature > W_a_mort_tempC_max:
+                    W_a_senesce_eff[ls, cs] = max(0, min(1, RNG.uniform(0.95, 1.1)) - W_a_removal_eff[ls, cs])  # Relies upon W_a_removal_eff
+            else:
+                if extreme_low_temperature < H1_mort_tempC_min or extreme_high_temperature > H1_mort_tempC_max:
+                    H1_a_senesce_eff[ls, cs] = min(1, RNG.uniform(0.95, 1.1))
+                if extreme_low_temperature < H2_mort_tempC_min or extreme_high_temperature > H2_mort_tempC_max:
+                    H2_a_senesce_eff[ls, cs] = min(1, RNG.uniform(0.95, 1.1))
+                if extreme_low_temperature < W_a_mort_tempC_min or extreme_high_temperature > W_a_mort_tempC_max:
+                    W_a_senesce_eff[ls, cs] = max(0, min(1, RNG.uniform(0.95, 1.1)) - W_a_removal_eff[ls, cs])  # Relies upon W_a_removal_eff
 
     return H1_a_senesce_eff, H2_a_senesce_eff, W_a_senesce_eff
 
@@ -2603,7 +2644,7 @@ def woody_dead_loss(topo,
                     x_b,
                     sedimentation_balance_long_term,
                     sedimentation_balance_short_term,
-                    extreme_temperature,
+                    extreme_low_temperature,
                     HWE,
                     HWE_Q,
                     HWE_TWL,
@@ -2628,7 +2669,7 @@ def woody_dead_loss(topo,
                 W_d_loss_eff[ls, cs] = 1
 
             # Submergence or freezing temperatures
-            elif topo[ls, cs] < MHW or extreme_temperature < 0:
+            elif topo[ls, cs] < MHW or extreme_low_temperature < 0:
                 W_d_loss_eff[ls, cs] = W_d_loss_Pmax_submerged_frozen
 
             elif HWE and HWE_Q[ls, cs] > 0:
