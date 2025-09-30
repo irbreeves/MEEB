@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 3 September 2025
+Last update: 29 September 2025
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -47,7 +47,7 @@ class MEEB:
             init_elev_array=np.array(np.nan),  # [m NAVD88] Numpy array of initial elevation; requires init_by_file to be False
             init_spec1_array=np.array(np.nan),  # [0-1] Numpy array of initial spec1 density; requires init_by_file to be False
             init_spec2_array=np.array(np.nan),  # [0-1] Numpy array of initial spec2 density; requires init_by_file to be False
-            hindcast=False,  # [bool] Determines whether the model is run with the default stochastisity generated storms [hindcast=False], or an empirical storm, wind, wave, temp timeseries [hindcast=True]
+            hindcast=False,  # [bool] Determines whether the model is run with the default stochastically generated storms [hindcast=False], or an empirical storm timeseries [hindcast=True]
             simulation_start_date='20181007',  # [date] Date from which to start hindcast; must be string in format 'yyyymmdd'
             hindcast_timeseries_start_date='19790101',  # [date] Start date of hindcast timeseries input data; format 'yyyymmdd'
             seeded_random_numbers=True,  # [bool] Determines whether to use seeded random number generator for reproducibility
@@ -118,18 +118,18 @@ class MEEB:
 
             # Relative Geomorphic "Effectiveness"
             H1_a_relative_effectiveness=0.75,  # [0-1] Geomorphic effectiveness of adult herbaceous species 1, relative to other species
-            H2_a_relative_effectiveness=0.5,  # [0-1] Geomorphic effectiveness of adult herbaceous species 2, relative to other species
+            H2_a_relative_effectiveness=0.52,  # [0-1] Geomorphic effectiveness of adult herbaceous species 2, relative to other species
             W_a_relative_effectiveness=1,  # [0-1] Geomorphic effectiveness of adult woody species, relative to other species - typically the most effective (i.e., 1)
             W_d_relative_effectiveness=0.85,  # [0-1] Geomorphic effectiveness of dead woody species, relative to other species
 
             # Dispersal and Flow
-            H1_lateral_probability=0.05,  # [0-1] Probability of lateral expansion of existing vegetation, herbaceous species 1
-            H2_lateral_probability=0.016,  # [0-1] Probability of lateral expansion of existing vegetation, herbaceous species 2
-            H1_pioneer_probability=0.002,  # [0-1] Probability of occurrence of new pioneering vegetation, herbaceous species 1
+            H1_lateral_probability=0.03,  # [0-1] Probability of lateral expansion of existing vegetation, herbaceous species 1
+            H2_lateral_probability=0.012,  # [0-1] Probability of lateral expansion of existing vegetation, herbaceous species 2
+            H1_pioneer_probability=0.001,  # [0-1] Probability of occurrence of new pioneering vegetation, herbaceous species 1
             H2_pioneer_probability=0.001,  # [0-1] Probability of occurrence of new pioneering vegetation, herbaceous species 2
             W_pioneer_probability=0.00002,  # [0-1] Probability of occurrence of new pioneering vegetation, woody species
-            W_avian_seed_min=2,  # [seeds/timestep] Minimum number of seeds produced and dispersed per timestep for woody species
-            W_avian_seed_max=16,  # [seeds/timestep] Maximum number of seeds produced and dispersed per timestep for woody species
+            W_avian_seed_min=1,  # [seeds/timestep] Minimum number of seeds produced and dispersed per timestep for woody species
+            W_avian_seed_max=10,  # [seeds/timestep] Maximum number of seeds produced and dispersed per timestep for woody species
             W_avian_dispersal_mean=-0.7219,  # Lognormal avian dispersal distance function
             W_avian_dispersal_sigma=1.5,  # Lognormal avian dispersal distance function
             H_flow_reduction_max=0.002,  # [0-1] Proportion of overwash flow reduction through a cell populated with herbaceous species at full density
@@ -137,26 +137,26 @@ class MEEB:
             effective_veg_sigma=3,  # Standard deviation for Gaussian filter of vegetation cover
 
             # Transition Probabilities
-            H1_germ_Pmax_tempC=0.30,  # Herbaceous germination at optimal temperature, species 1
-            H2_germ_Pmax_tempC=0.30,  # Herbaceous germination at optimal temperature, species 2
-            W_germ_Pmax_tempC=0.14,  # Woody germination at optimal temperature
+            H1_germ_Pmax_tempC=0.5,  # Herbaceous germination at optimal temperature, species 1
+            H2_germ_Pmax_tempC=0.5,  # Herbaceous germination at optimal temperature, species 2
+            W_germ_Pmax_tempC=0.5,  # Woody germination at optimal temperature
             W_germ_Pmin_herbaceous_facil=0.8,  # Woody germination at least optimal (i.e., zero) herbaceous cover relative to optimal (i.e., 1)
-            H1_s_mort_Pmax_tempC=0.6,  # Herbaceous seedling mortality at optimal temperature, species 1
-            H2_s_mort_Pmax_tempC=0.6,  # Herbaceous seedling mortality at optimal temperature, species 2
+            H1_s_mort_Pmax_tempC=0.8,  # Herbaceous seedling mortality at optimal temperature, species 1
+            H2_s_mort_Pmax_tempC=0.8,  # Herbaceous seedling mortality at optimal temperature, species 2
             W_s_mort_Pmax_tempC=0.4,  # Woody seedling mortality at optimal temperature
             H1_growth_Pmax_tempC=0.95,  # Herbaceous seedling to adult at optimal temperature, species 1
-            H1_growth_Pmax_elev=0.8,  # Herbaceous seedling to adult at optimal elevation, species 1
+            H1_growth_Pmax_elev=0.8,  # Herbaceous bare to seedling and seedling to adult probabilities at optimal elevation, species 1
             H1_growth_Pmin_stim=0.95,  # Herbaceous seedling to adult with no deposition stimulation, species 1
             H2_growth_Pmax_tempC=0.95,  # Herbaceous seedling to adult at optimal temperature, species 2
-            H2_growth_Pmax_elev=0.8,  # Herbaceous seedling to adult at optimal elevation, species 2
+            H2_growth_Pmax_elev=0.8,  # Herbaceous bare to seedling and seedling to adult probabilities at optimal elevation, species 2
             H2_growth_Pmin_stim=0.95,  # Herbaceous seedling to adult with no deposition stimulation, species 2
             W_growth_Pmax_tempC=0.7,  # Woody seedling to adult at optimal temperature
-            W_growth_Pmax_elev=0.6,  # Woody seedling to adult at optimal elevation
+            W_growth_Pmax_elev=0.6,  # Woody bare to seedling and seedling to adult probabilities at optimal elevation
             W_growth_Pmin_stim=0.9,  # Woody seedling to adult with no deposition stimulation (lower value = larger effect of stimulation)
             H1_a_senesce_Pmin_tempC=0.02,  # Herbaceous adult senescence to dead at optimal temperature for survival, species 1
-            H1_a_senesce_Pmax_tempC=0.06,  # Herbaceous adult senescence to dead at least optimal temperatures for survival, species 1
+            H1_a_senesce_Pmax_tempC=0.12,  # Herbaceous adult senescence to dead at least optimal temperatures for survival, species 1
             H2_a_senesce_Pmin_tempC=0.02,  # Herbaceous adult senescence to dead at optimal temperature for survival, species 2
-            H2_a_senesce_Pmax_tempC=0.06,  # Herbaceous adult senescence to dead at least optimal temperatures for survival, species 2
+            H2_a_senesce_Pmax_tempC=0.12,  # Herbaceous adult senescence to dead at least optimal temperatures for survival, species 2
             W_a_senesce_Pmin_tempC=0.004,  # Woody adult senescence at optimal temperature for survival
             W_a_senesce_Pmax_tempC=0.006,  # Woody adult senescence at least optimal temperatures for survival
             W_d_loss_Pmin=0.1,  # Woody dead loss (breakdown) minimum
@@ -177,13 +177,13 @@ class MEEB:
             W_TWL_max=3,  # [m MHW] Maximum HWE total water level below which woody loss to bare is 100%
 
             # Erosion/Deposition Thresholds
-            germination_erosion_limit=-0.02,  # [m, negative] Maximum depth of erosion beyond which germination probability is 0%, all species
-            germination_burial_limit=0.1,  # [m, positive] Maximum depth of burial beyond which germination probability is 0%, all species
+            germination_erosion_limit=-0.08,  # [m, negative] Maximum depth of erosion beyond which germination probability is 0%, all species
+            germination_burial_limit=0.08,  # [m, positive] Maximum depth of burial beyond which germination probability is 0%, all species
             seedling_erosion_limit=-0.1,  # [m, negative] Maximum depth of erosion beyond which seedling mortality probability is 100%, all species
             seedling_burial_limit=0.2,  # [m, positive] Maximum depth of deposition beyond which seedling mortality probability is 100%, all species
-            H1_uproot_limit=-0.4,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 1
+            H1_uproot_limit=-0.6,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 1
             H1_burial_limit=0.75,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, herbaceous species 1
-            H2_uproot_limit=-0.4,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 2
+            H2_uproot_limit=-0.6,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 2
             H2_burial_limit=0.85,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, herbaceous species 2
             W_uproot_limit=-0.3,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, woody species
             W_burial_limit=4.0,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, woody species
@@ -200,32 +200,33 @@ class MEEB:
             W_elev_gamma_scale=0.23,  # Scale parameter of gamma probability density function for elevation, woody species
 
             # Temperature Thresholds and Parameters
-            H1_germ_tempC_min=23,  # [C] Minimum temperature for germination, herbaceous species 1
-            H1_germ_tempC_max=41,  # [C] Maximum temperature for germination, herbaceous species 1
-            H2_germ_tempC_min=27,  # [C] Minimum temperature for germination, herbaceous species 2
-            H2_germ_tempC_max=49,  # [C] Maximum temperature for germination, herbaceous species 2
-            W_germ_tempC_min=20,  # [C] Minimum temperature for germination, woody species
-            W_germ_tempC_max=48,  # [C] Maximum temperature for germination, woody species
-            H1_growth_tempC_min=16,  # [C] Minimum temperature for growth, herbaceous species 1
-            H1_growth_tempC_max=32,  # [C] Maximum temperature for growth, herbaceous species 1
-            H2_growth_tempC_min=22,  # [C] Minimum temperature for growth, herbaceous species 2
-            H2_growth_tempC_max=38,  # [C] Maximum temperature for growth, herbaceous species 2
+            H1_germ_tempC_min=21,  # [C] Minimum temperature for germination, herbaceous species 1
+            H1_germ_tempC_max=43,  # [C] Maximum temperature for germination, herbaceous species 1
+            H2_germ_tempC_min=24,  # [C] Minimum temperature for germination, herbaceous species 2
+            H2_germ_tempC_max=50,  # [C] Maximum temperature for germination, herbaceous species 2
+            W_germ_tempC_min=10,  # [C] Minimum temperature for germination, woody species
+            W_germ_tempC_max=40,  # [C] Maximum temperature for germination, woody species
+            H1_growth_tempC_min=12,  # [C] Minimum temperature for growth, herbaceous species 1
+            H1_growth_tempC_max=36,  # [C] Maximum temperature for growth, herbaceous species 1
+            H2_growth_tempC_min=21,  # [C] Minimum temperature for growth, herbaceous species 2
+            H2_growth_tempC_max=40,  # [C] Maximum temperature for growth, herbaceous species 2
             W_growth_tempC_min=10,  # [C] Minimum temperature for growth, woody species
             W_growth_tempC_max=50,  # [C] Maximum temperature for growth, woody species
-            H1_s_mort_tempC_min=-6,  # [C] Threshold temperature below which seedling mortality is 100%, herbaceous species 1
-            H1_s_mort_tempC_max=55,  # [C] Threshold temperature above which seedling mortality is 100%, herbaceous species 1
-            H1_a_mort_tempC_min=-12,  # [C] Threshold temperature below which adult mortality is 100%, herbaceous species 1
-            H1_a_mort_tempC_max=55,  # [C] Threshold temperature above which adult mortality is 100%, herbaceous species 1
-            H2_s_mort_tempC_min=-6,  # [C] Threshold temperature below which seedling mortality is 100%, herbaceous species 2
-            H2_s_mort_tempC_max=55,  # [C] Threshold temperature above which seedling mortality is 100%, herbaceous species 2
-            H2_a_mort_tempC_min=-12,  # [C] Threshold temperature below which adult mortality is 100%, herbaceous species 2
-            H2_a_mort_tempC_max=55,  # [C] Threshold temperature above which adult mortality is 100%, herbaceous species 2
+            H1_s_mort_tempC_min=-18,  # [C] Threshold temperature below which seedling mortality is 100%, herbaceous species 1
+            H1_s_mort_tempC_max=40,  # [C] Threshold temperature above which seedling mortality is 100%, herbaceous species 1
+            H1_a_mort_tempC_min=-23,  # [C] Threshold temperature below which adult mortality is 100%, herbaceous species 1
+            H1_a_mort_tempC_max=45,  # [C] Threshold temperature above which adult mortality is 100%, herbaceous species 1
+            H2_s_mort_tempC_min=-13,  # [C] Threshold temperature below which seedling mortality is 100%, herbaceous species 2
+            H2_s_mort_tempC_max=40,  # [C] Threshold temperature above which seedling mortality is 100%, herbaceous species 2
+            H2_a_mort_tempC_min=-18,  # [C] Threshold temperature below which adult mortality is 100%, herbaceous species 2
+            H2_a_mort_tempC_max=45,  # [C] Threshold temperature above which adult mortality is 100%, herbaceous species 2
             W_s_mort_tempC_min=-8,  # [C] Threshold temperature below which seedling mortality is 100%, woody species
             W_s_mort_tempC_max=50,  # [C] Threshold temperature above which seedling mortality is 100%, woody species
             W_a_mort_tempC_min=-15,  # [C] Threshold temperature below which adult mortality is 100%, woody species
             W_a_mort_tempC_max=50,  # [C] Threshold temperature above which adult mortality is 100%, woody species
             microclimate_moderation_winter_tempC=2.5,  # [C] Increase of extreme winter temperatures (warming) from woody microclimate moderation
             microclimate_moderation_summer_tempC=18.4,  # [C] Decrease of extreme summer temperatures (cooling) from woody microclimate moderation
+            shift_mean_atmospheric_temperature=0,  # [C] Shift in mean atmospheric temperature
 
             # Growth Stimulation From Deposition Thresholds
             H1_stim_min=0,  # [m/timestep] Minimum deposition for stimulation from deposition, herbaceous species 1
@@ -242,10 +243,11 @@ class MEEB:
             W_shoreline_distance_max=200,  # [m] Distance from ocean shoreline above which woody establishment (germination and growth) is 100% in absence of sufficiently tall dune
 
             # Competition/Facilitation Thresholds and Parameters
-            H1_growth_woody_comp_max=0.9,  # Maximum woody fractional cover beyond which germination/growth of herbaceous species 1 is 0%
-            H2_growth_woody_comp_max=0.9,  # Maximum woody fractional cover beyond which germination/growth of herbaceous species 2 is 0%
-            W_germ_herbaceous_facil_min=0.05,  # Minimum herbaceous fractional cover below which woody germination is minimized
-            W_germ_herbaceous_facil_max=0.95,  # Maximum herbaceous fractional cover beyond which woody germination is minimized
+            H1_growth_woody_comp_max=0.9,  # [0-1] Maximum woody fractional cover beyond which germination/growth of herbaceous species 1 is 0%
+            H2_growth_woody_comp_max=0.9,  # [0-1] Maximum woody fractional cover beyond which germination/growth of herbaceous species 2 is 0%
+            H1_growth_H2_comp_max=0.4,  # [0-1] Maximum percent reduction in germination/growth of herbaceous species 1 when in competition with herbaceous species 2
+            W_germ_herbaceous_facil_min=0.05,  # [0-1] Minimum herbaceous fractional cover below which woody germination is minimized
+            W_germ_herbaceous_facil_max=0.95,  # [0-1] Maximum herbaceous fractional cover beyond which woody germination is minimized
 
     ):
         """MEEB: Mesoscale Explicit Ecogeomorphic Barrier model.
@@ -343,7 +345,6 @@ class MEEB:
         self._H_flow_reduction_max = H_flow_reduction_max
         self._W_flow_reduction_max = W_flow_reduction_max
         self._effective_veg_sigma = effective_veg_sigma
-        # ---------------
         self._H1_a_relative_effectiveness = H1_a_relative_effectiveness
         self._H2_a_relative_effectiveness = H2_a_relative_effectiveness
         self._W_a_relative_effectiveness = W_a_relative_effectiveness
@@ -427,6 +428,7 @@ class MEEB:
         self._W_a_mort_tempC_max = W_a_mort_tempC_max
         self._microclimate_moderation_winter_tempC = microclimate_moderation_winter_tempC
         self._microclimate_moderation_summer_tempC = microclimate_moderation_summer_tempC
+        self._shift_mean_atmospheric_temperature = shift_mean_atmospheric_temperature
         self._H1_stim_min = H1_stim_min
         self._H1_stim_max = H1_stim_max
         self._H2_stim_min = H2_stim_min
@@ -439,6 +441,7 @@ class MEEB:
         self._W_shoreline_distance_max = W_shoreline_distance_max
         self._H1_growth_woody_comp_max = H1_growth_woody_comp_max
         self._H2_growth_woody_comp_max = H2_growth_woody_comp_max
+        self._H1_growth_H2_comp_max = H1_growth_H2_comp_max
         self._W_germ_herbaceous_facil_min = W_germ_herbaceous_facil_min
         self._W_germ_herbaceous_facil_max = W_germ_herbaceous_facil_max
 
@@ -537,11 +540,18 @@ class MEEB:
 
         self._veg_fraction = np.zeros([self._longshore, self._crossshore, 8], dtype=np.float32)  # Vector of initial states [Bare, H1_seed, H1_adult, H2_seed, H2_adult, W_seed, W_adult, W_dead]
         self._veg_fraction[:, :, 1] = 0  # Set initial H1 Juvenile
-        self._veg_fraction[:, :, 2] = (self._spec1 - 0.2) / 2  # Set initial H1 Adult
-        self._veg_fraction[:, :, 2][self._veg_fraction[:, :, 2] < 0] = 0
         self._veg_fraction[:, :, 3] = 0  # Set initial H2 Juvenile
-        self._veg_fraction[:, :, 4] = (self._spec1 - 0.2) / 2  # Set initial H2 Adult
-        self._veg_fraction[:, :, 4][self._veg_fraction[:, :, 4] < 0] = 0
+        if self._name == 'AMBR':
+            self._veg_fraction[:, :, 2] = (self._spec1 - 0.2)  # Set 100% initial H1 Adult
+            self._veg_fraction[:, :, 2][self._veg_fraction[:, :, 2] < 0] = 0
+        elif self._name == 'UNPA':
+            self._veg_fraction[:, :, 4] = (self._spec1 - 0.2)  # Set 100% initial H2 Adult
+            self._veg_fraction[:, :, 4][self._veg_fraction[:, :, 4] < 0] = 0
+        else:
+            self._veg_fraction[:, :, 2] = (self._spec1 - 0.2) / 2  # Set 50% initial H1 Adult
+            self._veg_fraction[:, :, 2][self._veg_fraction[:, :, 2] < 0] = 0
+            self._veg_fraction[:, :, 4] = (self._spec1 - 0.2) / 2  # Set 50% initial H2 Adult
+            self._veg_fraction[:, :, 4][self._veg_fraction[:, :, 4] < 0] = 0
         self._veg_fraction[:, :, 5] = self._spec2 * -0.5 + 0.5  # Set initial W Seedling
         self._veg_fraction[:, :, 5][self._veg_fraction[:, :, 5] > 0.25] = 0.25
         self._veg_fraction[:, :, 5][self._spec2 <= 0] = 0
@@ -549,6 +559,12 @@ class MEEB:
         self._veg_fraction[:, :, 6][self._veg_fraction[:, :, 6] < 0] = 0
         self._veg_fraction[:, :, 7] = self._spec2 * 0.1 - 0.06  # Set initial W Dead
         self._veg_fraction[:, :, 7][self._veg_fraction[:, :, 7] < 0] = 0
+
+        # self._veg_fraction[50:, :, 1] = 0
+        # self._veg_fraction[50:, :, 2] = 0
+        # self._veg_fraction[50:, :, 3] = 0
+        # self._veg_fraction[50:, :, 4] = 0
+
         self._veg_fraction[:, :, 0] = 1 - (self._veg_fraction[:, :, 1] + self._veg_fraction[:, :, 2] + self._veg_fraction[:, :, 3] + self._veg_fraction[:, :, 4] + self._veg_fraction[:, :, 5] + self._veg_fraction[:, :, 6] + self._veg_fraction[:, :, 7])  # Set initial Bare
 
         effective_veg_fraction = (self._veg_fraction[:, :, 2] * self._H1_a_relative_effectiveness
@@ -771,9 +787,9 @@ class MEEB:
 
             # --------------------------------------
             # VEGETATION
-            temperature_C = self._temperatureC_average_daily_max[int(iteration_year)]  # [C] Find temperature for this iteration (average daily high)
+            temperature_C = self._temperatureC_average_daily_max[int(iteration_year)] + self._shift_mean_atmospheric_temperature  # [C] Find temperature for this iteration (average daily high)
             extreme_high = np.round(np.max(self._RNG_temperature.normal(loc=temperature_C, scale=self._temperatureC_stdev_daily_max[int(iteration_year)], size=15)), 1)  # extreme high
-            extreme_low = np.round(np.min(self._RNG_temperature.normal(loc=self._temperatureC_average_daily_min[int(iteration_year)], scale=self._temperatureC_stdev_daily_min[int(iteration_year)], size=15)), 1)  # extreme high
+            extreme_low = np.round(np.min(self._RNG_temperature.normal(loc=self._temperatureC_average_daily_min[int(iteration_year)] + self._shift_mean_atmospheric_temperature, scale=self._temperatureC_stdev_daily_min[int(iteration_year)], size=15)), 1)  # extreme high
             extreme_high_temperature_C = max(extreme_high, extreme_low)
             extreme_low_temperature_C = min(extreme_high, extreme_low)
             foredune_crest_loc, not_gap = routine.foredune_crest(self._topo, self._MHW, self._cellsize)
@@ -829,6 +845,7 @@ class MEEB:
                 self._W_germ_tempC_min,
                 self._H1_growth_woody_comp_max,
                 self._H2_growth_woody_comp_max,
+                self._H1_growth_H2_comp_max,
                 self._W_germ_Pmin_herbaceous_facil,
                 self._W_germ_herbaceous_facil_min,
                 self._W_germ_herbaceous_facil_max,
@@ -839,6 +856,9 @@ class MEEB:
                 self._H1_germ_Pmax_tempC,
                 self._H2_germ_Pmax_tempC,
                 self._W_germ_Pmax_tempC,
+                self._H1_growth_Pmax_elev,
+                self._H2_growth_Pmax_elev,
+                self._W_growth_Pmax_elev,
                 self._H1_elev_gamma_a,
                 self._H1_elev_gamma_scale,
                 self._H1_elev_gamma_loc,
@@ -935,6 +955,7 @@ class MEEB:
                 self._W_elev_gamma_loc,
                 self._H1_growth_woody_comp_max,
                 self._H2_growth_woody_comp_max,
+                self._H1_growth_H2_comp_max,
                 self._H1_growth_Pmax_tempC,
                 self._H2_growth_Pmax_tempC,
                 self._W_growth_Pmax_tempC,
