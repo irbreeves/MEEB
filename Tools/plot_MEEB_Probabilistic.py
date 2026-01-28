@@ -1340,7 +1340,7 @@ def class_frequency_animation(class_probabilities, orientation='vertical'):
 # SIM SPECIFICATIONS
 
 # Classification Scheme - Choose from one or more of three currently available options: elevation, overwash_frequency, state
-classification_scheme = ['elevation', 'state', 'overwash_frequency']
+classification_scheme = ['state', 'overwash_frequency']
 
 name = ''  # Name of simulation suite
 sim_duration = 32  # [yr] Note: For probabilistic projections, use a duration that is divisible by the save_frequency
