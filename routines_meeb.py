@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 29 September 2025
+Last update: 28 January 2026
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -219,7 +219,7 @@ def shiftslabs(Pe, Pd, hop_avg, hop_rand_deviation, vegf, vegf_lim, direction, r
     shift = 1  # [cell length] Shift increment
 
     if random_hoplength:
-        hop = RNG.integers(hop_avg - hop_rand_deviation, hop_avg + hop_rand_deviation + 1)  # Draw random hop length from uniform randomn distribution for each iteration
+        hop = int(np.rint(RNG.uniform(hop_avg - hop_rand_deviation, hop_avg + hop_rand_deviation)))  # Draw random hop length from uniform random distribution for each iteration
     else:
         hop = hop_avg  # Or, use the same representative hoplength (average) every iteration
 
@@ -1093,6 +1093,7 @@ def storm_processes(
         fluxLimit,
         Qs_min,
         Kow,
+        Kl,
         mm,
         MHW,
         Cbb,
@@ -1134,6 +1135,8 @@ def storm_processes(
             [m^3/hr] Minimum discharge out of cell needed to transport sediment.
         Kow : float
             Sediment transport coefficient for overwash.
+        Kl : float
+            Lateral sediment transport coefficient for overwash.
         mm : float
             Inundation overwash constant.
         MHW : float
@@ -1212,7 +1215,7 @@ def storm_processes(
         # Landward of Dune Crest
 
         # Route Overwash
-        overwash_discharge, SedFluxDiff = route_overwash(
+        overwash_discharge, SedFluxIn, SedFluxOut = route_overwash(
             Elevation,
             dune_crest_loc,
             MHW,
@@ -1225,6 +1228,7 @@ def storm_processes(
             mm,
             MaxUpSlope,
             Kow,
+            Kl,
             Qs_min,
             Cbb,
             Qs_bb_min,
@@ -1236,13 +1240,14 @@ def storm_processes(
         )
 
         # Update Elevation After Every Storm Hour of Overwash
-        ElevationChangeLandward = SedFluxDiff / area_time_conversion  # [m] Net elevation change
+        ElevationChangeLandward = (SedFluxIn - SedFluxOut) / area_time_conversion  # [m] Net elevation change
         ElevationChangeLandward[ElevationChangeLandward > fluxLimit] = fluxLimit  # Constrain to flux limit
         ElevationChangeLandward[ElevationChangeLandward < -fluxLimit] = -fluxLimit  # Constrain to flux limit
         ElevationChangeLandward[np.arange(longshore), dune_crest_loc + 1] = 0  # Do not yet update elevation change at dune crest
+        ElevationChangeLandward[np.arange(longshore), dune_crest_loc] = 0  # Do not yet update elevation change at dune crest
 
         # Calculate and save volume of sediment deposited on/behind the barrier interior for every hour
-        OWloss = OWloss + np.sum(ElevationChangeLandward, axis=1) * cell_area  # [m^3] For each cell alongshore
+        OWloss += SedFluxOut[np.arange(longshore), dune_crest_loc + 1] / area_time_conversion * cell_area  # [m^3] For each cell alongshore
 
         # Record cells inundated from overwash
         inundated[:, domain_width_start:] = np.logical_or(inundated[:, domain_width_start:], overwash_discharge > 0)  # Update inundated map with cells landward of dune crest
@@ -1450,6 +1455,7 @@ def route_overwash(
         mm,
         MaxUpSlope,
         Kow,
+        Kl,
         Qs_min,
         Cbb,
         Qs_bb_min,
@@ -1459,7 +1465,8 @@ def route_overwash(
         W_flow_reduction_max,
         cellsize,
 ):
-    """Routes overwash and sediment for one storm iteration based off of Barrier3D (Reeves et al., 2021)"""
+    """Routes overwash and sediment for one storm iteration based off of Barrier3D (Reeves et al., 2021), and also includes
+    lateral sediment movement from Murray and Paola (1997)."""
 
     Discharge = np.zeros(Elevation.shape, dtype=np.float32)
     SedFluxIn = np.zeros(Elevation.shape, dtype=np.float32)
@@ -1518,6 +1525,21 @@ def route_overwash(
                             S3 = 0
                     else:
                         S3 = np.nan
+
+                    # Calculate Lateral Slopes
+                    if i > 0:
+                        SL = (Elevation[i - 1, d] - Elevation[i, d]) / cellsize  # Positive (downhill) slope if lateral cell higher
+                        if np.isnan(SL) or np.isinf(SL):
+                            SL = 0
+                    else:
+                        SL = 0
+
+                    if i < (longshore - 1):
+                        SR = (Elevation[i + 1, d] - Elevation[i, d]) / cellsize
+                        if np.isnan(SR) or np.isinf(SR):
+                            SR = 0
+                    else:
+                        SR = 0
 
                     # Calculate Discharge To Downflow Neighbors
 
@@ -1686,19 +1708,30 @@ def route_overwash(
                     if np.isnan(Qs3):
                         Qs3 = 0
 
+                    # Calculate Lateral Sed Movement
+                    if SL <= 0:
+                        QsL = 0
+                    else:
+                        QsL = Kl * SL * (Qs1 + Qs2 + Qs3)
+                    if SR <= 0:
+                        QsR = 0
+                    else:
+                        QsR = Kl * SR * (Qs1 + Qs2 + Qs3)
+
                     # Calculate Net Erosion/Accretion
                     # If cell is subaerial, elevation change is determined by difference between flux in vs. flux out
                     if Elevation[i, d] > MHW or np.sum(np.greater(Elevation[i, d + 1: d + 10], MHW)) > 0:
                         if i > 0:
                             SedFluxIn[i - 1, d + 1] += Qs1
+                            SedFluxOut[i - 1, d] += QsL
 
                         SedFluxIn[i, d + 1] += Qs2
+                        SedFluxIn[i, d] += QsL + QsR
+                        SedFluxOut[i, d] = Qs1 + Qs2 + Qs3
 
                         if i < (longshore - 1):
                             SedFluxIn[i + 1, d + 1] += Qs3
-
-                        Qs_out = Qs1 + Qs2 + Qs3
-                        SedFluxOut[i, d] = Qs_out
+                            SedFluxOut[i + 1, d] += QsR
 
                     # If cell is subaqeous, exponentially decay dep. of remaining sed across bay
                     else:
@@ -1731,7 +1764,7 @@ def route_overwash(
                         Qs_out = Qs1 + Qs2 + Qs3
                         SedFluxOut[i, d] = Qs_out
 
-    return Discharge, SedFluxIn - SedFluxOut
+    return Discharge, SedFluxIn, SedFluxOut
 
 
 def init_AST_environment(wave_asymmetry,
@@ -2147,7 +2180,7 @@ def germination_prob(temperature,
                      dune_crest_loc,
                      cellsize,
                      veg_fraction,
-                     sedimentation_balance_long_term,
+                     peak_annual_H2,
                      sedimentation_balance_short_term,
                      germination_erosion_limit,
                      germination_burial_limit,
@@ -2203,7 +2236,7 @@ def germination_prob(temperature,
                 W_germ_eff[ls, cs] = 0
 
             # Burial or Uprooting
-            elif germination_erosion_limit > sedimentation_balance_long_term[ls, cs] or germination_erosion_limit > sedimentation_balance_short_term[ls, cs] or sedimentation_balance_long_term[ls, cs] > germination_burial_limit:
+            elif germination_erosion_limit > sedimentation_balance_short_term[ls, cs] or sedimentation_balance_short_term[ls, cs] > germination_burial_limit:
                 H1_germ_eff[ls, cs] = 0
                 H2_germ_eff[ls, cs] = 0
                 W_germ_eff[ls, cs] = 0
@@ -2228,7 +2261,7 @@ def germination_prob(temperature,
                 # Competition
                 H1_Germ_wcomp = max(0, 1 - (1 / H1_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
                 H2_Germ_wcomp = max(0, 1 - (1 / H2_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
-                H1_Germ_h2comp = 1 - min(H1_growth_H2_comp_max, veg_fraction[ls, cs, 4] * 2)
+                H1_Germ_h2comp = 1 - min(H1_growth_H2_comp_max, peak_annual_H2[ls, cs] * 2)
 
                 # Facilitation
                 W_Germ_hfacil = (1 - (1 / ((W_germ_herbaceous_facil_max - ((W_germ_herbaceous_facil_max + W_germ_herbaceous_facil_min) / 2)) ** 2)) * ((veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) - ((W_germ_herbaceous_facil_max + W_germ_herbaceous_facil_min) / 2)) ** 2) * (1 - W_germ_Pmin_herbaceous_facil) + W_germ_Pmin_herbaceous_facil if W_germ_herbaceous_facil_min < (veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) < W_germ_herbaceous_facil_max else W_germ_Pmin_herbaceous_facil  # Parabolic
@@ -2275,7 +2308,6 @@ def seedling_mortality_prob(topo,
                             dune_crest_loc,
                             cellsize,
                             sedimentation_balance_long_term,
-                            sedimentation_balance_short_term,
                             temperature,
                             extreme_high_temperature,
                             extreme_low_temperature,
@@ -2373,7 +2405,7 @@ def seedling_mortality_prob(topo,
                     W_s_mort_eff[ls, cs] = 1
 
                 # Burial or Uprooting
-                if seedling_erosion_limit > sedimentation_balance_long_term[ls, cs] or seedling_erosion_limit > sedimentation_balance_short_term[ls, cs] or sedimentation_balance_long_term[ls, cs] > seedling_burial_limit:
+                if seedling_erosion_limit > sedimentation_balance_long_term[ls, cs] or sedimentation_balance_long_term[ls, cs] > seedling_burial_limit:
                     H1_s_mort_eff[ls, cs] += (1 - H1_s_mort_eff[ls, cs]) * 0.9  # 90% mortality if buried or eroded past threshold
                     H2_s_mort_eff[ls, cs] += (1 - H2_s_mort_eff[ls, cs]) * 0.9  # 90% mortality if buried or eroded past threshold
                     W_s_mort_eff[ls, cs] += (1 - W_s_mort_eff[ls, cs]) * 0.9  # 90% mortality if buried or eroded past threshold
@@ -2424,6 +2456,7 @@ def growth_prob(topo,
                 HWE,
                 HWE_Q,
                 veg_fraction,
+                peak_annual_H2,
                 H1_growth_tempC_min,
                 H1_growth_tempC_max,
                 H2_growth_tempC_min,
@@ -2493,7 +2526,7 @@ def growth_prob(topo,
                 # Competition
                 H1_Growth_wcomp = max(0, 1 - (1 / H1_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
                 H2_Growth_wcomp = max(0, 1 - (1 / H2_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
-                H1_Growth_h2comp = 1 - min(H1_growth_H2_comp_max, veg_fraction[ls, cs, 4] * 2)
+                H1_Growth_h2comp = 1 - min(H1_growth_H2_comp_max, peak_annual_H2[ls, cs] * 2)
 
                 # Woody logistic
                 W_Growth_logistic = 1 / (1 + np.exp(-8 * ((veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]) - 0.4)))  # Logistic curve to emulate real-world logistcic nature of shrub growth
@@ -2516,7 +2549,6 @@ def senescence_prob(topo,
                     x_s,
                     x_b,
                     sedimentation_balance_long_term,
-                    sedimentation_balance_short_term,
                     temperature,
                     extreme_high_temperature,
                     extreme_low_temperature,
@@ -2582,9 +2614,9 @@ def senescence_prob(topo,
                 W_a_senesce_eff[ls, cs] = W_a_senesce_Pmin_tempC + (W_a_senesce_Pmax_tempC - W_a_senesce_Pmin_tempC) * W_Senesce_tempC
 
                 # Burial/Uprooting (Burial/uprooting for woody species results in removal, not senescence)
-                if sedimentation_balance_long_term[ls, cs] < H1_uproot_limit or sedimentation_balance_short_term[ls, cs] < H1_uproot_limit or sedimentation_balance_long_term[ls, cs] > H1_burial_limit:
+                if sedimentation_balance_long_term[ls, cs] < H1_uproot_limit or sedimentation_balance_long_term[ls, cs] > H1_burial_limit:
                     H1_a_senesce_eff[ls, cs] += (1 - H1_a_senesce_eff[ls, cs]) * 0.9  # 90% mortality if buried or eroded past threshold
-                if sedimentation_balance_long_term[ls, cs] < H2_uproot_limit or sedimentation_balance_short_term[ls, cs] < H2_uproot_limit or sedimentation_balance_long_term[ls, cs] > H2_burial_limit:
+                if sedimentation_balance_long_term[ls, cs] < H2_uproot_limit or sedimentation_balance_long_term[ls, cs] > H2_burial_limit:
                     H2_a_senesce_eff[ls, cs] += (1 - H2_a_senesce_eff[ls, cs]) * 0.9  # 90% mortality if buried or eroded past threshold
 
                 if HWE and HWE_Q[ls, cs] > 0:
@@ -2628,12 +2660,11 @@ def senescence_prob(topo,
 
 
 def woody_removal_prob(sedimentation_balance_long_term,
-                       sedimentation_balance_short_term,
                        W_burial_limit,
                        W_uproot_limit,
                        RNG):
 
-    buried_or_uprooted = np.logical_or(W_burial_limit < sedimentation_balance_long_term, np.logical_or(sedimentation_balance_long_term < W_uproot_limit, sedimentation_balance_short_term < W_uproot_limit))  # [bool] Burial or uprooting kills most woody
+    buried_or_uprooted = np.logical_or(W_burial_limit < sedimentation_balance_long_term, sedimentation_balance_long_term < W_uproot_limit)  # [bool] Burial or uprooting kills most woody
     W_a_removal_eff = RNG.uniform(0.9, 1, sedimentation_balance_long_term.shape).astype(np.float32) * buried_or_uprooted  # 90% mortality if buried or eroded past threshold
 
     return W_a_removal_eff
@@ -2645,7 +2676,6 @@ def woody_dead_loss(topo,
                     x_s,
                     x_b,
                     sedimentation_balance_long_term,
-                    sedimentation_balance_short_term,
                     extreme_low_temperature,
                     HWE,
                     HWE_Q,
@@ -2667,7 +2697,7 @@ def woody_dead_loss(topo,
     for ls in range(topo.shape[0]):
         for cs in range(x_s[ls], x_b[ls] + 1):
 
-            if sedimentation_balance_long_term[ls, cs] < W_uproot_limit or sedimentation_balance_short_term[ls, cs] < W_uproot_limit or sedimentation_balance_long_term[ls, cs] > W_burial_limit:
+            if sedimentation_balance_long_term[ls, cs] < W_uproot_limit or sedimentation_balance_long_term[ls, cs] > W_burial_limit:
                 W_d_loss_eff[ls, cs] = 1  # 100% removal of dead shrubs if buried or eroded past threshold
 
             # Submergence or freezing temperatures
@@ -2781,7 +2811,8 @@ def woody_dispersal(veg_fraction, W_pioneer_probability, W_seed_min, W_seed_max,
 
     # ----------------
     # Random Seed Rain
-    W_pioneer = RNG.random(veg_fraction[:, :, 0].shape) < W_pioneer_probability
+    # W_pioneer = RNG.random(veg_fraction[:, :, 0].shape) < W_pioneer_probability  # Random seed rain for woody species
+    W_pioneer = 0  # NO random seed rain for woody species
 
     # ----------------
     # Combined
