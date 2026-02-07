@@ -2169,132 +2169,131 @@ def gamma_pdf(x, alpha, scale, loc):
 
 
 @njit(cache=True)
-def germination_prob(temperature,
-                     topo,
-                     MHW,
-                     HWE,
-                     HWE_Q,
-                     x_s,
-                     x_b,
-                     fronting_dune_elevations,
-                     dune_crest_loc,
-                     cellsize,
-                     veg_fraction,
-                     peak_annual_H2,
-                     sedimentation_balance_short_term,
-                     germination_erosion_limit,
-                     germination_burial_limit,
-                     H1_germ_tempC_max,
-                     H1_germ_tempC_min,
-                     H2_germ_tempC_max,
-                     H2_germ_tempC_min,
-                     W_germ_tempC_max,
-                     W_germ_tempC_min,
-                     H1_growth_woody_comp_max,
-                     H2_growth_woody_comp_max,
-                     H1_growth_H2_comp_max,
-                     W_germ_Pmin_herbaceous_facil,
-                     W_germ_herbaceous_facil_min,
-                     W_germ_herbaceous_facil_max,
-                     W_dune_elev_min,
-                     W_shoreline_distance_min,
-                     H1_germ_Pmax_tempC,
-                     H2_germ_Pmax_tempC,
-                     W_germ_Pmax_tempC,
-                     H1_growth_Pmax_elev,
-                     H2_growth_Pmax_elev,
-                     W_growth_Pmax_elev,
-                     H1_elev_gamma_a,
-                     H1_elev_gamma_scale,
-                     H1_elev_gamma_loc,
-                     H2_elev_gamma_a,
-                     H2_elev_gamma_scale,
-                     H2_elev_gamma_loc,
-                     W_elev_gamma_a,
-                     W_elev_gamma_scale,
-                     W_elev_gamma_loc,
-                     H1_germ_allowed,
-                     H2_germ_allowed,
-                     W_germ_allowed,
-                     RNG,
-                     ):
+def establishment_prob(temperature,
+                       topo,
+                       MHW,
+                       HWE,
+                       HWE_Q,
+                       x_s,
+                       x_b,
+                       fronting_dune_elevations,
+                       dune_crest_loc,
+                       cellsize,
+                       veg_fraction,
+                       peak_annual_H2,
+                       sedimentation_balance_short_term,
+                       establishment_erosion_limit,
+                       establishment_burial_limit,
+                       H1_estab_tempC_max,
+                       H1_estab_tempC_min,
+                       H2_estab_tempC_max,
+                       H2_estab_tempC_min,
+                       W_estab_tempC_max,
+                       W_estab_tempC_min,
+                       H1_growth_woody_comp_max,
+                       H2_growth_woody_comp_max,
+                       H1_growth_H2_comp_max,
+                       W_estab_Pmin_herbaceous_facil,
+                       W_estab_herbaceous_facil_min,
+                       W_estab_herbaceous_facil_max,
+                       W_dune_elev_min,
+                       W_shoreline_distance_min,
+                       H1_estab_Pmax_tempC,
+                       H2_estab_Pmax_tempC,
+                       W_estab_Pmax_tempC,
+                       H1_growth_Pmax_elev,
+                       H2_growth_Pmax_elev,
+                       W_growth_Pmax_elev,
+                       H1_elev_gamma_a,
+                       H1_elev_gamma_scale,
+                       H1_elev_gamma_loc,
+                       H2_elev_gamma_a,
+                       H2_elev_gamma_scale,
+                       H2_elev_gamma_loc,
+                       W_elev_gamma_a,
+                       W_elev_gamma_scale,
+                       W_elev_gamma_loc,
+                       H1_estab_allowed,
+                       H2_estab_allowed,
+                       W_estab_allowed,
+                       RNG,
+                       ):
+    """Calculates probabilities of Bare to Juvenile state transitions from germination or rhizomatic growth."""
 
-    """Calculate probability of Bare to Seedling/Juvenile state transitions from germination or rhizomatic growth."""
-
-    H1_germ_eff = np.zeros(topo.shape, dtype=np.float32)
-    H2_germ_eff = np.zeros(topo.shape, dtype=np.float32)
-    W_germ_eff = np.zeros(topo.shape, dtype=np.float32)
+    H1_estab_eff = np.zeros(topo.shape, dtype=np.float32)
+    H2_estab_eff = np.zeros(topo.shape, dtype=np.float32)
+    W_estab_eff = np.zeros(topo.shape, dtype=np.float32)
 
     for ls in range(topo.shape[0]):
         for cs in range(x_s[ls], x_b[ls] + 1):
 
             if HWE and HWE_Q[ls, cs] > 0:
-                H1_germ_eff[ls, cs] = 0
-                H2_germ_eff[ls, cs] = 0
-                W_germ_eff[ls, cs] = 0
+                H1_estab_eff[ls, cs] = 0
+                H2_estab_eff[ls, cs] = 0
+                W_estab_eff[ls, cs] = 0
 
             # Burial or Uprooting
-            elif germination_erosion_limit > sedimentation_balance_short_term[ls, cs] or sedimentation_balance_short_term[ls, cs] > germination_burial_limit:
-                H1_germ_eff[ls, cs] = 0
-                H2_germ_eff[ls, cs] = 0
-                W_germ_eff[ls, cs] = 0
+            elif establishment_erosion_limit > sedimentation_balance_short_term[ls, cs] or sedimentation_balance_short_term[ls, cs] > establishment_burial_limit:
+                H1_estab_eff[ls, cs] = 0
+                H2_estab_eff[ls, cs] = 0
+                W_estab_eff[ls, cs] = 0
 
             # RSLR Submergence
             elif topo[ls, cs] < MHW:
-                H1_germ_eff[ls, cs] = 0
-                H2_germ_eff[ls, cs] = 0
-                W_germ_eff[ls, cs] = 0
+                H1_estab_eff[ls, cs] = 0
+                H2_estab_eff[ls, cs] = 0
+                W_estab_eff[ls, cs] = 0
 
             else:
                 # Temperature
-                H1_Germ_tempC = (1 - (1 / ((H1_germ_tempC_max - ((H1_germ_tempC_max + H1_germ_tempC_min) / 2)) ** 2)) * (temperature - ((H1_germ_tempC_max + H1_germ_tempC_min) / 2)) ** 2) if H1_germ_tempC_min < temperature < H1_germ_tempC_max else 0  # Parabolic
-                H2_Germ_tempC = (1 - (1 / ((H2_germ_tempC_max - ((H2_germ_tempC_max + H2_germ_tempC_min) / 2)) ** 2)) * (temperature - ((H2_germ_tempC_max + H2_germ_tempC_min) / 2)) ** 2) if H2_germ_tempC_min < temperature < H2_germ_tempC_max else 0  # Parabolic
-                W_Germ_tempC = (1 - (1 / ((W_germ_tempC_max - ((W_germ_tempC_max + W_germ_tempC_min) / 2)) ** 2)) * (temperature - ((W_germ_tempC_max + W_germ_tempC_min) / 2)) ** 2) if W_germ_tempC_min < temperature < W_germ_tempC_max else 0  # Parabolic
+                H1_Estab_tempC = (1 - (1 / ((H1_estab_tempC_max - ((H1_estab_tempC_max + H1_estab_tempC_min) / 2)) ** 2)) * (temperature - ((H1_estab_tempC_max + H1_estab_tempC_min) / 2)) ** 2) if H1_estab_tempC_min < temperature < H1_estab_tempC_max else 0  # Parabolic
+                H2_Estab_tempC = (1 - (1 / ((H2_estab_tempC_max - ((H2_estab_tempC_max + H2_estab_tempC_min) / 2)) ** 2)) * (temperature - ((H2_estab_tempC_max + H2_estab_tempC_min) / 2)) ** 2) if H2_estab_tempC_min < temperature < H2_estab_tempC_max else 0  # Parabolic
+                W_Estab_tempC = (1 - (1 / ((W_estab_tempC_max - ((W_estab_tempC_max + W_estab_tempC_min) / 2)) ** 2)) * (temperature - ((W_estab_tempC_max + W_estab_tempC_min) / 2)) ** 2) if W_estab_tempC_min < temperature < W_estab_tempC_max else 0  # Parabolic
 
                 # Elevation Range
-                H1_Germ_elev = gamma_pdf(topo[ls, cs] - MHW, H1_elev_gamma_a, H1_elev_gamma_scale, H1_elev_gamma_loc) / gamma_pdf((H1_elev_gamma_a - 1) * H1_elev_gamma_scale + H1_elev_gamma_loc, H1_elev_gamma_a, H1_elev_gamma_scale, H1_elev_gamma_loc)
-                H2_Germ_elev = gamma_pdf(topo[ls, cs] - MHW, H2_elev_gamma_a, H2_elev_gamma_scale, H2_elev_gamma_loc) / gamma_pdf((H2_elev_gamma_a - 1) * H2_elev_gamma_scale + H2_elev_gamma_loc, H2_elev_gamma_a, H2_elev_gamma_scale, H2_elev_gamma_loc)
-                W_Germ_elev = gamma_pdf(topo[ls, cs] - MHW, W_elev_gamma_a, W_elev_gamma_scale, W_elev_gamma_loc) / gamma_pdf((W_elev_gamma_a - 1) * W_elev_gamma_scale + W_elev_gamma_loc, W_elev_gamma_a, W_elev_gamma_scale, W_elev_gamma_loc)
+                H1_Estab_elev = gamma_pdf(topo[ls, cs] - MHW, H1_elev_gamma_a, H1_elev_gamma_scale, H1_elev_gamma_loc) / gamma_pdf((H1_elev_gamma_a - 1) * H1_elev_gamma_scale + H1_elev_gamma_loc, H1_elev_gamma_a, H1_elev_gamma_scale, H1_elev_gamma_loc)
+                H2_Estab_elev = gamma_pdf(topo[ls, cs] - MHW, H2_elev_gamma_a, H2_elev_gamma_scale, H2_elev_gamma_loc) / gamma_pdf((H2_elev_gamma_a - 1) * H2_elev_gamma_scale + H2_elev_gamma_loc, H2_elev_gamma_a, H2_elev_gamma_scale, H2_elev_gamma_loc)
+                W_Estab_elev = gamma_pdf(topo[ls, cs] - MHW, W_elev_gamma_a, W_elev_gamma_scale, W_elev_gamma_loc) / gamma_pdf((W_elev_gamma_a - 1) * W_elev_gamma_scale + W_elev_gamma_loc, W_elev_gamma_a, W_elev_gamma_scale, W_elev_gamma_loc)
 
                 # Competition
-                H1_Germ_wcomp = max(0, 1 - (1 / H1_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
-                H2_Germ_wcomp = max(0, 1 - (1 / H2_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
-                H1_Germ_h2comp = 1 - min(H1_growth_H2_comp_max, peak_annual_H2[ls, cs] * 2)
+                H1_Estab_wcomp = max(0, 1 - (1 / H1_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
+                H2_Estab_wcomp = max(0, 1 - (1 / H2_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
+                H1_Estab_h2comp = 1 - min(H1_growth_H2_comp_max, peak_annual_H2[ls, cs] * 2)
 
                 # Facilitation
-                W_Germ_hfacil = (1 - (1 / ((W_germ_herbaceous_facil_max - ((W_germ_herbaceous_facil_max + W_germ_herbaceous_facil_min) / 2)) ** 2)) * ((veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) - ((W_germ_herbaceous_facil_max + W_germ_herbaceous_facil_min) / 2)) ** 2) * (1 - W_germ_Pmin_herbaceous_facil) + W_germ_Pmin_herbaceous_facil if W_germ_herbaceous_facil_min < (veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) < W_germ_herbaceous_facil_max else W_germ_Pmin_herbaceous_facil  # Parabolic
+                W_Estab_hfacil = (1 - (1 / ((W_estab_herbaceous_facil_max - ((W_estab_herbaceous_facil_max + W_estab_herbaceous_facil_min) / 2)) ** 2)) * ((veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) - ((W_estab_herbaceous_facil_max + W_estab_herbaceous_facil_min) / 2)) ** 2) * (1 - W_estab_Pmin_herbaceous_facil) + W_estab_Pmin_herbaceous_facil if W_estab_herbaceous_facil_min < (veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) < W_estab_herbaceous_facil_max else W_estab_Pmin_herbaceous_facil  # Parabolic
 
                 # Fronting Dune Elevation
                 fronting_dune_elev = fronting_dune_elevations[ls]  # [m MHW] Elevation along foredune crestline fronting this cell
                 if fronting_dune_elev < W_dune_elev_min or fronting_dune_elev <= topo[ls, cs] or cs <= dune_crest_loc[ls]:  # No fronting topography higher than this cell, or seaward of crestline
-                    W_Germ_dune = 0
+                    W_Estab_dune = 0
                 else:
-                    W_Germ_dune = 1
+                    W_Estab_dune = 1
 
                 # Distance From Ocean Shoreline
                 distance_from_ocean_shoreline = (cs - x_s[ls]) * cellsize  # [m]
                 if RNG.random() < 0.5:  # Only 50% of shrubs survive
-                    W_Germ_shoreline = 0
+                    W_Estab_shoreline = 0
                 elif distance_from_ocean_shoreline < W_shoreline_distance_min:
-                    W_Germ_shoreline = 0
+                    W_Estab_shoreline = 0
                 else:
-                    W_Germ_shoreline = 1
+                    W_Estab_shoreline = 1
 
-                # Calculate Effective Germination
-                H1_germ_eff[ls, cs] = (H1_germ_Pmax_tempC * H1_Germ_tempC) * H1_Germ_wcomp * (H1_growth_Pmax_elev * H1_Germ_elev) * H1_Germ_h2comp
-                H2_germ_eff[ls, cs] = (H2_germ_Pmax_tempC * H2_Germ_tempC) * H2_Germ_wcomp * (H2_growth_Pmax_elev * H2_Germ_elev)
-                W_germ_eff[ls, cs] = (W_germ_Pmax_tempC * W_Germ_tempC) * max(W_Germ_dune, W_Germ_shoreline) * W_Germ_hfacil * (W_growth_Pmax_elev * W_Germ_elev)
+                # Calculate Effective Establishment
+                H1_estab_eff[ls, cs] = (H1_estab_Pmax_tempC * H1_Estab_tempC) * H1_Estab_wcomp * (H1_growth_Pmax_elev * H1_Estab_elev) * H1_Estab_h2comp
+                H2_estab_eff[ls, cs] = (H2_estab_Pmax_tempC * H2_Estab_tempC) * H2_Estab_wcomp * (H2_growth_Pmax_elev * H2_Estab_elev)
+                W_estab_eff[ls, cs] = (W_estab_Pmax_tempC * W_Estab_tempC) * max(W_Estab_dune, W_Estab_shoreline) * W_Estab_hfacil * (W_growth_Pmax_elev * W_Estab_elev)
 
-    # Constrain Germination to Cells Where Dispersal is Allowed
-    H1_germ_eff *= H1_germ_allowed
-    H2_germ_eff *= H2_germ_allowed
-    W_germ_eff *= W_germ_allowed
+    # Constrain Establishment to Cells Where Dispersal is Allowed
+    H1_estab_eff *= H1_estab_allowed
+    H2_estab_eff *= H2_estab_allowed
+    W_estab_eff *= W_estab_allowed
 
-    return H1_germ_eff, H2_germ_eff, W_germ_eff
+    return H1_estab_eff, H2_estab_eff, W_estab_eff
 
 
 @njit(cache=True)
-def seedling_mortality_prob(topo,
+def juvenile_mortality_prob(topo,
                             MHW,
                             x_s,
                             x_b,
@@ -2307,8 +2306,8 @@ def seedling_mortality_prob(topo,
                             extreme_low_temperature,
                             HWE,
                             HWE_Q,
-                            seedling_erosion_limit,
-                            seedling_burial_limit,
+                            juvenile_erosion_limit,
+                            juvenile_burial_limit,
                             H1_growth_tempC_min,
                             H1_growth_tempC_max,
                             H2_growth_tempC_min,
@@ -2317,9 +2316,9 @@ def seedling_mortality_prob(topo,
                             W_growth_tempC_max,
                             W_dune_elev_min,
                             W_shoreline_distance_min,
-                            H1_s_mort_Pmax_tempC,
-                            H2_s_mort_Pmax_tempC,
-                            W_s_mort_Pmax_tempC,
+                            H1_j_mort_Pmax_tempC,
+                            H2_j_mort_Pmax_tempC,
+                            W_j_mort_Pmax_tempC,
                             woody_microclimate,
                             microclimate_moderation_winter_tempC,
                             microclimate_moderation_summer_tempC,
@@ -2333,24 +2332,24 @@ def seedling_mortality_prob(topo,
                             H1_mort_tempC_max,
                             H2_mort_tempC_min,
                             H2_mort_tempC_max,
-                            W_s_mort_tempC_min,
-                            W_s_mort_tempC_max,
+                            W_j_mort_tempC_min,
+                            W_j_mort_tempC_max,
                             RNG,
                             ):
-    """Calculates probailities of Seedling/Juvenile to Bare state transitions."""
+    """Calculates probabilities of Juvenile to Bare state transitions."""
 
-    H1_s_mort_eff = np.ones(topo.shape, dtype=np.float32)
-    H2_s_mort_eff = np.ones(topo.shape, dtype=np.float32)
-    W_s_mort_eff = np.ones(topo.shape, dtype=np.float32)
+    H1_j_mort_eff = np.ones(topo.shape, dtype=np.float32)
+    H2_j_mort_eff = np.ones(topo.shape, dtype=np.float32)
+    W_j_mort_eff = np.ones(topo.shape, dtype=np.float32)
 
     for ls in range(topo.shape[0]):
         for cs in range(x_s[ls], x_b[ls] + 1):
 
             # RSLR Submergence
             if topo[ls, cs] < MHW:
-                H1_s_mort_eff[ls, cs] = 1
-                H2_s_mort_eff[ls, cs] = 1
-                W_s_mort_eff[ls, cs] = 1
+                H1_j_mort_eff[ls, cs] = 1
+                H2_j_mort_eff[ls, cs] = 1
+                W_j_mort_eff[ls, cs] = 1
 
             else:
                 # Temperature
@@ -2359,58 +2358,58 @@ def seedling_mortality_prob(topo,
                 W_Mort_tempC = (1 / ((W_growth_tempC_max - ((W_growth_tempC_max + W_growth_tempC_min) / 2)) ** 2)) * (temperature - ((W_growth_tempC_max + W_growth_tempC_min) / 2)) ** 2 if W_growth_tempC_min < temperature < W_growth_tempC_max else 1  # Parabolic
 
                 # Calculate Effective Mortality
-                H1_s_mort_eff[ls, cs] = H1_s_mort_Pmax_tempC * H1_Mort_tempC
-                H2_s_mort_eff[ls, cs] = H2_s_mort_Pmax_tempC * H2_Mort_tempC
-                W_s_mort_eff[ls, cs] = W_s_mort_Pmax_tempC * W_Mort_tempC
+                H1_j_mort_eff[ls, cs] = H1_j_mort_Pmax_tempC * H1_Mort_tempC
+                H2_j_mort_eff[ls, cs] = H2_j_mort_Pmax_tempC * H2_Mort_tempC
+                W_j_mort_eff[ls, cs] = W_j_mort_Pmax_tempC * W_Mort_tempC
 
                 # Burial or Uprooting
-                if seedling_erosion_limit > sedimentation_balance_long_term[ls, cs] or sedimentation_balance_long_term[ls, cs] > seedling_burial_limit:
-                    H1_s_mort_eff[ls, cs] += (1 - H1_s_mort_eff[ls, cs]) * 0.9  # 90% mortality if buried or eroded past threshold
-                    H2_s_mort_eff[ls, cs] += (1 - H2_s_mort_eff[ls, cs]) * 0.9  # 90% mortality if buried or eroded past threshold
-                    W_s_mort_eff[ls, cs] += (1 - W_s_mort_eff[ls, cs]) * 0.9  # 90% mortality if buried or eroded past threshold
+                if juvenile_erosion_limit > sedimentation_balance_long_term[ls, cs] or sedimentation_balance_long_term[ls, cs] > juvenile_burial_limit:
+                    H1_j_mort_eff[ls, cs] += (1 - H1_j_mort_eff[ls, cs]) * 0.9  # 90% mortality if buried or eroded past threshold
+                    H2_j_mort_eff[ls, cs] += (1 - H2_j_mort_eff[ls, cs]) * 0.9  # 90% mortality if buried or eroded past threshold
+                    W_j_mort_eff[ls, cs] += (1 - W_j_mort_eff[ls, cs]) * 0.9  # 90% mortality if buried or eroded past threshold
 
                 # HWE Inundation
                 if HWE and HWE_Q[ls, cs] > 0:
-                    if HWE_Q[ls, cs] > H1_QHWE_max:  # Large discharge kills all seedlings
-                        H1_s_mort_eff[ls, cs] = 1
-                    elif HWE_Q[ls, cs] > H1_QHWE_min:  # Moderate discharge kills some seedlings
-                        H1_s_mort_eff[ls, cs] = (1 - H1_s_mort_eff[ls, cs]) / (H1_QHWE_max - H1_QHWE_min) * (HWE_Q[ls, cs] - H1_QHWE_min) + H1_s_mort_eff[ls, cs]  # Increase effective mortality beyond that calculated for temperature
+                    if HWE_Q[ls, cs] > H1_QHWE_max:  # Large discharge kills all juvenile
+                        H1_j_mort_eff[ls, cs] = 1
+                    elif HWE_Q[ls, cs] > H1_QHWE_min:  # Moderate discharge kills some juvenile
+                        H1_j_mort_eff[ls, cs] = (1 - H1_j_mort_eff[ls, cs]) / (H1_QHWE_max - H1_QHWE_min) * (HWE_Q[ls, cs] - H1_QHWE_min) + H1_j_mort_eff[ls, cs]  # Increase effective mortality beyond that calculated for temperature
 
                     if HWE_Q[ls, cs] > H2_QHWE_max:
-                        H2_s_mort_eff[ls, cs] = 1
+                        H2_j_mort_eff[ls, cs] = 1
                     elif HWE_Q[ls, cs] > H2_QHWE_min:
-                        H2_s_mort_eff[ls, cs] = (1 - H2_s_mort_eff[ls, cs]) / (H2_QHWE_max - H2_QHWE_min) * (HWE_Q[ls, cs] - H2_QHWE_min) + H2_s_mort_eff[ls, cs]
+                        H2_j_mort_eff[ls, cs] = (1 - H2_j_mort_eff[ls, cs]) / (H2_QHWE_max - H2_QHWE_min) * (HWE_Q[ls, cs] - H2_QHWE_min) + H2_j_mort_eff[ls, cs]
 
                     if HWE_Q[ls, cs] > W_QHWE_max:
-                        W_s_mort_eff[ls, cs] = 1
+                        W_j_mort_eff[ls, cs] = 1
                     elif HWE_Q[ls, cs] > W_QHWE_min:
-                        W_s_mort_eff[ls, cs] = (1 - W_s_mort_eff[ls, cs]) / (W_QHWE_max - W_QHWE_min) * (HWE_Q[ls, cs] - W_QHWE_min) + W_s_mort_eff[ls, cs]
+                        W_j_mort_eff[ls, cs] = (1 - W_j_mort_eff[ls, cs]) / (W_QHWE_max - W_QHWE_min) * (HWE_Q[ls, cs] - W_QHWE_min) + W_j_mort_eff[ls, cs]
 
                 # Extreme Temperatures
                 if woody_microclimate[ls, cs]:  # If within woody microclimate, ameliorate extreme temp
                     if extreme_low_temperature + microclimate_moderation_winter_tempC < H1_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > H1_mort_tempC_max:
-                        H1_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H1_s_mort_eff[ls, cs])
+                        H1_j_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H1_j_mort_eff[ls, cs])
                     if extreme_low_temperature + microclimate_moderation_winter_tempC < H2_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > H2_mort_tempC_max:
-                        H2_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H2_s_mort_eff[ls, cs])
-                    if extreme_low_temperature + microclimate_moderation_winter_tempC < W_s_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > W_s_mort_tempC_max:
-                        W_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), W_s_mort_eff[ls, cs])
+                        H2_j_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H2_j_mort_eff[ls, cs])
+                    if extreme_low_temperature + microclimate_moderation_winter_tempC < W_j_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > W_j_mort_tempC_max:
+                        W_j_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), W_j_mort_eff[ls, cs])
                 else:
                     if extreme_low_temperature < H1_mort_tempC_min or extreme_high_temperature > H1_mort_tempC_max:
-                        H1_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H1_s_mort_eff[ls, cs])
+                        H1_j_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H1_j_mort_eff[ls, cs])
                     if extreme_low_temperature < H2_mort_tempC_min or extreme_high_temperature > H2_mort_tempC_max:
-                        H2_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H2_s_mort_eff[ls, cs])
-                    if extreme_low_temperature < W_s_mort_tempC_min or extreme_high_temperature > W_s_mort_tempC_max:
-                        W_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), W_s_mort_eff[ls, cs])
+                        H2_j_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H2_j_mort_eff[ls, cs])
+                    if extreme_low_temperature < W_j_mort_tempC_min or extreme_high_temperature > W_j_mort_tempC_max:
+                        W_j_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), W_j_mort_eff[ls, cs])
 
                 # Fronting Dune Elevation and Distance From Ocean Shoreline
                 distance_from_ocean_shoreline = (cs - x_s[ls]) * cellsize  # [m]
                 fronting_dune_elev = fronting_dune_elevations[ls]  # [m MHW] Elevation along foredune crestline fronting this cell
                 if (fronting_dune_elev < W_dune_elev_min or fronting_dune_elev <= topo[ls, cs]) and distance_from_ocean_shoreline < W_shoreline_distance_min:  # 100% juvenile mortality if dune height insufficient and too close to shoreline
-                    W_s_mort_eff[ls, cs] = 1
+                    W_j_mort_eff[ls, cs] = 1
                 elif cs < dune_crest_loc[ls]:  # 100% juvenile mortality landward of dune crestline
-                    W_s_mort_eff[ls, cs] = 1
+                    W_j_mort_eff[ls, cs] = 1
 
-    return H1_s_mort_eff, H2_s_mort_eff, W_s_mort_eff
+    return H1_j_mort_eff, H2_j_mort_eff, W_j_mort_eff
 
 
 @njit(cache=True)
@@ -2457,10 +2456,11 @@ def growth_prob(topo,
                 H1_growth_Pmax_elev,
                 H2_growth_Pmax_elev,
                 W_growth_Pmax_elev,
-                H1_s_mort,
-                H2_s_mort,
-                W_s_mort,
+                H1_j_mort,
+                H2_j_mort,
+                W_j_mort,
                 ):
+    """Calculates probabilities of Juvenile to Adult state transitions."""
 
     H1_growth_eff = np.zeros(topo.shape, dtype=np.float32)
     H2_growth_eff = np.zeros(topo.shape, dtype=np.float32)
@@ -2503,9 +2503,9 @@ def growth_prob(topo,
                 H2_growth_eff[ls, cs] = (H2_growth_Pmax_tempC * H2_Growth_tempC) * (H2_growth_Pmax_elev * H2_Growth_elev) * H2_Growth_wcomp * (H2_growth_Pmin_stim + (1 - H2_growth_Pmin_stim) * H2_Growth_stim)
                 W_growth_eff[ls, cs] = (W_growth_Pmax_tempC * W_Growth_tempC) * (W_growth_Pmax_elev * W_Growth_elev) * (W_growth_Pmin_stim + (1 - W_growth_Pmin_stim) * W_Growth_stim) * W_Growth_logistic
 
-    H1_growth_eff = np.minimum(1 - H1_s_mort, H1_growth_eff)
-    H2_growth_eff = np.minimum(1 - H2_s_mort, H2_growth_eff)
-    W_growth_eff = np.minimum(1 - W_s_mort, W_growth_eff)
+    H1_growth_eff = np.minimum(1 - H1_j_mort, H1_growth_eff)
+    H2_growth_eff = np.minimum(1 - H2_j_mort, H2_growth_eff)
+    W_growth_eff = np.minimum(1 - W_j_mort, W_growth_eff)
 
     return H1_growth_eff, H2_growth_eff, W_growth_eff
 
@@ -2555,6 +2555,7 @@ def senescence_prob(topo,
                     W_a_mort_tempC_max,
                     RNG,
                     ):
+    """Calculates probabilities of Adult to Bare (Herbaceous) and Adult to Dead (Woody) state transitions."""
 
     H1_a_senesce_eff = np.ones(topo.shape, dtype=np.float32)
     H2_a_senesce_eff = np.ones(topo.shape, dtype=np.float32)
@@ -2590,7 +2591,7 @@ def senescence_prob(topo,
                     if HWE_Q[ls, cs] > H1_QHWE_max:  # Large discharge kills all veg
                         H1_a_senesce_eff[ls, cs] = 1
                     elif HWE_Q[ls, cs] > H1_QHWE_min:  # Moderate discharge kills some veg
-                        H1_a_senesce_eff[ls, cs] = (1 - H1_a_senesce_eff[ls, cs]) / (H1_QHWE_max - H1_QHWE_min) * (HWE_Q[ls, cs] - H1_QHWE_min) + H1_a_senesce_eff[ls, cs]  # Increase effective germination beyond that calculated for temperature, shoreline distance, & dune elevation
+                        H1_a_senesce_eff[ls, cs] = (1 - H1_a_senesce_eff[ls, cs]) / (H1_QHWE_max - H1_QHWE_min) * (HWE_Q[ls, cs] - H1_QHWE_min) + H1_a_senesce_eff[ls, cs]  # Increase effective senescence beyond that calculated for temperature
 
                     if HWE_Q[ls, cs] > H2_QHWE_max:
                         H2_a_senesce_eff[ls, cs] = 1
@@ -2630,6 +2631,7 @@ def woody_removal_prob(sedimentation_balance_long_term,
                        W_burial_limit,
                        W_uproot_limit,
                        RNG):
+    """Calculates probabilities of Woody Adult to Bare state transitions."""
 
     buried_or_uprooted = np.logical_or(W_burial_limit < sedimentation_balance_long_term, sedimentation_balance_long_term < W_uproot_limit)  # [bool] Burial or uprooting kills most woody
     W_a_removal_eff = RNG.uniform(0.9, 1, sedimentation_balance_long_term.shape).astype(np.float32) * buried_or_uprooted  # 90% mortality if buried or eroded past threshold
@@ -2658,6 +2660,7 @@ def woody_dead_loss(topo,
                     W_d_loss_Pmax_discharge,
                     W_d_loss_Pmax_twl,
                     ):
+    """Calculates probabilities of Woody Dead to Bare state transitions."""
 
     W_d_loss_eff = np.ones(topo.shape, dtype=np.float32)
 
@@ -2698,19 +2701,21 @@ def woody_dead_loss(topo,
 
 
 @njit(cache=True)
-def veg_matrix_mult(veg_fraction, H1_germ, H2_germ, W_germ, H1_s_mort, H2_s_mort, W_s_mort, H1_growth, H2_growth, W_growth, W_a_removal, H1_a_senesce, H2_a_senesce, W_a_senesce, W_d_loss, x_s, x_b):
+def veg_matrix_mult(veg_fraction, H1_estab, H2_estab, W_estab, H1_j_mort, H2_j_mort, W_j_mort, H1_growth, H2_growth, W_growth, W_a_removal, H1_a_senesce, H2_a_senesce, W_a_senesce, W_d_loss, x_s, x_b):
+    """Performs matrix multiplication to calculate the fractional cover of eight vegetation states based upon
+    transition probabilities between states. State-and-transition (Markov chain) framework."""
 
-    for ls in range(H1_germ.shape[0]):
+    for ls in range(H1_estab.shape[0]):
         for cs in range(x_s[ls], x_b[ls] + 1):
 
             # Transition Matrix
             TM = np.asarray([
-                [1 - H1_germ[ls, cs] - H2_germ[ls, cs] - W_germ[ls, cs],    H1_s_mort[ls, cs],                          H1_a_senesce[ls, cs],       H2_s_mort[ls, cs],                          H2_a_senesce[ls, cs],       W_s_mort[ls, cs],                           W_a_removal[ls, cs],                            W_d_loss[ls, cs]],
-                [H1_germ[ls, cs],                                           1 - H1_s_mort[ls, cs] - H1_growth[ls, cs],  0,                          0,                                          0,                          0,                                          0,                                              0],
+                [1 - H1_estab[ls, cs] - H2_estab[ls, cs] - W_estab[ls, cs], H1_j_mort[ls, cs],                          H1_a_senesce[ls, cs],       H2_j_mort[ls, cs],                          H2_a_senesce[ls, cs],       W_j_mort[ls, cs],                           W_a_removal[ls, cs],                            W_d_loss[ls, cs]],
+                [H1_estab[ls, cs],                                          1 - H1_j_mort[ls, cs] - H1_growth[ls, cs],  0,                          0,                                          0,                          0,                                          0,                                              0],
                 [0,                                                         H1_growth[ls, cs],                          1 - H1_a_senesce[ls, cs],   0,                                          0,                          0,                                          0,                                              0],
-                [H2_germ[ls, cs],                                           0,                                          0,                          1 - H2_s_mort[ls, cs] - H2_growth[ls, cs],  0,                          0,                                          0,                                              0],
+                [H2_estab[ls, cs],                                          0,                                          0,                          1 - H2_j_mort[ls, cs] - H2_growth[ls, cs],  0,                          0,                                          0,                                              0],
                 [0,                                                         0,                                          0,                          H2_growth[ls, cs],                          1 - H2_a_senesce[ls, cs],   0,                                          0,                                              0],
-                [W_germ[ls, cs],                                            0,                                          0,                          0,                                          0,                          1 - W_s_mort[ls, cs] - W_growth[ls, cs],    0,                                              0],
+                [W_estab[ls, cs],                                           0,                                          0,                          0,                                          0,                          1 - W_j_mort[ls, cs] - W_growth[ls, cs],    0,                                              0],
                 [0,                                                         0,                                          0,                          0,                                          0,                          W_growth[ls, cs],                           1 - W_a_removal[ls, cs] - W_a_senesce[ls, cs],  0],
                 [0,                                                         0,                                          0,                          0,                                          0,                          0,                                          W_a_senesce[ls, cs],                            1 - W_d_loss[ls, cs]],
             ],
@@ -2723,6 +2728,7 @@ def veg_matrix_mult(veg_fraction, H1_germ, H2_germ, W_germ, H1_s_mort, H2_s_mort
 
 
 def herbaceous_dispersal(veg_fraction, H1_pioneer_probability, H1_lateral_probability, H2_pioneer_probability, H2_lateral_probability, RNG):
+    """Determines where herbaceous species are allowed to establish based on pioneer colonization and lateral rhizomatic expansion."""
 
     H1_currently_vegetated = veg_fraction[:, :, 1] + veg_fraction[:, :, 2] > 0.02  # Cells that are currently vegetated
     H2_currently_vegetated = veg_fraction[:, :, 3] + veg_fraction[:, :, 4] > 0.02  # Cells that are currently vegetated
@@ -2737,14 +2743,15 @@ def herbaceous_dispersal(veg_fraction, H1_pioneer_probability, H1_lateral_probab
     H2_lateral = lateral_expansion(veg_fraction[:, :, 3] + veg_fraction[:, :, 4], H2_lateral_probability, RNG)
 
     # Determine Where Disperal is Allowed
-    H1_germ_allowed = np.logical_or(np.logical_or(H1_pioneer, H1_lateral), H1_currently_vegetated)
-    H2_germ_allowed = np.logical_or(np.logical_or(H2_pioneer, H2_lateral), H2_currently_vegetated)
+    H1_estab_allowed = np.logical_or(np.logical_or(H1_pioneer, H1_lateral), H1_currently_vegetated)
+    H2_estab_allowed = np.logical_or(np.logical_or(H2_pioneer, H2_lateral), H2_currently_vegetated)
 
-    return H1_germ_allowed, H2_germ_allowed
+    return H1_estab_allowed, H2_estab_allowed
 
 
 @njit(cache=True)
 def woody_dispersal(veg_fraction, W_pioneer_probability, W_seed_min, W_seed_max, W_dispersal_mean, W_dispersal_sigma, cellsize, RNG):
+    """Determines where woody species is allowed to establish according to avian-based long-distance dispersal."""
 
     longshore = veg_fraction.shape[0]
     crossshore = veg_fraction.shape[1]
@@ -2783,9 +2790,9 @@ def woody_dispersal(veg_fraction, W_pioneer_probability, W_seed_min, W_seed_max,
 
     # ----------------
     # Combined
-    W_germ_allowed = np.logical_or(np.logical_or(W_avian, W_pioneer), veg_fraction[:, :, 5] + veg_fraction[:, :, 6] > 0)
+    W_estab_allowed = np.logical_or(np.logical_or(W_avian, W_pioneer), veg_fraction[:, :, 5] + veg_fraction[:, :, 6] > 0)
 
-    return W_germ_allowed
+    return W_estab_allowed
 
 
 @njit(cache=True)

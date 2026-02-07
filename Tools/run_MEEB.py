@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 29 July 2025
+IRBR 6 February 2026
 """
 
 import numpy as np
@@ -20,8 +20,9 @@ from meeb import MEEB
 # VARIABLES AND INITIALIZATIONS
 
 # 2018
-start = "Init_NCB-2200-34200_2018_PostFlorence_2m.npy"
+start = "Init_NCB-2200-34200_2018_PostFlorence_2m.nc"
 startdate = '20181015'
+init_filetype_NetCDF = True  # [bool] True if using NetCDF .nc initial elevation/vegetation input file, False if using default .npy file
 
 # _____________________
 
@@ -38,7 +39,7 @@ ymax = 18500  # Alongshore
 xmin = 700  # Cross-shore
 xmax = 1500  # Cross-shore
 plot_xmin = 0  # Cross-shore plotting
-plot_xmax = 1500  # Cross-shore plotting
+plot_xmax = 1100  # Cross-shore plotting
 
 # Resize according to cellsize
 ymin = int(ymin / cellsize)  # Alongshore
@@ -48,13 +49,7 @@ xmax = int(xmax / cellsize)  # Cross-shore
 plot_xmin = int(plot_xmin / cellsize)  # Cross-shore plotting
 plot_xmax = int(plot_xmax / cellsize)  # Cross-shore plotting
 
-# Load Initial Domains
-Init = np.load("Input/" + start)
-topo_start = Init[0, ymin: ymax, xmin: xmax].copy()
-spec1_start = Init[1, ymin: ymax, xmin: xmax].copy()
-spec2_start = Init[2, ymin: ymax, xmin: xmax].copy()
-
-del Init
+# del Init
 gc.collect()
 
 
@@ -73,6 +68,7 @@ meeb = MEEB(
     RSLR=0.0096,
     MHW=MHW,
     init_filename=start,
+    init_filetype_NetCDF=init_filetype_NetCDF,
     hindcast=False,
     shift_mean_storm_intensity_start=1.485,
     shift_mean_storm_intensity_end=4.199,
@@ -81,36 +77,34 @@ meeb = MEEB(
     simulation_start_date=startdate,
     storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',  # For hindcasts
     storm_list_filename='SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy',  # For forecasts
-    init_by_file=False,
-    init_elev_array=topo_start,
-    init_spec1_array=spec1_start,
-    init_spec2_array=spec2_start,
+    init_by_file=True,
     save_frequency=0.1,
     # --- Aeolian --- #
     saltation_length=2,
     saltation_length_rand_deviation=1,
     slabheight=0.02,
-    p_dep_sand=0.09,  # Q = hs * L * n * pe/pd
-    p_dep_sand_VegMax=0.17,
-    p_ero_sand=0.08,
-    entrainment_veg_limit=0.09,
-    saltation_veg_limit=0.37,
-    repose_threshold=0.37,
-    shadowangle=12,
+    p_dep_sand=0.14,  # Q = hs * L * n * pe/pd
+    p_dep_sand_VegMax=0.35,
+    p_ero_sand=0.14,
+    entrainment_veg_limit=0.17,
+    saltation_veg_limit=0.26,
+    repose_threshold=0.26,
+    shadowangle=10,
     repose_bare=20,
     repose_veg=30,
-    wind_rose=(0.91, 0.04, 0.01, 0.04),  # (right, down, left, up)
+    wind_rose=(0.76, 0.06, 0.13, 0.05),  # (right, down, left, up)
     groundwater_depth=0.4,
     # --- Storms --- #
-    Rin=245,
-    Cs=0.0235,
+    Rin=312,
+    Cs=0.0407,
     MaxUpSlope=1.5,
     marine_flux_limit=1,
-    Kow=0.0003615,
-    mm=1.05,
+    Kow=0.0002834,
+    Kl=0.57,
+    mm=1.03,
     overwash_substeps=25,
-    beach_equilibrium_slope=0.021,
-    swash_erosive_timescale=1.51,
+    beach_equilibrium_slope=0.02,
+    swash_erosive_timescale=1.18,
     beach_substeps=1,
     H_flow_reduction_max=0.002,
     W_flow_reduction_max=0.02,
@@ -123,6 +117,7 @@ meeb = MEEB(
     estimate_shoreface_parameters=True,
     shoreline_diffusivity_coefficient=0.07,
     # --- Veg --- #
+    shift_mean_atmospheric_temperature=0,
 )
 
 print(meeb.name, end='\n' * 2)
@@ -159,12 +154,20 @@ woody_end_sim = woody_TS[:, :, -1]
 woody_change_sim = woody_end_sim - woody_start_sim  # [m]
 woody_present_sim = woody_end_sim > 0.05  # [bool]
 
+H1_j_end_sim = meeb.veg_fraction_TS[:, plot_xmin: plot_xmax, 1, -1]
+H1_a_end_sim = meeb.veg_fraction_TS[:, plot_xmin: plot_xmax, 2, -1]
+H2_j_end_sim = meeb.veg_fraction_TS[:, plot_xmin: plot_xmax, 3, -1]
+H2_a_end_sim = meeb.veg_fraction_TS[:, plot_xmin: plot_xmax, 4, -1]
+W_j_end_sim = meeb.veg_fraction_TS[:, plot_xmin: plot_xmax, 5, -1]
+W_a_end_sim = meeb.veg_fraction_TS[:, plot_xmin: plot_xmax, 6, -1]
+W_d_end_sim = meeb.veg_fraction_TS[:, plot_xmin: plot_xmax, 7, -1]
+
 # Subaerial mask
 subaerial_mask = topo_end_sim > mhw_end_sim  # [bool] Mask for every cell above water
 
 # Dune crest height
 dune_crest, not_gap = routine.foredune_crest(topo_start_sim, mhw_end_sim, cellsize)
-dune_crest_end, not_gap = routine.foredune_crest(topo_end_sim, mhw_end_sim, cellsize)
+dune_crest_end, not_gap_end = routine.foredune_crest(topo_end_sim, mhw_end_sim, cellsize)
 
 # __________________________________________________________________________________________________________________________________
 # PLOT RESULTS
@@ -315,7 +318,7 @@ plt.legend()
 # -----------------
 tx = np.linspace(0, sim_duration, meeb.veg_fraction_TS.shape[3])
 plt.figure(figsize=(9.55, 7))
-ls = 128
+ls = 46
 cs = 158
 plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 0, :], c='black')
 plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 1, :], c='turquoise')
@@ -325,14 +328,14 @@ plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 4, :], c='purple')
 plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 5, :], c='gold')
 plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 6, :], c='red')
 plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 7, :], c='brown')
-plt.legend(['Bare', 'Grass_Seedling_1', 'Grass_1', 'Grass_Seedling_2', 'Grass_2', 'Shrub_Seedling', 'Shrub', 'Shrub_Dead'])
+plt.legend(['Bare', 'Grass_Juvenile_1', 'Grass_1', 'Grass_Juvenile_2', 'Grass_2', 'Shrub_Juvenile', 'Shrub', 'Shrub_Dead'])
 plt.ylabel('Fraction of Carrying Capacity')
 plt.xlabel('Years')
 plt.title("(" + str(ls) + ", " + str(cs) + ")")
 
 plt.figure(figsize=(9.55, 7))
-ls = 53
-cs = 85
+ls = 90
+cs = 150
 plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 0, :], c='black')
 plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 1, :], c='turquoise')
 plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 2, :], c='green')
@@ -341,11 +344,48 @@ plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 4, :], c='purple')
 plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 5, :], c='gold')
 plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 6, :], c='red')
 plt.plot(tx, meeb.veg_fraction_TS[ls, cs, 7, :], c='brown')
-plt.legend(['Bare', 'Grass_Seedling_1', 'Grass_1', 'Grass_Seedling_2', 'Grass_2', 'Shrub_Seedling', 'Shrub', 'Shrub_Dead'])
+plt.legend(['Bare', 'Grass_Juvenile_1', 'Grass_1', 'Grass_Juvenile_2', 'Grass_2', 'Shrub_Juvenile', 'Shrub', 'Shrub_Dead'])
 plt.ylabel('Fraction of Carrying Capacity')
 plt.xlabel('Years')
 plt.title("(" + str(ls) + ", " + str(cs) + ")")
 
+# -----------------
+# Final Vegetation by Type
+Fig = plt.figure(figsize=(14, 7.5))
+Fig.suptitle(meeb.name, fontsize=13)
+
+ax1 = Fig.add_subplot(331)
+veg = np.ma.masked_where(topo <= mhw_end_sim, H1_j_end_sim)  # Mask cells below MHW
+ax1.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
+plt.title('H1 Juvenile')
+ax2 = Fig.add_subplot(334)
+veg = np.ma.masked_where(topo <= mhw_end_sim, H1_a_end_sim)  # Mask cells below MHW
+ax2.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
+plt.title('H1 Adult')
+
+ax3 = Fig.add_subplot(332)
+veg = np.ma.masked_where(topo <= mhw_end_sim, H2_j_end_sim)  # Mask cells below MHW
+ax3.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
+plt.title('H2 Juvenile')
+ax4 = Fig.add_subplot(335)
+veg = np.ma.masked_where(topo <= mhw_end_sim, H2_a_end_sim)  # Mask cells below MHW
+ax4.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
+plt.title('H2 Adult')
+
+ax5 = Fig.add_subplot(333)
+veg = np.ma.masked_where(topo <= mhw_end_sim, W_j_end_sim)  # Mask cells below MHW
+ax5.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
+plt.title('W Juvenile')
+ax6 = Fig.add_subplot(336)
+veg = np.ma.masked_where(topo <= mhw_end_sim, W_a_end_sim)  # Mask cells below MHW
+ax6.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
+plt.title('W Adult')
+ax7 = Fig.add_subplot(339)
+veg = np.ma.masked_where(topo <= mhw_end_sim, W_d_end_sim)  # Mask cells below MHW
+ax7.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
+plt.title('W Dead')
+
+plt.tight_layout()
 
 # -----------------
 # Animation: Elevation and Vegetation Over Time
