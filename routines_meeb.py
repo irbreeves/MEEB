@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 28 January 2026
+Last update: 5 February 2026
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -2197,9 +2197,7 @@ def germination_prob(temperature,
                      W_germ_herbaceous_facil_min,
                      W_germ_herbaceous_facil_max,
                      W_dune_elev_min,
-                     W_dune_elev_max,
                      W_shoreline_distance_min,
-                     W_shoreline_distance_max,
                      H1_germ_Pmax_tempC,
                      H2_germ_Pmax_tempC,
                      W_germ_Pmax_tempC,
@@ -2270,10 +2268,8 @@ def germination_prob(temperature,
                 fronting_dune_elev = fronting_dune_elevations[ls]  # [m MHW] Elevation along foredune crestline fronting this cell
                 if fronting_dune_elev < W_dune_elev_min or fronting_dune_elev <= topo[ls, cs] or cs <= dune_crest_loc[ls]:  # No fronting topography higher than this cell, or seaward of crestline
                     W_Germ_dune = 0
-                elif fronting_dune_elev > W_dune_elev_max:
-                    W_Germ_dune = 1
                 else:
-                    W_Germ_dune = fronting_dune_elev / (W_dune_elev_max - W_dune_elev_min) - W_dune_elev_min / (W_dune_elev_max - W_dune_elev_min)
+                    W_Germ_dune = 1
 
                 # Distance From Ocean Shoreline
                 distance_from_ocean_shoreline = (cs - x_s[ls]) * cellsize  # [m]
@@ -2281,10 +2277,8 @@ def germination_prob(temperature,
                     W_Germ_shoreline = 0
                 elif distance_from_ocean_shoreline < W_shoreline_distance_min:
                     W_Germ_shoreline = 0
-                elif distance_from_ocean_shoreline > W_shoreline_distance_max:
-                    W_Germ_shoreline = 1
                 else:
-                    W_Germ_shoreline = distance_from_ocean_shoreline / (W_shoreline_distance_max - W_shoreline_distance_min) - W_shoreline_distance_min / (W_shoreline_distance_max - W_shoreline_distance_min)
+                    W_Germ_shoreline = 1
 
                 # Calculate Effective Germination
                 H1_germ_eff[ls, cs] = (H1_germ_Pmax_tempC * H1_Germ_tempC) * H1_Germ_wcomp * (H1_growth_Pmax_elev * H1_Germ_elev) * H1_Germ_h2comp
@@ -2322,9 +2316,7 @@ def seedling_mortality_prob(topo,
                             W_growth_tempC_min,
                             W_growth_tempC_max,
                             W_dune_elev_min,
-                            W_dune_elev_max,
                             W_shoreline_distance_min,
-                            W_shoreline_distance_max,
                             H1_s_mort_Pmax_tempC,
                             H2_s_mort_Pmax_tempC,
                             W_s_mort_Pmax_tempC,
@@ -2366,43 +2358,10 @@ def seedling_mortality_prob(topo,
                 H2_Mort_tempC = (1 / ((H2_growth_tempC_max - ((H2_growth_tempC_max + H2_growth_tempC_min) / 2)) ** 2)) * (temperature - ((H2_growth_tempC_max + H2_growth_tempC_min) / 2)) ** 2 if H2_growth_tempC_min < temperature < H2_growth_tempC_max else 1  # Parabolic
                 W_Mort_tempC = (1 / ((W_growth_tempC_max - ((W_growth_tempC_max + W_growth_tempC_min) / 2)) ** 2)) * (temperature - ((W_growth_tempC_max + W_growth_tempC_min) / 2)) ** 2 if W_growth_tempC_min < temperature < W_growth_tempC_max else 1  # Parabolic
 
-                # Fronting Dune Elevation and Distance From Ocean Shoreline
-                distance_from_ocean_shoreline = (cs - x_s[ls]) * cellsize  # [m]
-                fronting_dune_elev = fronting_dune_elevations[ls]  # [m MHW] Elevation along foredune crestline fronting this cell
-                if fronting_dune_elev >= W_dune_elev_max and cs > dune_crest_loc[ls]:  # Sufficiently tall dune for max woody seedling survival, and landward of dune crestline
-                    # Calculate Effective Germination
-                    H1_s_mort_eff[ls, cs] = H1_s_mort_Pmax_tempC * H1_Mort_tempC
-                    H2_s_mort_eff[ls, cs] = H2_s_mort_Pmax_tempC * H2_Mort_tempC
-                    W_s_mort_eff[ls, cs] = W_s_mort_Pmax_tempC * W_Mort_tempC
-
-                elif distance_from_ocean_shoreline >= W_shoreline_distance_max:  # Sufficiently far from ocean shoreline for max woody seedling survival
-                    # Calculate Effective Germination
-                    H1_s_mort_eff[ls, cs] = H1_s_mort_Pmax_tempC * H1_Mort_tempC
-                    H2_s_mort_eff[ls, cs] = H2_s_mort_Pmax_tempC * H2_Mort_tempC
-                    W_s_mort_eff[ls, cs] = W_s_mort_Pmax_tempC * W_Mort_tempC
-
-                elif W_dune_elev_min < fronting_dune_elev < W_dune_elev_max or W_shoreline_distance_min < distance_from_ocean_shoreline < W_shoreline_distance_max:  # Sufficient dune or shoreline distance for limited woody seedling survival
-
-                    if W_dune_elev_min < fronting_dune_elev < W_dune_elev_max and cs > dune_crest_loc[ls]:
-                        W_Mort_dune = -fronting_dune_elev / (W_dune_elev_max - W_dune_elev_min) - W_dune_elev_max / (W_dune_elev_min - W_dune_elev_max)
-                    else:
-                        W_Mort_dune = 0
-
-                    if W_shoreline_distance_min < distance_from_ocean_shoreline < W_shoreline_distance_max and cs > dune_crest_loc[ls]:
-                        W_Mort_shoreline = -distance_from_ocean_shoreline / (W_shoreline_distance_max - W_shoreline_distance_min) - W_shoreline_distance_max / (W_shoreline_distance_min - W_shoreline_distance_max)
-                    else:
-                        W_Mort_shoreline = 0
-
-                    # Calculate Effective Mortality
-                    H1_s_mort_eff[ls, cs] = H1_s_mort_Pmax_tempC * H1_Mort_tempC
-                    H2_s_mort_eff[ls, cs] = H2_s_mort_Pmax_tempC * H2_Mort_tempC
-                    W_s_mort_eff[ls, cs] = W_s_mort_Pmax_tempC * W_Mort_tempC * max(W_Mort_dune, W_Mort_shoreline)
-
-                else:  # Insufficient dune or shoreline distance for woody seedling survival or seaward of dune crestline
-                    # Calculate Effective Germination
-                    H1_s_mort_eff[ls, cs] = H1_s_mort_Pmax_tempC * H1_Mort_tempC
-                    H2_s_mort_eff[ls, cs] = H2_s_mort_Pmax_tempC * H2_Mort_tempC
-                    W_s_mort_eff[ls, cs] = 1
+                # Calculate Effective Mortality
+                H1_s_mort_eff[ls, cs] = H1_s_mort_Pmax_tempC * H1_Mort_tempC
+                H2_s_mort_eff[ls, cs] = H2_s_mort_Pmax_tempC * H2_Mort_tempC
+                W_s_mort_eff[ls, cs] = W_s_mort_Pmax_tempC * W_Mort_tempC
 
                 # Burial or Uprooting
                 if seedling_erosion_limit > sedimentation_balance_long_term[ls, cs] or sedimentation_balance_long_term[ls, cs] > seedling_burial_limit:
@@ -2415,7 +2374,7 @@ def seedling_mortality_prob(topo,
                     if HWE_Q[ls, cs] > H1_QHWE_max:  # Large discharge kills all seedlings
                         H1_s_mort_eff[ls, cs] = 1
                     elif HWE_Q[ls, cs] > H1_QHWE_min:  # Moderate discharge kills some seedlings
-                        H1_s_mort_eff[ls, cs] = (1 - H1_s_mort_eff[ls, cs]) / (H1_QHWE_max - H1_QHWE_min) * (HWE_Q[ls, cs] - H1_QHWE_min) + H1_s_mort_eff[ls, cs]  # Increase effective mortality beyond that calculated for temperature, shoreline distance, & dune elevation
+                        H1_s_mort_eff[ls, cs] = (1 - H1_s_mort_eff[ls, cs]) / (H1_QHWE_max - H1_QHWE_min) * (HWE_Q[ls, cs] - H1_QHWE_min) + H1_s_mort_eff[ls, cs]  # Increase effective mortality beyond that calculated for temperature
 
                     if HWE_Q[ls, cs] > H2_QHWE_max:
                         H2_s_mort_eff[ls, cs] = 1
@@ -2427,21 +2386,29 @@ def seedling_mortality_prob(topo,
                     elif HWE_Q[ls, cs] > W_QHWE_min:
                         W_s_mort_eff[ls, cs] = (1 - W_s_mort_eff[ls, cs]) / (W_QHWE_max - W_QHWE_min) * (HWE_Q[ls, cs] - W_QHWE_min) + W_s_mort_eff[ls, cs]
 
-            # Extreme Temperatures
-            if woody_microclimate[ls, cs]:  # If within woody microclimate, ameliorate extreme temp
-                if extreme_low_temperature + microclimate_moderation_winter_tempC < H1_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > H1_mort_tempC_max:
-                    H1_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H1_s_mort_eff[ls, cs])
-                if extreme_low_temperature + microclimate_moderation_winter_tempC < H2_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > H2_mort_tempC_max:
-                    H2_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H2_s_mort_eff[ls, cs])
-                if extreme_low_temperature + microclimate_moderation_winter_tempC < W_s_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > W_s_mort_tempC_max:
-                    W_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), W_s_mort_eff[ls, cs])
-            else:
-                if extreme_low_temperature < H1_mort_tempC_min or extreme_high_temperature > H1_mort_tempC_max:
-                    H1_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H1_s_mort_eff[ls, cs])
-                if extreme_low_temperature < H2_mort_tempC_min or extreme_high_temperature > H2_mort_tempC_max:
-                    H2_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H2_s_mort_eff[ls, cs])
-                if extreme_low_temperature < W_s_mort_tempC_min or extreme_high_temperature > W_s_mort_tempC_max:
-                    W_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), W_s_mort_eff[ls, cs])
+                # Extreme Temperatures
+                if woody_microclimate[ls, cs]:  # If within woody microclimate, ameliorate extreme temp
+                    if extreme_low_temperature + microclimate_moderation_winter_tempC < H1_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > H1_mort_tempC_max:
+                        H1_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H1_s_mort_eff[ls, cs])
+                    if extreme_low_temperature + microclimate_moderation_winter_tempC < H2_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > H2_mort_tempC_max:
+                        H2_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H2_s_mort_eff[ls, cs])
+                    if extreme_low_temperature + microclimate_moderation_winter_tempC < W_s_mort_tempC_min or extreme_high_temperature - microclimate_moderation_summer_tempC > W_s_mort_tempC_max:
+                        W_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), W_s_mort_eff[ls, cs])
+                else:
+                    if extreme_low_temperature < H1_mort_tempC_min or extreme_high_temperature > H1_mort_tempC_max:
+                        H1_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H1_s_mort_eff[ls, cs])
+                    if extreme_low_temperature < H2_mort_tempC_min or extreme_high_temperature > H2_mort_tempC_max:
+                        H2_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), H2_s_mort_eff[ls, cs])
+                    if extreme_low_temperature < W_s_mort_tempC_min or extreme_high_temperature > W_s_mort_tempC_max:
+                        W_s_mort_eff[ls, cs] = max(min(1.0, RNG.uniform(0.95, 1.1)), W_s_mort_eff[ls, cs])
+
+                # Fronting Dune Elevation and Distance From Ocean Shoreline
+                distance_from_ocean_shoreline = (cs - x_s[ls]) * cellsize  # [m]
+                fronting_dune_elev = fronting_dune_elevations[ls]  # [m MHW] Elevation along foredune crestline fronting this cell
+                if (fronting_dune_elev < W_dune_elev_min or fronting_dune_elev <= topo[ls, cs]) and distance_from_ocean_shoreline < W_shoreline_distance_min:  # 100% juvenile mortality if dune height insufficient and too close to shoreline
+                    W_s_mort_eff[ls, cs] = 1
+                elif cs < dune_crest_loc[ls]:  # 100% juvenile mortality landward of dune crestline
+                    W_s_mort_eff[ls, cs] = 1
 
     return H1_s_mort_eff, H2_s_mort_eff, W_s_mort_eff
 
@@ -2529,7 +2496,7 @@ def growth_prob(topo,
                 H1_Growth_h2comp = 1 - min(H1_growth_H2_comp_max, peak_annual_H2[ls, cs] * 2)
 
                 # Woody logistic
-                W_Growth_logistic = 1 / (1 + np.exp(-8 * ((veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]) - 0.4)))  # Logistic curve to emulate real-world logistcic nature of shrub growth
+                W_Growth_logistic = 1 / (1 + np.exp(-8 * ((veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]) - 0.4)))  # This slows down initial shrub growth to emulate real-world logistcic nature of shrub growth
 
                 # Calculate Effective Growth
                 H1_growth_eff[ls, cs] = (H1_growth_Pmax_tempC * H1_Growth_tempC) * (H1_growth_Pmax_elev * H1_Growth_elev) * H1_Growth_wcomp * (H1_growth_Pmin_stim + (1 - H1_growth_Pmin_stim) * H1_Growth_stim) * H1_Growth_h2comp

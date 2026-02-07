@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 28 January 2026
+Last update: 5 February 2026
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -239,10 +239,8 @@ class MEEB:
             W_stim_max=0.16,  # [m/timestep] Maximum deposition for stimulation from deposition, woody species
 
             # Woody Fronting Dune Elevation and Shoreline Distance Thresholds
-            W_dune_elev_min=1.85,  # [m MHW] Fronting dune elevation below which woody establishment (germination and growth) is 0%
-            W_dune_elev_max=2.25,  # [m MHW] Fronting dune elevation above which woody establishment (germination and growth) is 100%
-            W_shoreline_distance_min=170,  # [m] Distance from ocean shoreline below which woody establishment (germination and growth) is 0% in absence of sufficiently tall dune
-            W_shoreline_distance_max=200,  # [m] Distance from ocean shoreline above which woody establishment (germination and growth) is 100% in absence of sufficiently tall dune
+            W_dune_elev_min=1.8,  # [m MHW] Minimum fronting dune elevation needed for woody establishment
+            W_shoreline_distance_min=170,  # [m] Minimum distance from ocean shoreline needed for woody establishment in absence of sufficiently tall dune
 
             # Competition/Facilitation Thresholds and Parameters
             H1_growth_woody_comp_max=0.9,  # [0-1] Maximum woody fractional cover beyond which germination/growth of herbaceous species 1 is 0%
@@ -440,9 +438,7 @@ class MEEB:
         self._W_stim_min = W_stim_min
         self._W_stim_max = W_stim_max
         self._W_dune_elev_min = W_dune_elev_min
-        self._W_dune_elev_max = W_dune_elev_max
         self._W_shoreline_distance_min = W_shoreline_distance_min
-        self._W_shoreline_distance_max = W_shoreline_distance_max
         self._H1_growth_woody_comp_max = H1_growth_woody_comp_max
         self._H2_growth_woody_comp_max = H2_growth_woody_comp_max
         self._H1_growth_H2_comp_max = H1_growth_H2_comp_max
@@ -872,9 +868,7 @@ class MEEB:
                 self._W_germ_herbaceous_facil_min,
                 self._W_germ_herbaceous_facil_max,
                 self._W_dune_elev_min,
-                self._W_dune_elev_max,
                 self._W_shoreline_distance_min,
-                self._W_shoreline_distance_max,
                 self._H1_germ_Pmax_tempC,
                 self._H2_germ_Pmax_tempC,
                 self._W_germ_Pmax_tempC,
@@ -919,9 +913,7 @@ class MEEB:
                 self._W_growth_tempC_min,
                 self._W_growth_tempC_max,
                 self._W_dune_elev_min,
-                self._W_dune_elev_max,
                 self._W_shoreline_distance_min,
-                self._W_shoreline_distance_max,
                 self._H1_s_mort_Pmax_tempC,
                 self._H2_s_mort_Pmax_tempC,
                 self._W_s_mort_Pmax_tempC,
