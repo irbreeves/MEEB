@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 5 February 2026
+Last update: 12 February 2026
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -161,7 +161,7 @@ class MEEB:
             W_a_senesce_Pmin_tempC=0.004,  # Woody adult senescence at optimal temperature for survival
             W_a_senesce_Pmax_tempC=0.006,  # Woody adult senescence at least optimal temperatures for survival
             W_d_loss_Pmin=0.1,  # Woody dead loss (breakdown) minimum
-            W_d_loss_Pmax_submerged_frozen=0.15,  # Woody dead loss (breakdown) to bare when submerged (below MHW) or frozen (temp < 0)
+            W_d_loss_Pmin_submerged_frozen=0.2,  # Woody dead loss (breakdown) minimum when submerged (below MHW) or frozen (temp < 0); should be larger than W_d_loss_Pmin
             W_d_loss_Pmax_discharge=0.6,  # Woody dead loss (breakdown) to bare at optimal HWE discharge
             W_d_loss_Pmax_twl=0.5,  # Woody dead loss (breakdown) to bare at optimum HWE TWL (as proxy for wind strength)
 
@@ -373,7 +373,7 @@ class MEEB:
         self._W_a_senesce_Pmin_tempC = W_a_senesce_Pmin_tempC
         self._W_a_senesce_Pmax_tempC = W_a_senesce_Pmax_tempC
         self._W_d_loss_Pmin = W_d_loss_Pmin
-        self._W_d_loss_Pmax_submerged_frozen = W_d_loss_Pmax_submerged_frozen
+        self._W_d_loss_Pmin_submerged_frozen = W_d_loss_Pmin_submerged_frozen
         self._W_d_loss_Pmax_discharge = W_d_loss_Pmax_discharge
         self._W_d_loss_Pmax_twl = W_d_loss_Pmax_twl
         self._H1_QHWE_min = H1_QHWE_min
@@ -566,12 +566,11 @@ class MEEB:
             self._veg_fraction[:, :, 2][self._veg_fraction[:, :, 2] < 0] = 0
             self._veg_fraction[:, :, 4] = (self._spec1 - 0.2) / 2  # Set 50% initial H2 Adult
             self._veg_fraction[:, :, 4][self._veg_fraction[:, :, 4] < 0] = 0
-        self._veg_fraction[:, :, 5] = self._spec2 * -0.5 + 0.5  # Set initial W Juvenile
-        self._veg_fraction[:, :, 5][self._veg_fraction[:, :, 5] > 0.25] = 0.25
-        self._veg_fraction[:, :, 5][self._spec2 <= 0] = 0
-        self._veg_fraction[:, :, 6] = self._spec2 * 1.5 - 0.65  # Set initial W Adult
+        self._veg_fraction[:, :, 5] = self._spec2 * 0.1  # Set initial W Juvenile
+        self._veg_fraction[:, :, 5][self._spec2 < 0] = 0
+        self._veg_fraction[:, :, 6] = self._spec2 * 0.85  # Set initial W Adult
         self._veg_fraction[:, :, 6][self._veg_fraction[:, :, 6] < 0] = 0
-        self._veg_fraction[:, :, 7] = self._spec2 * 0.1 - 0.06  # Set initial W Dead
+        self._veg_fraction[:, :, 7] = self._spec2 * 0.05  # Set initial W Dead
         self._veg_fraction[:, :, 7][self._veg_fraction[:, :, 7] < 0] = 0
 
         self._veg_fraction[:, :, 0] = 1 - (self._veg_fraction[:, :, 1] + self._veg_fraction[:, :, 2] + self._veg_fraction[:, :, 3] + self._veg_fraction[:, :, 4] + self._veg_fraction[:, :, 5] + self._veg_fraction[:, :, 6] + self._veg_fraction[:, :, 7])  # Set initial Bare
@@ -1049,7 +1048,7 @@ class MEEB:
                 np.mean(Rhigh),
                 self._W_uproot_limit,
                 self._W_burial_limit,
-                self._W_d_loss_Pmax_submerged_frozen,
+                self._W_d_loss_Pmin_submerged_frozen,
                 self._W_QHWE_min,
                 self._W_QHWE_max,
                 self._W_TWL_min,

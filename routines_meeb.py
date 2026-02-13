@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 5 February 2026
+Last update: 12 February 2026
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -2651,7 +2651,7 @@ def woody_dead_loss(topo,
                     HWE_TWL,
                     W_uproot_limit,
                     W_burial_limit,
-                    W_d_loss_Pmax_submerged_frozen,
+                    W_d_loss_Pmin_submerged_frozen,
                     W_QHWE_min,
                     W_QHWE_max,
                     W_TWL_min,
@@ -2662,7 +2662,7 @@ def woody_dead_loss(topo,
                     ):
     """Calculates probabilities of Woody Dead to Bare state transitions."""
 
-    W_d_loss_eff = np.ones(topo.shape, dtype=np.float32)
+    W_d_loss_eff = np.ones(topo.shape, dtype=np.float32) * W_d_loss_Pmin_submerged_frozen
 
     for ls in range(topo.shape[0]):
         for cs in range(x_s[ls], x_b[ls] + 1):
@@ -2670,32 +2670,35 @@ def woody_dead_loss(topo,
             if sedimentation_balance_long_term[ls, cs] < W_uproot_limit or sedimentation_balance_long_term[ls, cs] > W_burial_limit:
                 W_d_loss_eff[ls, cs] = 1  # 100% removal of dead shrubs if buried or eroded past threshold
 
-            # Submergence or freezing temperatures
-            elif topo[ls, cs] < MHW or extreme_low_temperature < 0:
-                W_d_loss_eff[ls, cs] = W_d_loss_Pmax_submerged_frozen
-
-            elif HWE and HWE_Q[ls, cs] > 0:
-                # Discharge
-                if HWE_Q[ls, cs] < W_QHWE_min:
-                    W_Loss_discharge = 0
-                elif HWE_Q[ls, cs] > W_QHWE_max:
-                    W_Loss_discharge = 1
-                else:
-                    W_Loss_discharge = HWE_Q[ls, cs] / (W_QHWE_max - W_QHWE_min) - W_QHWE_min / (W_QHWE_max - W_QHWE_min)
-
-                # TWL (Proxy For Wind Strength)
-                if HWE_TWL < W_TWL_min:
-                    W_Loss_twl = 0
-                elif HWE_TWL > W_TWL_max:
-                    W_Loss_twl = 1
-                else:
-                    W_Loss_twl = HWE_TWL / (W_TWL_max - W_TWL_min) - W_TWL_min / (W_TWL_max - W_TWL_min)
-
-                # Calculate Effective Dead Loss
-                W_d_loss_eff[ls, cs] = (W_d_loss_Pmin + (W_d_loss_Pmax_discharge - W_d_loss_Pmin) * W_Loss_discharge) * (W_d_loss_Pmin + (W_d_loss_Pmax_twl - W_d_loss_Pmin) * W_Loss_twl)
-
             else:
-                W_d_loss_eff[ls, cs] = W_d_loss_Pmin
+                # Submergence or freezing temperatures
+                if topo[ls, cs] < MHW or extreme_low_temperature < 0:
+                    W_d_loss_Pmin_eff = W_d_loss_Pmin_submerged_frozen
+                else:
+                    W_d_loss_Pmin_eff = W_d_loss_Pmin
+
+                if HWE and HWE_Q[ls, cs] > 0:
+                    # Discharge
+                    if HWE_Q[ls, cs] < W_QHWE_min:
+                        W_Loss_discharge = 0
+                    elif HWE_Q[ls, cs] > W_QHWE_max:
+                        W_Loss_discharge = 1
+                    else:
+                        W_Loss_discharge = HWE_Q[ls, cs] / (W_QHWE_max - W_QHWE_min) - W_QHWE_min / (W_QHWE_max - W_QHWE_min)
+
+                    # TWL (Proxy For Wind Strength)
+                    if HWE_TWL < W_TWL_min:
+                        W_Loss_twl = 0
+                    elif HWE_TWL > W_TWL_max:
+                        W_Loss_twl = 1
+                    else:
+                        W_Loss_twl = HWE_TWL / (W_TWL_max - W_TWL_min) - W_TWL_min / (W_TWL_max - W_TWL_min)
+
+                    # Calculate Effective Dead Loss
+                    W_d_loss_eff[ls, cs] = (W_d_loss_Pmin_eff + (W_d_loss_Pmax_discharge - W_d_loss_Pmin_eff) * W_Loss_discharge) * (W_d_loss_Pmin_eff + (W_d_loss_Pmax_twl - W_d_loss_Pmin_eff) * W_Loss_twl)
+
+                else:
+                    W_d_loss_eff[ls, cs] = W_d_loss_Pmin_eff
 
     return W_d_loss_eff
 
