@@ -1,6 +1,6 @@
 """
 Script for testing MEEB overwash function.
-IRBR 22 July 2025
+IRBR 23 April 2026
 """
 
 import numpy as np
@@ -65,6 +65,7 @@ Rhigh = 3.32  # [m NAVD88]
 Rlow = 1.90  # [m NAVD88]
 dur = 83  # [hr]
 MHW = 0.39  # [m NAVD88]
+H1_a_proportion = 0.5
 cellsize = 2  # [m]
 
 # Initial Observed Topo
@@ -104,7 +105,23 @@ obs_topo_final = End[0, ymin:ymax, :]  # [m NAVD88]
 # Set Veg Domain
 spec1 = Init[1, ymin: ymax, :]
 spec2 = Init[2, ymin: ymax, :]
-veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
+
+veg_fraction = np.zeros([topo.shape[0], topo.shape[1], 8], dtype=np.float32)  # Vector of initial states [Bare, H1_seed, H1_adult, H2_seed, H2_adult, W_seed, W_adult, W_dead]
+veg_fraction[:, :, 1] = spec1 * 0.2 * H1_a_proportion  # Set initial H1 Juvenile
+veg_fraction[:, :, 2] = spec1 * 0.8 * H1_a_proportion  # Set initial H1 Adult
+veg_fraction[:, :, 3] = spec1 * 0.2 * (1 - H1_a_proportion)  # Set initial H2 Juvenile
+veg_fraction[:, :, 4] = spec1 * 0.8 * (1 - H1_a_proportion)  # Set initial H2 Adult
+veg_fraction[:, :, 5] = spec2 * 0.1  # Set initial W Juvenile
+veg_fraction[:, :, 6] = spec2 * 0.85  # Set initial W Adult
+veg_fraction[:, :, 7] = spec2 * 0.05  # Set initial W Dead
+veg_fraction[:, :, 0] = 1 - (np.sum(veg_fraction[:, :, 1:], axis=2))  # Set initial Bare
+veg_fraction[:, :, 1:5][spec1 < 0] = 0
+veg_fraction[:, :, 5:][spec2 < 0] = 0
+
+grass_adult = veg_fraction[:, :, 2] + veg_fraction[:, :, 4]
+shrub_adult_dead = veg_fraction[:, :, 6] + veg_fraction[:, :, 7]
+
+veg = grass_adult + shrub_adult_dead  # Determine the initial cumulative vegetation effectiveness
 veg[veg > 1] = 1  # Cumulative vegetation effectiveness cannot be negative or larger than one
 veg[veg < 0] = 0
 
@@ -123,29 +140,32 @@ RNG = np.random.default_rng(seed=13)
 # Overwash, Beach, & Dune Change
 topo_prestorm = copy.deepcopy(topo)  # [m NAVD88]
 
-sim_topo_post_storm, OWflux, inundated, Qbe = routine.storm_processes(
+sim_topo_post_storm, OWflux, inundated, Qbe, cumulative_hwe_discharge = routine.storm_processes(
     topo,
     Rhigh,
     dur,
-    Rin=245,
-    Cs=0.0235,
+    Rin=250,
+    Cs=0.0311,
     nn=0.5,
     MaxUpSlope=1.5,
     fluxLimit=1,
     Qs_min=1,
-    Kow=0.0003615,
-    mm=1.05,
+    Kow=0.0003701,
+    Kl=0.38,
+    mm=1.01,
     MHW=MHW,
     Cbb=0.7,
     Qs_bb_min=1,
     substep=25,
-    beach_equilibrium_slope=0.021,
-    swash_erosive_timescale=1.51,
+    beach_equilibrium_slope=0.017,
+    swash_erosive_timescale=1.23,
     beach_substeps=1,
     x_s=x_s,
     cellsize=cellsize,
-    herbaceous_cover=spec1,
-    woody_cover=spec2,
+    herbaceous_cover=grass_adult,
+    woody_cover=shrub_adult_dead,
+    H_flow_reduction_max=0.001,
+    W_flow_reduction_max=0.01,
 )
 
 sim_topo_final = routine.enforceslopes(sim_topo_post_storm, veg, sh=0.02, anglesand=20, angleveg=30, th=0.37, MHW=MHW, cellsize=cellsize, RNG=RNG)  # Enforce angles of repose
@@ -351,7 +371,7 @@ plt.tight_layout()
 
 # ----------
 # Profile Change
-profx = int(94 / cellsize)
+profx = int(90 / cellsize)
 proffig2 = plt.figure(figsize=(11, 7.5))
 plt.plot(topo_prestorm[profx, plot_xmin: plot_xmin + 415], c='black')
 plt.plot(obs_topo_final[profx, plot_xmin: plot_xmin + 415], c='green')

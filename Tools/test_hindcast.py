@@ -3,7 +3,7 @@ Script for testing MEEB hindcast simulations.
 
 Runs a hindcast simulation and calculates fitess scores for morphologic and ecologic change between simulated and observed.
 
-IRBR 22 July 2025
+IRBR 23 April 2026
 """
 
 import numpy as np
@@ -203,31 +203,33 @@ meeb = MEEB(
     seeded_random_numbers=True,
     simulation_start_date=startdate,
     storm_timeseries_filename='StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy',
+    save_frequency=0.1,
     # --- Aeolian --- #
     saltation_length=2,
     saltation_length_rand_deviation=1,
     slabheight=0.02,
-    p_dep_sand=0.09,  # Q = hs * L * n * pe/pd
-    p_dep_sand_VegMax=0.17,
+    p_dep_sand=0.05,
+    p_dep_sand_VegMax=0.47,
     p_ero_sand=0.08,
-    entrainment_veg_limit=0.09,
-    saltation_veg_limit=0.37,
-    repose_threshold=0.37,
-    shadowangle=12,
+    entrainment_veg_limit=0.4,
+    saltation_veg_limit=0.3,
+    repose_threshold=0.3,
+    shadowangle=9,
     repose_bare=20,
     repose_veg=30,
-    wind_rose=(0.91, 0.04, 0.01, 0.04),  # (right, down, left, up)
+    wind_rose=(0.80, 0.03, 0.13, 0.04),
     groundwater_depth=0.4,
     # --- Storms --- #
-    Rin=245,
-    Cs=0.0235,
+    Rin=250,
+    Cs=0.0311,
     MaxUpSlope=1.5,
     marine_flux_limit=1,
-    Kow=0.0003615,
-    mm=1.05,
+    Kow=0.0003701,
+    Kl=0.38,
+    mm=1.01,
     overwash_substeps=25,
-    beach_equilibrium_slope=0.021,
-    swash_erosive_timescale=1.51,
+    beach_equilibrium_slope=0.017,
+    swash_erosive_timescale=1.23,
     beach_substeps=1,
     # --- Shoreline --- #
     wave_asymmetry=0.6,

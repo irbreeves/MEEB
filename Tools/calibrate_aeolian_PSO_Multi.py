@@ -4,7 +4,7 @@ Script for calibrating MEEB aeolian parameters using Particle Swarms Optimizatio
 Calibrates based on fitess score for morphologic change between two observation, and incorporates multiple
 timeframes and/or locations into each fitness score.
 
-IRBR 22 July 2025
+IRBR 23 April 2026
 """
 
 import numpy as np
@@ -138,20 +138,22 @@ def aeolian_fitness(solution, topo_name, topo_start, topo_end_obs, ymin, ymax, x
         p_ero_sand=solution[2],
         entrainment_veg_limit=solution[3],
         saltation_veg_limit=solution[4],
+        repose_threshold=solution[4],
         shadowangle=int(round(solution[5])),
         repose_bare=20,
         repose_veg=30,
         wind_rose=rose,
         # --- Storms --- #
-        Rin=245,
-        Cs=0.0235,
+        Rin=250,
+        Cs=0.0311,
         MaxUpSlope=1.5,
         marine_flux_limit=1,
-        Kow=0.0003615,
-        mm=1.05,
+        Kow=0.0003701,
+        Kl=0.38,
+        mm=1.01,
         overwash_substeps=25,
-        beach_equilibrium_slope=0.021,
-        swash_erosive_timescale=1.51,
+        beach_equilibrium_slope=0.017,
+        swash_erosive_timescale=1.23,
         beach_substeps=1,
         # --- Shoreline --- #
         shoreline_diffusivity_coefficient=0.07,
@@ -266,7 +268,7 @@ def opt_func(X):
 
 start_time = time.time()  # Record time at start of calibration
 
-n_cores = 18  # Number of cores to run parallel simulations on
+n_cores = 20  # Number of cores to run parallel simulations on
 
 # __________________________________________________________________________________________________________________________________
 # VARIABLES AND INITIALIZATIONS
@@ -306,7 +308,7 @@ x_range_max = [int(i / cellsize) for i in x_range_max]
 MHW = 0.39  # [m NAVD88] Initial
 ResReduc = False  # Option to reduce raster resolution for skill assessment
 reduc = 5  # Raster resolution reduction factor
-name = '2014-2017, 5 x 500-m Locations, Multi-Objective BSS, 65 iter, Planet 2m High Density, 1Apr25'
+name = '2014-2017, 5 x 500-m Locations, Multi-Objective BSS, 65 iter, 21Apr26'
 
 print(name)
 
@@ -319,7 +321,7 @@ print(name)
 # Prepare Particle Swarm Parameters
 
 iterations = 65
-swarm_size = 18
+swarm_size = 20
 dimensions = 9  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
@@ -330,22 +332,22 @@ particle itself and recognizing the search result of the swarm; Control the trad
 
 bounds = (
     # Minimum
-    np.array([0.02,  # p_dep_sand
-              0.05,  # p_dep_sand_VegMax
-              0.02,  # p_ero_sand
-              0.05,  # entrainment_veg_limit
-              0.05,  # saltveglimit
-              8,    # shadowangle
+    np.array([0.05,  # p_dep_sand
+              0.15,  # p_dep_sand_VegMax
+              0.05,  # p_ero_sand
+              0.3,   # entrainment_veg_limit
+              0.2,   # saltveglimit
+              8,     # shadowangle
               0.5,   # Proportion of cross-shore winds versus alongshore
               0.5,   # Proportion of cross-shore winds towards right (onshore)
               0]),   # Proportion of alongshore winds towards down
     # Maximum
-    np.array([0.5,
+    np.array([0.6,
+              0.6,
+              0.6,
+              0.6,
               0.5,
-              0.5,
-              0.55,
-              0.4,
-              18,
+              15,
               1,
               1,
               1])
