@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 12 February 2026
+Last update: 23 April 2026
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -58,17 +58,17 @@ class MEEB:
             saltation_length=2,  # [cells] Hop length for saltating slabs of sand (5 m, Teixeira et al. 2023); note units of cells (e.g., if cellsize = 2 m and saltation_length = 5 cells, slabs will hop 10 m)
             saltation_length_rand_deviation=1,  # [cells] Deviation around saltation_length for random uniform distribution of saltation lengths. Must be at lest 1 cell smaller than saltation_length.
             groundwater_depth=0.4,  # Proportion of the smoothed topography used to set groundwater profile
-            wind_rose=(0.76, 0.06, 0.13, 0.05),  # Proportion of wind TOWARDS (right, down, left, up)
-            p_dep_sand=0.14,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
-            p_dep_sand_VegMax=0.35,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover; must be greater than or equal to p_dep_sand/p_dep_basesaltation_length_rand_deviation
+            wind_rose=(0.80, 0.03, 0.13, 0.04),  # Proportion of wind TOWARDS (right, down, left, up)
+            p_dep_sand=0.05,  # [0-1] Probability of deposition in sandy cells with 0% vegetation cover
+            p_dep_sand_VegMax=0.47,  # [0-1] Probability of deposition in sandy cells with 100% vegetation cover; must be greater than or equal to p_dep_sand/p_dep_basesaltation_length_rand_deviation
             p_dep_base=0.1,  # [0-1] Probability of deposition of base cells
-            p_ero_sand=0.14,  # [0-1] Probability of erosion of bare/sandy cells
-            entrainment_veg_limit=0.17,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible
-            saltation_veg_limit=0.26,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
-            shadowangle=10,  # [deg]
+            p_ero_sand=0.08,  # [0-1] Probability of erosion of bare/sandy cells
+            entrainment_veg_limit=0.4,  # [0-1] Percent of vegetation cover beyond which aeolian sediment entrainment is no longer possible
+            saltation_veg_limit=0.3,  # Threshold vegetation effectiveness needed for a cell along a slab saltation path to be considered vegetated
+            shadowangle=9,  # [deg]
             repose_bare=20,  # [deg] Angle of repose for unvegetated cells
             repose_veg=30,  # [deg] Angle of repose for vegetation cells
-            repose_threshold=0.26,  # [0-1] Vegetation threshold for applying repose_veg
+            repose_threshold=0.3,  # [0-1] Vegetation threshold for applying repose_veg
             eq_backbarrier_depth=1.5,  # [m] Equilibrium depth of back-barrier bay/lagoon
 
             # SHOREFACE & SHORELINE
@@ -92,20 +92,20 @@ class MEEB:
             # STORM OVERWASH AND BEACH-DUNE CHANGE
             storm_list_filename="SyntheticStorms_NCB-CE_10k_1979-2020_Beta0pt039_BermEl1pt78.npy",
             storm_timeseries_filename="StormTimeSeries_1979-2020_NCB-CE_Beta0pt039_BermEl1pt78.npy",  # Only needed if running hindcast simulations (i.e., without stochastic storms)
-            Rin=312,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
-            Cs=0.0407,  # Constant for representing flow momentum for sediment transport in overwash
+            Rin=250,  # [m^3/hr] Flow infiltration and drag parameter, run-up overwash regime
+            Cs=0.0311,  # Constant for representing flow momentum for sediment transport in overwash
             nn=0.5,  # Flow routing constant
             MaxUpSlope=1.5,  # Maximum slope water can flow uphill
             marine_flux_limit=1,  # [m/hr] Maximum elevation change allowed per time step (prevents instabilities)
             overwash_min_discharge=1.0,  # [m^3/hr] Minimum discharge out of cell needed to transport sediment
-            Kow=0.0002834,  # Sediment transport coefficient
-            Kl=0.57,  # Lateral sediment transport coefficient
-            mm=1.03,  # Inundation overwash constant
+            Kow=0.0003701,  # Sediment transport coefficient
+            Kl=0.38,  # Lateral sediment transport coefficient
+            mm=1.01,  # Inundation overwash constant
             Cbb=0.7,  # [0-1] Coefficient for exponential decay of sediment load entering back-barrier bay, run-up regime
             overwash_min_subaqueous_discharge=1,  # [m^3/hr] Minimum discharge out of subaqueous back-barrier cell needed to transport sediment
             overwash_substeps=25,  # Number of substeps to run for each hour in run-up overwash regime (e.g., 3 substeps means discharge/elevation updated every 20 minutes)
-            beach_equilibrium_slope=0.02,  # Equilibrium slope of the beach
-            swash_erosive_timescale=1.18,  # Non-dimensional erosive timescale coefficient for beach/duneface sediment transport (Duran Vinent & Moore, 2015); hours/step
+            beach_equilibrium_slope=0.017,  # Equilibrium slope of the beach
+            swash_erosive_timescale=1.23,  # Non-dimensional erosive timescale coefficient for beach/duneface sediment transport (Duran Vinent & Moore, 2015); hours/step
             beach_substeps=1,  # Number of substeps per iteration of beach/duneface model; instabilities will occur if too low
             shift_mean_storm_intensity_end=0,  # [%/yr] Linear yearly percent shift in mean storm TWL (as proxy for intensity) in stochastic storm model; use 0 for no shift
             shift_mean_storm_intensity_start=0,  # [%] Percent change in storm intensity at start of simulation
@@ -117,6 +117,9 @@ class MEEB:
             # Default Species: Herbaceous (Grass) 1: Ammophila breviligulata; Herbaceous (Grass) 2: Uniola paniculata; Woody: Morella cerifera
             # States: Bare, H1_seed, H1_adult, H2_seed, H2_adult, W_seed, W_adult, W_dead
 
+            # Initial Grass Proportions
+            H1_a_proportion=0.5,  # Relative proportion of initial H1_adult to initial H2_adult
+
             # Relative Geomorphic "Effectiveness"
             H1_a_relative_effectiveness=0.75,  # [0-1] Geomorphic effectiveness of adult herbaceous species 1, relative to other species
             H2_a_relative_effectiveness=0.5,  # [0-1] Geomorphic effectiveness of adult herbaceous species 2, relative to other species
@@ -126,25 +129,25 @@ class MEEB:
             # Dispersal and Flow
             H1_lateral_probability=0.025,  # [0-1] Probability of lateral expansion of existing vegetation, herbaceous species 1
             H2_lateral_probability=0.015,  # [0-1] Probability of lateral expansion of existing vegetation, herbaceous species 2
-            H1_pioneer_probability=0.002,  # [0-1] Probability of occurrence of new pioneering vegetation, herbaceous species 1
-            H2_pioneer_probability=0.001,  # [0-1] Probability of occurrence of new pioneering vegetation, herbaceous species 2
+            H1_pioneer_probability=0.001,  # [0-1] Probability of occurrence of new pioneering vegetation, herbaceous species 1
+            H2_pioneer_probability=0.0005,  # [0-1] Probability of occurrence of new pioneering vegetation, herbaceous species 2
             W_pioneer_probability=0.00002,  # [0-1] Probability of occurrence of new pioneering vegetation, woody species
             W_avian_seed_min=2,  # [seeds/timestep] Minimum number of seeds produced and dispersed per timestep for woody species
             W_avian_seed_max=16,  # [seeds/timestep] Maximum number of seeds produced and dispersed per timestep for woody species
             W_avian_dispersal_mean=-0.7219,  # Lognormal avian dispersal distance function
             W_avian_dispersal_sigma=1.5,  # Lognormal avian dispersal distance function
-            H_flow_reduction_max=0.002,  # [0-1] Proportion of overwash flow reduction through a cell populated with herbaceous species at full density
-            W_flow_reduction_max=0.02,  # [0-1] Proportion of overwash flow reduction through a cell populated with woody species at full density
-            effective_veg_sigma=3,  # Standard deviation for Gaussian filter of vegetation cover
+            H_flow_reduction_max=0.001,  # [0-1] Proportion of overwash flow reduction through a cell populated with herbaceous species at full density
+            W_flow_reduction_max=0.01,  # [0-1] Proportion of overwash flow reduction through a cell populated with woody species at full density
+            effective_veg_sigma=1,  # Standard deviation for Gaussian filter of vegetation cover
 
             # Transition Probabilities
-            H1_estab_Pmax_tempC=0.5,  # Herbaceous establishment at optimal temperature, species 1
-            H2_estab_Pmax_tempC=0.5,  # Herbaceous establishment at optimal temperature, species 2
-            W_estab_Pmax_tempC=0.5,  # Woody establishment at optimal temperature
+            H1_estab_Pmax_tempC=0.4,  # Herbaceous establishment at optimal temperature, species 1
+            H2_estab_Pmax_tempC=0.4,  # Herbaceous establishment at optimal temperature, species 2
+            W_estab_Pmax_tempC=0.35,  # Woody establishment at optimal temperature
             W_estab_Pmin_herbaceous_facil=0.8,  # Woody establishment at least optimal (i.e., zero) herbaceous cover relative to optimal (i.e., 1)
             H1_j_mort_Pmax_tempC=0.8,  # Herbaceous juvenile mortality at optimal temperature, species 1
             H2_j_mort_Pmax_tempC=0.8,  # Herbaceous juvenile mortality at optimal temperature, species 2
-            W_j_mort_Pmax_tempC=0.4,  # Woody juvenile mortality at optimal temperature
+            W_j_mort_Pmax_tempC=0.5,  # Woody juvenile mortality at optimal temperature
             H1_growth_Pmax_tempC=0.95,  # Herbaceous juvenile to adult at optimal temperature, species 1
             H1_growth_Pmax_elev=0.8,  # Herbaceous bare to juvenile and juvenile to adult probabilities at optimal elevation, species 1
             H1_growth_Pmin_stim=0.95,  # Herbaceous juvenile to adult with no deposition stimulation, species 1
@@ -166,12 +169,12 @@ class MEEB:
             W_d_loss_Pmax_twl=0.5,  # Woody dead loss (breakdown) to bare at optimum HWE TWL (as proxy for wind strength)
 
             # HWE Discharge Thresholds
-            H1_QHWE_min=8000,  # [m^3] Minimum cumulative HWE discharge (volume) below which mortality probability is 0%, herbaceous species 1
-            H1_QHWE_max=15000,  # [m^3] Maximum cumulative HWE discharge (volume) above which mortality probability is 100%, herbaceous species 1
-            H2_QHWE_min=8000,  # [m^3] Minimum cumulative HWE discharge (volume) below which mortality probability is 0%, herbaceous species 2
-            H2_QHWE_max=15000,  # [m^3] Maximum cumulative HWE discharge (volume) above which mortality probability is 100%, herbaceous species 2
-            W_QHWE_min=6000,  # [m^3] Minimum cumulative HWE discharge (volume) below which mortality probability is 0%, woody species
-            W_QHWE_max=12000,  # [m^3] Maximum cumulative HWE discharge (volume) above which mortality probability is 100%, woody species
+            H1_QHWE_min=2000,  # [m^3] Minimum cumulative HWE discharge (volume) below which mortality probability is 0%, herbaceous species 1
+            H1_QHWE_max=5000,  # [m^3] Maximum cumulative HWE discharge (volume) above which mortality probability is 100%, herbaceous species 1
+            H2_QHWE_min=2000,  # [m^3] Minimum cumulative HWE discharge (volume) below which mortality probability is 0%, herbaceous species 2
+            H2_QHWE_max=5000,  # [m^3] Maximum cumulative HWE discharge (volume) above which mortality probability is 100%, herbaceous species 2
+            W_QHWE_min=4000,  # [m^3] Minimum cumulative HWE discharge (volume) below which mortality probability is 0%, woody species
+            W_QHWE_max=7000,  # [m^3] Maximum cumulative HWE discharge (volume) above which mortality probability is 100%, woody species
 
             # HWE TWL Thresholds
             W_TWL_min=1,  # [m MHW] Minimum HWE total water level below which woody loss to bare is 0%
@@ -201,16 +204,16 @@ class MEEB:
             W_elev_gamma_scale=0.23,  # Scale parameter of gamma probability density function for elevation, woody species
 
             # Temperature Thresholds and Parameters
-            H1_estab_tempC_min=21,  # [C] Minimum temperature for establishment, herbaceous species 1
-            H1_estab_tempC_max=43,  # [C] Maximum temperature for establishment, herbaceous species 1
-            H2_estab_tempC_min=23,  # [C] Minimum temperature for establishment, herbaceous species 2
-            H2_estab_tempC_max=50,  # [C] Maximum temperature for establishment, herbaceous species 2
+            H1_estab_tempC_min=20,  # [C] Minimum temperature for establishment, herbaceous species 1
+            H1_estab_tempC_max=44,  # [C] Maximum temperature for establishment, herbaceous species 1
+            H2_estab_tempC_min=22,  # [C] Minimum temperature for establishment, herbaceous species 2
+            H2_estab_tempC_max=52,  # [C] Maximum temperature for establishment, herbaceous species 2
             W_estab_tempC_min=10,  # [C] Minimum temperature for establishment, woody species
             W_estab_tempC_max=40,  # [C] Maximum temperature for establishment, woody species
-            H1_growth_tempC_min=11,  # [C] Minimum temperature for growth, herbaceous species 1
-            H1_growth_tempC_max=37,  # [C] Maximum temperature for growth, herbaceous species 1
-            H2_growth_tempC_min=22,  # [C] Minimum temperature for growth, herbaceous species 2
-            H2_growth_tempC_max=39,  # [C] Maximum temperature for growth, herbaceous species 2
+            H1_growth_tempC_min=10,  # [C] Minimum temperature for growth, herbaceous species 1
+            H1_growth_tempC_max=38,  # [C] Maximum temperature for growth, herbaceous species 1
+            H2_growth_tempC_min=20,  # [C] Minimum temperature for growth, herbaceous species 2
+            H2_growth_tempC_max=40,  # [C] Maximum temperature for growth, herbaceous species 2
             W_growth_tempC_min=10,  # [C] Minimum temperature for growth, woody species
             W_growth_tempC_max=50,  # [C] Maximum temperature for growth, woody species
             H1_j_mort_tempC_min=-18,  # [C] Threshold temperature below which juvenile mortality is 100%, herbaceous species 1
@@ -245,7 +248,7 @@ class MEEB:
             # Competition/Facilitation Thresholds and Parameters
             H1_growth_woody_comp_max=0.9,  # [0-1] Maximum woody fractional cover beyond which establishment/growth of herbaceous species 1 is 0%
             H2_growth_woody_comp_max=0.9,  # [0-1] Maximum woody fractional cover beyond which establishment/growth of herbaceous species 2 is 0%
-            H1_growth_H2_comp_max=0.4,  # [0-1] Maximum percent reduction in establishment/growth of herbaceous species 1 when in competition with herbaceous species 2
+            H1_growth_H2_comp_max=0.41,  # [0-1] Maximum percent reduction in establishment/growth of herbaceous species 1 when in competition with herbaceous species 2
             W_estab_herbaceous_facil_min=0.05,  # [0-1] Minimum herbaceous fractional cover below which woody establishment is minimized
             W_estab_herbaceous_facil_max=0.95,  # [0-1] Maximum herbaceous fractional cover beyond which woody establishment is minimized
 
@@ -505,8 +508,8 @@ class MEEB:
                           (((1 / (11 / 4 * z0 ** (11 / 4))) - (1 / (11 / 4 * self._DShoreface ** (11 / 4)))) / (self._DShoreface - z0)))  # [m^3/m/yr] Shoreface response rate
             self._LShoreface = int(self._DShoreface / self._s_sf_eq)  # [m] Initialize length of shoreface such that initial shoreface slope equals equilibrium shoreface slope
         self._alongshore_section_length = int(self._alongshore_section_length / self._cellsize)  # [cells]
-        self._x_s = routine.init_ocean_shoreline(self._topo, self._MHW, self._alongshore_section_length).astype(np.float32)  # [m] Start locations of shoreline according to initial topography and MHW
-        self._x_t = self._x_s - self._LShoreface  # [m] Start locations of shoreface toe
+        self._x_s = routine.init_ocean_shoreline(self._topo, self._MHW, self._alongshore_section_length).astype(np.float32)  # [cells] Start locations of shoreline according to initial topography and MHW
+        self._x_t = self._x_s - self._LShoreface  # [cells] Start locations of shoreface toe
         self._coast_diffusivity, self._di, self._dj, self._ny = routine.init_AST_environment(self._wave_asymmetry,
                                                                                              self._wave_high_angle_fraction,
                                                                                              self._mean_wave_height,
@@ -529,51 +532,38 @@ class MEEB:
             raise ValueError("Simulation length is greater than hindcast timeSeries length.")
 
         # VEGETATION
-        self._temperatureC_average_daily_max = [12.2, 11.2, 11.7, 12.4, 14.5, 16.1, 18.6, 20.7, 22.4, 24.6, 26.6, 28.1, 29.3, 30.0, 30.1,
-                                                29.8, 29.4, 27.8, 26.0, 23.8, 21.1, 18.7, 16.9, 14.6, 13.1]  # [C] Average observed daily maximum high for 1/25-yr increments, Ocrocoke, 1957-1976 and 1998-2025
-        self._temperatureC_stdev_daily_max = [5.7, 5.4, 4.7, 4.9, 4.8, 4.3, 3.7, 3.4, 3.1, 3.0, 2.7, 2.3, 1.8, 1.7, 1.9, 1.9, 2.1, 2.4,
-                                              2.8, 3.1, 3.6, 4.0, 4.1, 5.0, 5.3]  # [C] Standard deviation of observed daily maximum high for 1/25-yr increments, Ocrocoke, 1957-1976 and 1998-2025
-        self._temperatureC_average_daily_min = [4.2, 3.0, 3.6, 4.0, 6.2, 8.0, 10.3, 12.7, 14.7, 16.8, 19.3, 21.2, 22.7, 23.2, 23.5, 23.1,
-                                                22.6, 21.1, 19.3, 16.8, 13.9, 11.0, 8.9, 6.7, 5.0]  # [C] Average observed daily minimum low for 1/25-yr increments, Ocrocoke, 1957-1976 and 1998-2025
-        self._temperatureC_stdev_daily_min = [5.2, 4.9, 4.4, 4.5, 4.6, 4.2, 4.2, 3.8, 3.5, 3.1, 3.0, 2.5, 2.4, 2.2, 2.0, 2.2, 2.3, 2.7,
-                                              3.0, 3.5, 4.1, 4.3, 4.1, 4.9, 4.7]  # [C] Standard deviation of observed daily maximum high for 1/25-yr increments, Ocrocoke, 1957-1976 and 1998-2025
+        # self._temperatureC_average_daily_max = [12.2, 11.2, 11.7, 12.4, 14.5, 16.1, 18.6, 20.7, 22.4, 24.6, 26.6, 28.1, 29.3, 30.0, 30.1,
+        #                                         29.8, 29.4, 27.8, 26.0, 23.8, 21.1, 18.7, 16.9, 14.6, 13.1]  # [C] Average observed daily maximum high for 1/25-yr increments, Ocrocoke, 1957-1976 and 1998-2025
+        # self._temperatureC_stdev_daily_max = [5.7, 5.4, 4.7, 4.9, 4.8, 4.3, 3.7, 3.4, 3.1, 3.0, 2.7, 2.3, 1.8, 1.7, 1.9, 1.9, 2.1, 2.4,
+        #                                       2.8, 3.1, 3.6, 4.0, 4.1, 5.0, 5.3]  # [C] Standard deviation of observed daily maximum high for 1/25-yr increments, Ocrocoke, 1957-1976 and 1998-2025
+        # self._temperatureC_average_daily_min = [4.2, 3.0, 3.6, 4.0, 6.2, 8.0, 10.3, 12.7, 14.7, 16.8, 19.3, 21.2, 22.7, 23.2, 23.5, 23.1,
+        #                                         22.6, 21.1, 19.3, 16.8, 13.9, 11.0, 8.9, 6.7, 5.0]  # [C] Average observed daily minimum low for 1/25-yr increments, Ocrocoke, 1957-1976 and 1998-2025
+        # self._temperatureC_stdev_daily_min = [5.2, 4.9, 4.4, 4.5, 4.6, 4.2, 4.2, 3.8, 3.5, 3.1, 3.0, 2.5, 2.4, 2.2, 2.0, 2.2, 2.3, 2.7,
+        #                                       3.0, 3.5, 4.1, 4.3, 4.1, 4.9, 4.7]  # [C] Standard deviation of observed daily maximum high for 1/25-yr increments, Ocrocoke, 1957-1976 and 1998-2025
+        self._temperatureC_average_daily_max = [13.2, 11.2, 12.4, 12.6, 16.0, 17.6, 19.4, 21.2, 22.9, 23.8, 26.4, 28.2, 29.7, 30.4, 30.0,
+                                                30.0, 29.5, 28.1, 25.9, 23.1, 22.0, 19.9, 16.3, 15.0, 14.3]  # [C] Average observed daily maximum high for 1/25-yr increments, Ocrocoke, 2015-2025
+        self._temperatureC_stdev_daily_max = [5.62, 5.08, 4.65, 5.83, 4.66, 3.92, 3.99, 3.11, 2.99, 2.93, 2.35, 2.17, 1.43, 1.22, 1.64, 1.47,
+                                              1.79, 2.08, 2.58, 3.23, 3.17, 4.03, 4.11, 4.61, 5.42]  # [C] Standard deviation of observed daily maximum high for 1/25-yr increments, Ocrocoke, 2015-2025
+        self._temperatureC_average_daily_min = [6.1, 4.2, 5.6, 5.0, 8.3, 10.6, 12.2, 14.0, 15.8, 17.5, 20.3, 22.0, 23.8, 24.8, 24.3, 24.3,
+                                                23.5, 22.5, 20.4, 17.5, 16.0, 13.6, 9.6, 8.3, 7.7]  # [C] Average observed daily minimum low for 1/25-yr increments, Ocrocoke, 2015-2025
+        self._temperatureC_stdev_daily_min = [5.11, 3.84, 4.12, 5.60, 4.44, 3.75, 4.37, 3.10, 3.41, 2.90, 2.59, 2.18, 1.64, 1.41, 1.87, 1.65,
+                                              1.92, 2.21, 2.61, 3.10, 3.00, 4.19, 3.22, 4.00, 4.62]  # [C] Standard deviation of observed daily maximum high for 1/25-yr increments, Ocrocoke, 2015-2025
 
         if type(self._shift_mean_atmospheric_temperature) == int or type(self._shift_mean_atmospheric_temperature) == float:
             self._shift_mean_atmospheric_temperature = np.ones([25]) * self._shift_mean_atmospheric_temperature
 
         # Set initial vegetation cover and proportion
         self._veg_fraction = np.zeros([self._longshore, self._crossshore, 8], dtype=np.float32)  # Vector of initial states [Bare, H1_seed, H1_adult, H2_seed, H2_adult, W_seed, W_adult, W_dead]
-        self._veg_fraction[:, :, 1] = 0  # Set initial H1 Juvenile
-        self._veg_fraction[:, :, 3] = 0  # Set initial H2 Juvenile
-        if self._name == 'AMBR':
-            self._veg_fraction[:, :, 2] = (self._spec1 - 0.2)  # Set 100% initial H1 Adult
-            self._veg_fraction[:, :, 2][self._veg_fraction[:, :, 2] < 0] = 0
-        elif self._name == 'AMBR_dominated':
-            self._veg_fraction[:, :, 2] = (self._spec1 - 0.2) * 0.95  # Set 95% initial H1 Adult
-            self._veg_fraction[:, :, 2][self._veg_fraction[:, :, 2] < 0] = 0
-            self._veg_fraction[:, :, 4] = (self._spec1 - 0.2) * 0.05  # Set 5% initial H2 Adult
-            self._veg_fraction[:, :, 4][self._veg_fraction[:, :, 4] < 0] = 0
-        elif self._name == 'UNPA':
-            self._veg_fraction[:, :, 4] = (self._spec1 - 0.2)  # Set 100% initial H2 Adult
-            self._veg_fraction[:, :, 4][self._veg_fraction[:, :, 4] < 0] = 0
-        elif self._name == 'UNPA_dominated':
-            self._veg_fraction[:, :, 2] = (self._spec1 - 0.2) * 0.05  # Set 5% initial H1 Adult
-            self._veg_fraction[:, :, 2][self._veg_fraction[:, :, 2] < 0] = 0
-            self._veg_fraction[:, :, 4] = (self._spec1 - 0.2) * 0.95  # Set 95% initial H2 Adult
-            self._veg_fraction[:, :, 4][self._veg_fraction[:, :, 4] < 0] = 0
-        else:
-            self._veg_fraction[:, :, 2] = (self._spec1 - 0.2) / 2  # Set 50% initial H1 Adult
-            self._veg_fraction[:, :, 2][self._veg_fraction[:, :, 2] < 0] = 0
-            self._veg_fraction[:, :, 4] = (self._spec1 - 0.2) / 2  # Set 50% initial H2 Adult
-            self._veg_fraction[:, :, 4][self._veg_fraction[:, :, 4] < 0] = 0
+        self._veg_fraction[:, :, 1] = self._spec1 * 0.2 * H1_a_proportion  # Set initial H1 Juvenile
+        self._veg_fraction[:, :, 2] = self._spec1 * 0.8 * H1_a_proportion  # Set initial H1 Adult
+        self._veg_fraction[:, :, 3] = self._spec1 * 0.2 * (1 - H1_a_proportion)  # Set initial H2 Juvenile
+        self._veg_fraction[:, :, 4] = self._spec1 * 0.8 * (1 - H1_a_proportion)  # Set initial H2 Adult
         self._veg_fraction[:, :, 5] = self._spec2 * 0.1  # Set initial W Juvenile
-        self._veg_fraction[:, :, 5][self._spec2 < 0] = 0
         self._veg_fraction[:, :, 6] = self._spec2 * 0.85  # Set initial W Adult
-        self._veg_fraction[:, :, 6][self._veg_fraction[:, :, 6] < 0] = 0
         self._veg_fraction[:, :, 7] = self._spec2 * 0.05  # Set initial W Dead
-        self._veg_fraction[:, :, 7][self._veg_fraction[:, :, 7] < 0] = 0
-
-        self._veg_fraction[:, :, 0] = 1 - (self._veg_fraction[:, :, 1] + self._veg_fraction[:, :, 2] + self._veg_fraction[:, :, 3] + self._veg_fraction[:, :, 4] + self._veg_fraction[:, :, 5] + self._veg_fraction[:, :, 6] + self._veg_fraction[:, :, 7])  # Set initial Bare
+        self._veg_fraction[:, :, 0] = 1 - (np.sum(self._veg_fraction[:, :, 1:], axis=2))  # Set initial Bare
+        self._veg_fraction[:, :, 1:5][self._spec1 < 0] = 0
+        self._veg_fraction[:, :, 5:][self._spec2 < 0] = 0
 
         effective_veg_fraction = (self._veg_fraction[:, :, 2] * self._H1_a_relative_effectiveness
                                   + self._veg_fraction[:, :, 4] * self._H2_a_relative_effectiveness
@@ -608,6 +598,7 @@ class MEEB:
         self._MHW_TS = np.zeros([int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1])  # Array for saving each MHW at specified frequency
         self._veg_fraction_TS = np.zeros([self._longshore, self._crossshore, self._veg_fraction.shape[2], int(np.floor(self._simulation_time_yr / self._save_frequency)) + 1], dtype=np.float16)  # Array for storing fraction of veg carrying capacity over time
         self._veg_fraction_TS[:, :, :, 0] = self._veg_fraction
+        self._cumulative_max_aeolian_flux = np.zeros([self._longshore, self._crossshore])
 
         if init_by_file:
             if init_filetype_NetCDF:
@@ -647,6 +638,8 @@ class MEEB:
         aeolian_erosion_prob = routine.erosprobs(self._effective_veg, wind_shadows, subaerial, self._topo, self._groundwater_elevation, self._p_ero_sand, self._entrainment_veg_limit, self._slabheight, self._MHW)  # Returns map of erosion probabilities
         aeolian_deposition_prob = routine.depprobs(self._effective_veg, wind_shadows, subaerial, self._p_dep_base, self._p_dep_sand, self._p_dep_sand_VegMax, self._topo, self._groundwater_elevation)  # Returns map of deposition probabilities
 
+        self._cumulative_max_aeolian_flux += self._slabheight * self._saltation_length * (aeolian_erosion_prob / aeolian_deposition_prob) * self._aeolian_iterations_per_year  # [m^3] Sum up average maximum aeolian flux
+
         # Move sand slabs
         aeolian_elevation_change = routine.shiftslabs(
             aeolian_erosion_prob,
@@ -663,7 +656,7 @@ class MEEB:
             self._cellsize,
             self._RNG)  # Returns map of height changes in units of slabs
 
-        # Apply changes, make calculations
+        # Apply changes
         self._topo += aeolian_elevation_change * self._slabheight  # [m NAVD88] Changes applied to the topography; convert aeolian_elevation_change from slabs to meters
 
         # --------------------------------------
@@ -777,9 +770,7 @@ class MEEB:
                 self._cellsize,
             )
 
-            # Enforce angles of repose
-            """IR 25Apr24: Ideally, angles of repose would be enforced after avery aeolian iteration and every storm. However, to significantly increase model speed, I now enforce AOR only at the end of each
-            shoreline iteration (i.e., every 2 aeolian iterations). The morphodynamic effects of this are apparently negligible, while run time is much quicker."""
+            # Enforce angles of repose (enforce AOR only every 2 aeolian iterations to significantly increase model speed)
             veg_cover = self._veg_fraction[:, :, 2] + self._veg_fraction[:, :, 4] + self._veg_fraction[:, :, 6] + self._veg_fraction[:, :, 7]
             self._topo = routine.enforceslopes(self._topo, veg_cover, self._slabheight, self._repose_bare, self._repose_veg, self._repose_threshold, self._MHW, self._cellsize, self._RNG)  # [m NAVD88]
 
@@ -1194,3 +1185,7 @@ class MEEB:
     @property
     def OWflux_cumul(self):
         return self._OWflux_cumul
+
+    @property
+    def cumulative_max_aeolian_flux(self):
+        return self._cumulative_max_aeolian_flux
