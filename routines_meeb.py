@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 12 February 2026
+Last update: 23 April 2026
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -461,11 +461,11 @@ def shoreline_change_from_CST(
     Qow : ndarray
         [m^3/ts] Volume of sediment removed from the upper shoreface by overwash.
     x_s : ndarray
-        [m] Cross-shore shoreline position relative to start of simulation.
+        [cells] Cross-shore shoreline position relative to start of simulation.
     x_t : ndarray
-        [m] Cross-shore shoreface toe position relative to start of simulation.
+        [cells] Cross-shore shoreface toe position relative to start of simulation.
     dy : int
-        [m] Alongshore length between shoreline nodes, i.e. alongshore section length.
+        [cells] Alongshore length between shoreline nodes, i.e. alongshore section length.
     storm_iterations_per_year : int
         Number of storm/shoreline change iterations in a model year.
     cellsize : float
@@ -474,37 +474,36 @@ def shoreline_change_from_CST(
     Returns
     ----------
     x_s
-        [m] New cross-shore shoreline position relative to start of simulation for each cell length alongshore.
+        [cells] New cross-shore shoreline position relative to start of simulation for each cell length alongshore.
     x_t
-        [m] New cross-shore shoreface toe position relative to start of simulation for each cell length alongshore.
+        [cells] New cross-shore shoreface toe position relative to start of simulation for each cell length alongshore.
     s_sf
         [m/m] Slope of the shoreface for each row cell length alongshore.
     """
 
     RSLR /= storm_iterations_per_year  # [m] Convert from m/year to m/timestep (timestep typically 0.04 yr)
     k_sf /= storm_iterations_per_year  # [m^3/yr] Convert from m^3/year to m^3/timestep (timestep typically 0.04 yr)
-    Qow[Qow < 0] = 0
 
     # Shoreface Flux
     s_sf = d_sf / (x_s - x_t)
     Qsf = k_sf * (s_sf_eq - s_sf)  # [m^3/m/ts]
 
     # Toe, Shoreline, and island base elevation changes
-    x_t_dt_temp = (4 * Qsf / d_sf) + (2 * RSLR / s_sf)
-    x_s_dt_temp = (2 * (Qow + Qbe) / d_sf) - (4 * Qsf / d_sf)  # Beach/dune change (Qbe) added to LTA14 formulation, barrier height removed
+    x_t_dt_temp = (4 * Qsf / d_sf) + (2 * RSLR / s_sf)  # [m]
+    x_s_dt_temp = (2 * (Qow + Qbe) / d_sf) - (4 * Qsf / d_sf)  # [m] Beach/dune change (Qbe) added to LTA14 formulation, barrier height removed
 
     # Find mean change in x_s and x_t for every dy meters alongshore
-    x_t_dt_dy_mean = np.nanmean(np.pad(x_t_dt_temp, (0, 0 if x_t_dt_temp.size % dy == 0 else dy - x_t_dt_temp.size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
-    x_s_dt_dy_mean = np.nanmean(np.pad(x_s_dt_temp, (0, 0 if x_s_dt_temp.size % dy == 0 else dy - x_s_dt_temp.size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
+    x_t_dt_dy_mean = np.nanmean(np.pad(x_t_dt_temp, (0, 0 if x_t_dt_temp.size % dy == 0 else dy - x_t_dt_temp.size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)  # [m]
+    x_s_dt_dy_mean = np.nanmean(np.pad(x_s_dt_temp, (0, 0 if x_s_dt_temp.size % dy == 0 else dy - x_s_dt_temp.size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)  # [m]
 
-    x_t_dt = np.repeat(x_t_dt_dy_mean, dy)[:len(x_t)] / cellsize
-    x_s_dt = np.repeat(x_s_dt_dy_mean, dy)[:len(x_s)] / cellsize
+    x_t_dt = np.repeat(x_t_dt_dy_mean, dy)[:len(x_t)] / cellsize  # Add repeats and convert from m to cells
+    x_s_dt = np.repeat(x_s_dt_dy_mean, dy)[:len(x_s)] / cellsize  # Add repeats and convert from m to cells
 
     # Record changes
     x_t = x_t + x_t_dt
     x_s = x_s + x_s_dt
 
-    return x_s, x_t, s_sf  # [m]
+    return x_s, x_t, s_sf  # [cells, cells, m/m]
 
 
 def ocean_shoreline(topof, MHW):
@@ -520,7 +519,7 @@ def ocean_shoreline(topof, MHW):
     Returns
     ----------
     shoreline : ndarray
-        Cross-shore location of the ocean shoreline for each row alongshore.
+        [cells] Cross-shore location of the ocean shoreline for each row alongshore.
     """
 
     shoreline = np.argmax(topof >= MHW, axis=1)
@@ -542,7 +541,7 @@ def backbarrier_shoreline(topof, MHW):
     Returns
     ----------
     BBshoreline : ndarray
-        Cross-shore location of the back-barrier shoreline for each row alongshore.
+        [cells] Cross-shore location of the back-barrier shoreline for each row alongshore.
     """
 
     # BBshoreline = topof.shape[1] - np.argmax(np.fliplr(topof) >= MHW, axis=1) - 1
@@ -786,59 +785,58 @@ def find_crest_buffer(topo, line_init, crestline, buffer, MHW):
     return crestline, not_gap
 
 
-def foredune_heel(topof, crestline, not_gap, cellsize, threshold, window_small=11):
-    """Finds and returns the location of the foredune heel for each grid column alongshore."""
+def foredune_heel(topo, dune_crest_loc, dune_not_gap, dune_toe_loc, MHW, cellsize, window_small=25):
+    """Finds the dune heel location, based on the same method as the dune toe but between the crest and landward of the dune crest
+    where the elevation profile intersects a horizontal line drawn from the elevation of the dune toe."""
 
-    longshore, crossshore = topof.shape
-    heelline = np.zeros([longshore])
+    longshore, crossshore = topo.shape
+    dune_heel_loc = np.zeros(dune_crest_loc.shape)
+    x_b = backbarrier_shoreline(topo, MHW)
 
     for ls in range(longshore):
-        # Loop landward from the crest
-        idx = crestline[ls]
-        while idx < crossshore:
+        z = topo[ls, :]  # Elevation profile
+        crest_idx = dune_crest_loc[ls]
+        toe_idx = dune_toe_loc[ls]
+        toe_elev = z[toe_idx]
 
-            # Check the elevation difference
-            elevation_difference = topof[ls, crestline[ls]] - topof[ls, idx]
-            if idx + 1 >= crossshore:
-                break
-            elif topof[ls, idx + 1] < topof[ls, idx]:
-                idx += 1
-            elif elevation_difference >= threshold:
-                break
-            elif topof[ls, idx + 1] * 0.95 >= topof[ls, idx]:
-                break
-            else:
-                idx += 1
+        # Find baseline location: The first point landward of the crest where the elevation profile intersects a horizontal line drawn from the dune toe elevation
+        try:
+            baseline_idx = int(crest_idx + np.where(z[crest_idx:] <= toe_elev)[0][0])
+        except IndexError:
+            baseline_idx = x_b[ls]  # Use back-barrier shoreline
 
-        # Make a reference copy of the profile with a straight line from the Shoreline to Crest
-        z = topof[ls, :]  # Elevation profile
-        crest_idx = crestline[ls]
-        z_ref = z.copy()
-        z_ref[crest_idx: idx] = np.linspace(start=z[crest_idx],
-                                            stop=z[idx],
-                                            num=idx - crest_idx)
+        if crest_idx < baseline_idx:
 
-        # Subtract the reference from the original profile and idenitfy the maximum point
-        z_diff = z_ref - z
-        heel_idx = np.argmax(z_diff)
+            # Make a reference copy of the profile with a straight line from the crest to baseline
+            z_ref = z.copy()
+            z_ref[crest_idx:baseline_idx] = np.linspace(start=z[crest_idx],
+                                                        stop=z[baseline_idx],
+                                                        num=baseline_idx - crest_idx)
 
-        heelline[ls] = heel_idx
+            # Subtract the reference from the original profile and idenitfy the maximum point
+            z_diff = z_ref - z
+            heel_idx = np.argmax(z_diff)
+        else:
+            heel_idx = crest_idx
+
+        # Store the heel location
+        dune_heel_loc[ls] = heel_idx
 
     # Fill in gaps with linear interpolation
-    x = np.arange(len(heelline))
-    xp = np.nonzero(heelline * not_gap)[0]
+    x = np.arange(len(dune_heel_loc))
+    xp = np.nonzero(dune_heel_loc * dune_not_gap)[0]
     if len(xp) > 0:  # If there are any gaps
-        fp = heelline[xp]
-        heelline = np.interp(x, xp, fp)  # Interpolate
+        fp = dune_heel_loc[xp]
+        dune_heel_loc = np.interp(x, xp, fp)  # Interpolate
 
     window_small = int(window_small / cellsize)  # Window size for savgol smoothening
-    heelline = np.round(savgol_filter(heelline, window_small, 1)).astype(int)
+    dune_heel_line = np.round(savgol_filter(dune_heel_loc, window_small, 1)).astype(int)
 
-    return heelline
+    return dune_heel_line
 
 
-def foredune_toe(topo, dune_crest_loc, MHW, not_gap, cellsize, window_small=11):
-    """Finds the dune toe locationd using the stretched sheet method from Mitasova et al. (2011), based on AUTOMORPH (Itzkin et al., 2021)"""
+def foredune_toe(topo, dune_crest_loc, MHW, not_gap, cellsize, window_small=25):
+    """Finds the dune toe location using the stretched sheet method from Mitasova et al. (2011), based on AUTOMORPH (Itzkin et al., 2021)"""
 
     longshore, crossshore = topo.shape
     shoreline_loc = ocean_shoreline(topo, MHW)
@@ -1170,11 +1168,11 @@ def storm_processes(
         ----------
         topof
             [m NAVD88] Updated elevation domain.
-        OWloss
+        overwash_volume_change
             [m^3] Volume of overwash deposition landward of dune crest for each cell unit alongshore.
         inundated
             [bool] Map of cells inundated during storm event
-        BeachDune_Volume_Change
+        beach_dune_volume_change
             [m^3/m] Dune & beach volumetric change summed for each row alongshore.
         cumulative_discharge
             [m^3] Map of discharge aggregated for duration of entire storm.
@@ -1190,7 +1188,8 @@ def storm_processes(
     dune_crest_loc = foredune_crest(Elevation, MHW, cellsize)[0]  # Cross-shore location of pre-storm dune crest
 
     # Initialize Memory Storage Arrays
-    OWloss = np.zeros([longshore], dtype=np.float32)  # [m^3] Aggreagate volume of overwash deposition landward of dune crest for this storm
+    ElevChangeSeawardCumul = np.zeros([longshore])
+    ElevChangeLandwardCumul = np.zeros([longshore])
 
     # Modify based on number of substeps
     fluxLimit /= substep  # [m/hr] Maximum elevation change during one storm hour allowed
@@ -1198,7 +1197,6 @@ def storm_processes(
     Qs_bb_min /= substep * cell_area
     iterations = int(floor(dur) * substep)
 
-    BeachDune_Volume_Change = np.zeros([longshore], dtype=np.float32)  # [m^3] Initialize dune/beach volume change: (-) loss, (+) gain
     inundated = np.zeros(topof.shape).astype(bool)  # Initialize
     cumulative_discharge = np.zeros(topof.shape, dtype=np.float32)
 
@@ -1243,11 +1241,7 @@ def storm_processes(
         ElevationChangeLandward = (SedFluxIn - SedFluxOut) / area_time_conversion  # [m] Net elevation change
         ElevationChangeLandward[ElevationChangeLandward > fluxLimit] = fluxLimit  # Constrain to flux limit
         ElevationChangeLandward[ElevationChangeLandward < -fluxLimit] = -fluxLimit  # Constrain to flux limit
-        ElevationChangeLandward[np.arange(longshore), dune_crest_loc + 1] = 0  # Do not yet update elevation change at dune crest
         ElevationChangeLandward[np.arange(longshore), dune_crest_loc] = 0  # Do not yet update elevation change at dune crest
-
-        # Calculate and save volume of sediment deposited on/behind the barrier interior for every hour
-        OWloss += SedFluxOut[np.arange(longshore), dune_crest_loc + 1] / area_time_conversion * cell_area  # [m^3] For each cell alongshore
 
         # Record cells inundated from overwash
         inundated[:, domain_width_start:] = np.logical_or(inundated[:, domain_width_start:], overwash_discharge > 0)  # Update inundated map with cells landward of dune crest
@@ -1272,13 +1266,12 @@ def storm_processes(
         )
 
         ElevationChangeSeaward /= substep
-        BeachDune_Volume_Change += dV / substep
 
         inundated[:, domain_width_start:] = np.logical_or(inundated[:, domain_width_start:], beach_inundated)  # Update inundated map with cells seaward of dune crest
 
         # Aggreagate discharge from overwash
         beach_inundated[overwash_discharge > 0] = False
-        cumulative_discharge += beach_inundated * 1000000  # [m^3]
+        cumulative_discharge += beach_inundated * 1000000  # [m^3] This assumes that any plant on beach is killed by inundation
 
         # ----------------
         # Update Elevation
@@ -1286,10 +1279,18 @@ def storm_processes(
         Elevation += ElevationChangeSeaward
         Elevation += ElevationChangeLandward
 
+        # Cumulative Change
+        ElevChangeSeawardCumul += np.sum(ElevationChangeSeaward, axis=1)
+        ElevChangeLandwardCumul += np.sum(ElevationChangeLandward, axis=1)
+
+    # Calculate Overwash (Qow) and beach (Qbe) volume change (per m alongshore)
+    overwash_volume_change = ElevChangeLandwardCumul * cell_area / cellsize  # [m3/m]
+    beach_dune_volume_change = ElevChangeSeawardCumul * cell_area / cellsize  # [m3/m]
+
     # Update Elevation Domain After Storm
     topof[:, domain_width_start:] += Elevation - topof[:, domain_width_start:]  # [m NAVD88] Add change in elevation of barrier
 
-    return topof, OWloss, inundated, BeachDune_Volume_Change, cumulative_discharge
+    return topof, overwash_volume_change, inundated, beach_dune_volume_change, cumulative_discharge
 
 
 @njit(cache=True)
@@ -2258,7 +2259,7 @@ def establishment_prob(temperature,
                 # Competition
                 H1_Estab_wcomp = max(0, 1 - (1 / H1_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
                 H2_Estab_wcomp = max(0, 1 - (1 / H2_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
-                H1_Estab_h2comp = 1 - min(H1_growth_H2_comp_max, peak_annual_H2[ls, cs] * 2)
+                H1_Estab_h2comp = 1 - min(H1_growth_H2_comp_max, peak_annual_H2[ls, cs] * 3)
 
                 # Facilitation
                 W_Estab_hfacil = (1 - (1 / ((W_estab_herbaceous_facil_max - ((W_estab_herbaceous_facil_max + W_estab_herbaceous_facil_min) / 2)) ** 2)) * ((veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) - ((W_estab_herbaceous_facil_max + W_estab_herbaceous_facil_min) / 2)) ** 2) * (1 - W_estab_Pmin_herbaceous_facil) + W_estab_Pmin_herbaceous_facil if W_estab_herbaceous_facil_min < (veg_fraction[ls, cs, 2] + veg_fraction[ls, cs, 4]) < W_estab_herbaceous_facil_max else W_estab_Pmin_herbaceous_facil  # Parabolic
@@ -2279,10 +2280,13 @@ def establishment_prob(temperature,
                 else:
                     W_Estab_shoreline = 1
 
+                # Woody logistic
+                W_Growth_logistic = 1 / (1 + np.exp(-7 * ((veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]) - 0.35)))  # This slows down initial shrub growth to emulate real-world logistcic nature of shrub growth
+
                 # Calculate Effective Establishment
                 H1_estab_eff[ls, cs] = (H1_estab_Pmax_tempC * H1_Estab_tempC) * H1_Estab_wcomp * (H1_growth_Pmax_elev * H1_Estab_elev) * H1_Estab_h2comp
                 H2_estab_eff[ls, cs] = (H2_estab_Pmax_tempC * H2_Estab_tempC) * H2_Estab_wcomp * (H2_growth_Pmax_elev * H2_Estab_elev)
-                W_estab_eff[ls, cs] = (W_estab_Pmax_tempC * W_Estab_tempC) * max(W_Estab_dune, W_Estab_shoreline) * W_Estab_hfacil * (W_growth_Pmax_elev * W_Estab_elev)
+                W_estab_eff[ls, cs] = (W_estab_Pmax_tempC * W_Estab_tempC) * max(W_Estab_dune, W_Estab_shoreline) * W_Estab_hfacil * (W_growth_Pmax_elev * W_Estab_elev) * W_Growth_logistic
 
     # Constrain Establishment to Cells Where Dispersal is Allowed
     H1_estab_eff *= H1_estab_allowed
@@ -2493,10 +2497,10 @@ def growth_prob(topo,
                 # Competition
                 H1_Growth_wcomp = max(0, 1 - (1 / H1_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
                 H2_Growth_wcomp = max(0, 1 - (1 / H2_growth_woody_comp_max) * (veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]))
-                H1_Growth_h2comp = 1 - min(H1_growth_H2_comp_max, peak_annual_H2[ls, cs] * 2)
+                H1_Growth_h2comp = 1 - min(H1_growth_H2_comp_max, peak_annual_H2[ls, cs] * 3)
 
                 # Woody logistic
-                W_Growth_logistic = 1 / (1 + np.exp(-8 * ((veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]) - 0.4)))  # This slows down initial shrub growth to emulate real-world logistcic nature of shrub growth
+                W_Growth_logistic = 1 / (1 + np.exp(-7 * ((veg_fraction[ls, cs, 6] + veg_fraction[ls, cs, 7]) - 0.35)))  # This slows down initial shrub growth to emulate real-world logistcic nature of shrub growth
 
                 # Calculate Effective Growth
                 H1_growth_eff[ls, cs] = (H1_growth_Pmax_tempC * H1_Growth_tempC) * (H1_growth_Pmax_elev * H1_Growth_elev) * H1_Growth_wcomp * (H1_growth_Pmin_stim + (1 - H1_growth_Pmin_stim) * H1_Growth_stim) * H1_Growth_h2comp
