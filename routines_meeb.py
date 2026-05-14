@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 23 April 2026
+Last update: 14 May 2026
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -493,8 +493,8 @@ def shoreline_change_from_CST(
     x_s_dt_temp = (2 * (Qow + Qbe) / d_sf) - (4 * Qsf / d_sf)  # [m] Beach/dune change (Qbe) added to LTA14 formulation, barrier height removed
 
     # Find mean change in x_s and x_t for every dy meters alongshore
-    x_t_dt_dy_mean = np.nanmean(np.pad(x_t_dt_temp, (0, 0 if x_t_dt_temp.size % dy == 0 else dy - x_t_dt_temp.size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)  # [m]
-    x_s_dt_dy_mean = np.nanmean(np.pad(x_s_dt_temp, (0, 0 if x_s_dt_temp.size % dy == 0 else dy - x_s_dt_temp.size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)  # [m]
+    x_t_dt_dy_mean = np.nanmean(np.pad(x_t_dt_temp, (0, 0 if x_t_dt_temp.size % dy == 0 else dy - x_t_dt_temp.size % dy), mode='constant', constant_values=np.nan).reshape(-1, dy), axis=1)  # [m]
+    x_s_dt_dy_mean = np.nanmean(np.pad(x_s_dt_temp, (0, 0 if x_s_dt_temp.size % dy == 0 else dy - x_s_dt_temp.size % dy), mode='constant', constant_values=np.nan).reshape(-1, dy), axis=1)  # [m]
 
     x_t_dt = np.repeat(x_t_dt_dy_mean, dy)[:len(x_t)] / cellsize  # Add repeats and convert from m to cells
     x_s_dt = np.repeat(x_s_dt_dy_mean, dy)[:len(x_s)] / cellsize  # Add repeats and convert from m to cells
@@ -1917,7 +1917,7 @@ def init_ocean_shoreline(topo, MHW, dy):
     x_s_raw = ocean_shoreline(topo, MHW)
 
     # Find average shoreline position of every dy [m] alongshore
-    x_s_dy_mean = np.nanmean(np.pad(x_s_raw.astype(float), (0, 0 if x_s_raw.size % dy == 0 else dy - x_s_raw.size % dy), mode='constant', constant_values=np.NaN).reshape(-1, dy), axis=1)
+    x_s_dy_mean = np.nanmean(np.pad(x_s_raw.astype(float), (0, 0 if x_s_raw.size % dy == 0 else dy - x_s_raw.size % dy), mode='constant', constant_values=np.nan).reshape(-1, dy), axis=1)
 
     # Expand to full shoreline length
     x_s_init = np.repeat(x_s_dy_mean, dy)[:topo.shape[0]]
