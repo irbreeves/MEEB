@@ -6,7 +6,7 @@ Mesoscale Explicit Ecogeomorphic Barrier model
 
 IRB Reeves
 
-Last update: 23 April 2026
+Last update: 2 September 2026
 
 __________________________________________________________________________________________________________________________________"""
 
@@ -178,17 +178,17 @@ class MEEB:
 
             # HWE TWL Thresholds
             W_TWL_min=1,  # [m MHW] Minimum HWE total water level below which woody loss to bare is 0%
-            W_TWL_max=3,  # [m MHW] Maximum HWE total water level below which woody loss to bare is 100%
+            W_TWL_max=3,  # [m MHW] Maximum HWE total water level above which woody loss to bare is 100%
 
             # Erosion/Deposition Thresholds
             establishment_erosion_limit=-0.08,  # [m, negative] Maximum depth of erosion beyond which establishment probability is 0%, all species
             establishment_burial_limit=0.08,  # [m, positive] Maximum depth of burial beyond which establishment probability is 0%, all species
-            juvenile_erosion_limit=-0.1,  # [m, negative] Maximum depth of erosion beyond which juvenile mortality probability is 100%, all species
-            juvenile_burial_limit=0.2,  # [m, positive] Maximum depth of deposition beyond which juvenile mortality probability is 100%, all species
-            H1_uproot_limit=-0.6,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 1
-            H1_burial_limit=0.75,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, herbaceous species 1
-            H2_uproot_limit=-0.6,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, herbaceous species 2
-            H2_burial_limit=0.85,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, herbaceous species 2
+            juvenile_erosion_limit=-0.1,  # [m, negative] Maximum depth of erosion beyond which juvenile mortality probability is 90%, all species
+            juvenile_burial_limit=0.2,  # [m, positive] Maximum depth of deposition beyond which juvenile mortality probability is 90%, all species
+            H1_uproot_limit=-0.6,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 90%, herbaceous species 1
+            H1_burial_limit=0.75,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 90%, herbaceous species 1
+            H2_uproot_limit=-0.6,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 90%, herbaceous species 2
+            H2_burial_limit=0.85,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 90%, herbaceous species 2
             W_uproot_limit=-0.3,  # [m, negative] Maximum depth of erosion beyond which mortality probability is 100%, woody species
             W_burial_limit=4.0,  # [m, positive] Maximum depth of deposition beyond which mortality probability is 100%, woody species
 
@@ -216,18 +216,18 @@ class MEEB:
             H2_growth_tempC_max=40,  # [C] Maximum temperature for growth, herbaceous species 2
             W_growth_tempC_min=10,  # [C] Minimum temperature for growth, woody species
             W_growth_tempC_max=50,  # [C] Maximum temperature for growth, woody species
-            H1_j_mort_tempC_min=-18,  # [C] Threshold temperature below which juvenile mortality is 100%, herbaceous species 1
-            H1_j_mort_tempC_max=40,  # [C] Threshold temperature above which juvenile mortality is 100%, herbaceous species 1
-            H1_a_mort_tempC_min=-23,  # [C] Threshold temperature below which adult mortality is 100%, herbaceous species 1
-            H1_a_mort_tempC_max=45,  # [C] Threshold temperature above which adult mortality is 100%, herbaceous species 1
-            H2_j_mort_tempC_min=-13,  # [C] Threshold temperature below which juvenile mortality is 100%, herbaceous species 2
-            H2_j_mort_tempC_max=40,  # [C] Threshold temperature above which juvenile mortality is 100%, herbaceous species 2
-            H2_a_mort_tempC_min=-18,  # [C] Threshold temperature below which adult mortality is 100%, herbaceous species 2
-            H2_a_mort_tempC_max=45,  # [C] Threshold temperature above which adult mortality is 100%, herbaceous species 2
-            W_j_mort_tempC_min=-8,  # [C] Threshold temperature below which juvenile mortality is 100%, woody species
-            W_j_mort_tempC_max=50,  # [C] Threshold temperature above which juvenile mortality is 100%, woody species
-            W_a_mort_tempC_min=-15,  # [C] Threshold temperature below which adult mortality is 100%, woody species
-            W_a_mort_tempC_max=50,  # [C] Threshold temperature above which adult mortality is 100%, woody species
+            H1_j_mort_tempC_min=-18,  # [C] Threshold temperature below which juvenile mortality occurs, herbaceous species 1
+            H1_j_mort_tempC_max=40,  # [C] Threshold temperature above which juvenile mortality occurs, herbaceous species 1
+            H1_a_mort_tempC_min=-23,  # [C] Threshold temperature below which adult mortality occurs, herbaceous species 1
+            H1_a_mort_tempC_max=45,  # [C] Threshold temperature above which adult mortality occurs, herbaceous species 1
+            H2_j_mort_tempC_min=-13,  # [C] Threshold temperature below which juvenile mortality occurs, herbaceous species 2
+            H2_j_mort_tempC_max=40,  # [C] Threshold temperature above which juvenile mortality occurs, herbaceous species 2
+            H2_a_mort_tempC_min=-18,  # [C] Threshold temperature below which adult mortality occurs, herbaceous species 2
+            H2_a_mort_tempC_max=45,  # [C] Threshold temperature above which adult mortality occurs, herbaceous species 2
+            W_j_mort_tempC_min=-8,  # [C] Threshold temperature below which juvenile mortality occurs, woody species
+            W_j_mort_tempC_max=50,  # [C] Threshold temperature above which juvenile mortality occurs, woody species
+            W_a_mort_tempC_min=-15,  # [C] Threshold temperature below which adult mortality occurs, woody species
+            W_a_mort_tempC_max=50,  # [C] Threshold temperature above which adult mortality occurs, woody species
             microclimate_moderation_winter_tempC=2.5,  # [C] Increase of extreme winter temperatures (warming) from woody microclimate moderation
             microclimate_moderation_summer_tempC=18.4,  # [C] Decrease of extreme summer temperatures (cooling) from woody microclimate moderation
             shift_mean_atmospheric_temperature=0,  # [C] Shift in mean atmospheric temperature
