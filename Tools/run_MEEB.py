@@ -1,7 +1,7 @@
 """
 Script for running MEEB simulations.
 
-IRBR 6 February 2026
+IRBR 2 September 2026
 """
 
 import numpy as np
@@ -95,19 +95,19 @@ meeb = MEEB(
     wind_rose=(0.76, 0.06, 0.13, 0.05),  # (right, down, left, up)
     groundwater_depth=0.4,
     # --- Storms --- #
-    Rin=312,
-    Cs=0.0407,
+    Rin=250,
+    Cs=0.0311,
     MaxUpSlope=1.5,
     marine_flux_limit=1,
-    Kow=0.0002834,
-    Kl=0.57,
-    mm=1.03,
+    Kow=0.0003701,
+    Kl=0.38,
+    mm=1.01,
     overwash_substeps=25,
-    beach_equilibrium_slope=0.02,
-    swash_erosive_timescale=1.18,
+    beach_equilibrium_slope=0.017,
+    swash_erosive_timescale=1.23,
     beach_substeps=1,
-    H_flow_reduction_max=0.002,
-    W_flow_reduction_max=0.02,
+    H_flow_reduction_max=0.001,
+    W_flow_reduction_max=0.01,
     # --- Shoreline --- #
     wave_asymmetry=0.6,
     wave_high_angle_fraction=0.39,
@@ -290,6 +290,7 @@ for it in range(meeb.x_s_TS.shape[0]):
     else:
         ax_1.plot(shoreline_it, c=color[it], label='_')
 plt.legend()
+plt.title(meeb.name)
 
 # Short and long-term shoreline change
 ax_2 = Fig.add_subplot(212)
@@ -386,6 +387,18 @@ ax7.matshow(veg, cmap=cmap2, vmin=0, vmax=1)
 plt.title('W Dead')
 
 plt.tight_layout()
+
+# -----------------
+# Average Aeolian Flux
+average_aeolian_flux = meeb.cumulative_max_aeolian_flux / meeb.iterations
+Fig = plt.figure(figsize=(14, 10))
+ax1 = Fig.add_subplot(111)
+cax1 = ax1.matshow(average_aeolian_flux)
+plt.xlabel('Meters Cross-shore')
+plt.ylabel('Meters Alongshore')
+cbar = Fig.colorbar(cax1)
+cbar.set_label('Average Maximum Aeolian Flux [m^3/y]', rotation=270, labelpad=20)
+
 
 # -----------------
 # Animation: Elevation and Vegetation Over Time
