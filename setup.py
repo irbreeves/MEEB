@@ -2,13 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name="meeb",
-    version="1.0",
+    version="2.0",
     description="Mesoscale Explicit Ecogeomorphic Barrier model",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     author="Ian Reeves",
     author_email="ireeves@usgs.gov",
-    url="https://github.com/irbreeves/meeb",
+    url="https://code.usgs.gov/spcmsc/meeb",
     classifiers=[
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: GPLv3 License",
