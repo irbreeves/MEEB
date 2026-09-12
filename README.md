@@ -1,11 +1,14 @@
 # *MEEB*
-Mesoscale Explicit Ecogeomorphic Barrier model v1.1
+Mesoscale Explicit Ecogeomorphic Barrier model v2.0
 
-Journal Article: Reeves, I. R. B., Ashton, A. D., Lentz, E. L., Sherwood, C. R., Passeri, D. L., and Zeigler., S. L., in review,
-Projecting management-relevant change of undeveloped coastal barriers with the Mesoscale Explicit Ecogeomorphic Barrier model (MEEB) 
-v1.0: Geoscientific Model Development.
+*MEEB* v2.0.0 is the version of record for the journal article by *Reeves and others (in prep)* cited below.
 
-Software Package: Reeves, I. R. B., 2025, Mesoscale Explicit Ecogeomorphic Barrier Model (MEEB) v1.0: U.S. Geological Survey software release, https://doi.org/10.5066/P13N6RHA.
+## Recommended Citation
+
+Journal Article: *Reeves, I.R.B., Zinnert, J.C., Carr, J.A., Zeigler, S.L., Charbonneau, B.R., Thorne, K.M., and others, (in prep), Climate-Induced Transformation of U.S. Coastal Barrier Vegetation Assemblages and 
+Potential Ecogeomorphic Consequences: Earth's Future, https://doi.org/xxxxxxxx.*
+
+Software Package: Reeves, I.R.B., 2026, Mesoscale Explicit Ecogeomorphic Barrier Model (MEEB) v2.0: U.S. Geological Survey software release, https://doi.org/10.5066/P13N6RHA.
 
 ## About
 The Mesoscale Explicit Ecogeomorphic Barrier model (*MEEB*) resolves cross-shore and alongshore changes in topography and ecology 
@@ -16,6 +19,14 @@ meter-scale cell size.
 *MEEB* explicitly yet efficiently simulates coupled aeolian, marine, vegetation, and shoreline components of barrier 
 ecogeomorphology, including dune growth, vegetation expansion and mortality, beach and foredune erosion, barrier overwash, 
 and shoreline and shoreface change processes.
+
+Related Journal Articles: 
+
+MEEB v1.0: *Reeves, I.R.B., Ashton, A.D., Lentz, E.L., Sherwood, C.R., Passeri, D.L., and Zeigler., S.L., 2025, Projecting management-relevant change of undeveloped coastal barriers with the Mesoscale Explicit 
+Ecogeomorphic Barrier model (MEEB) v1.0: Geoscientific Model Development, v. 18, n. 23, doi.org/10.5194/gmd-18-9319-2025.*
+
+MEEB v1.1: *Reeves, I.R.B., Lentz, E.E., Sherwood, C.R., Ashton, A.D., Zeigler, S.L., and Passeri, D.L., (in review), Exploring future ecogeomorphic state transitions of an undeveloped barrier island: 
+Multidecadal model projections for North Core Banks, NC, USA: Journal of Geophysical Research: Earth Surface, https://doi.org/xxxxxxxx.*
 
 ## Requirements
 *MEEB* requires Python 3 and the libraries listed in the project's `requirements.txt` file.
