@@ -4,7 +4,7 @@ Script for calibrating MEEB storm parameters using Particle Swarms Optimization.
 Calibrates based on fitess score for all beach/dune/overwash morphologic change, and incorporates multiple
 storm events and/or locations into each fitness score.
 
-IRBR 22 July 2025
+IRBR 31 March 2026
 """
 
 import numpy as np
@@ -66,7 +66,7 @@ def model_skill(obs, sim, t0, mask):
     return nse, rmse, nmae, mass, bss
 
 
-def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, spec1, spec2):
+def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, grass_cover, shrub_cover):
     """Run a storm with this particular combintion of parameter values, and return fitness value of simulated to observed."""
 
     # Find Dune Crest, Shoreline Positions
@@ -75,9 +75,9 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, s
 
     # Run Model
     topo_start_copy = copy.deepcopy(topo_start_obs)
-    veg = spec1 + spec2  # Determine the initial cumulative vegetation effectiveness
+    veg = grass_cover + shrub_cover  # Determine the initial cumulative vegetation effectiveness
 
-    sim_topo_final, OWflux, inundated, Qbe = routine.storm_processes(
+    sim_topo_final, OWflux, inundated, Qbe, cumulative_discharge = routine.storm_processes(
         topo_start_copy,
         Rhigh,
         dur,
@@ -88,6 +88,7 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, s
         fluxLimit=1,
         Qs_min=1,
         Kow=solution[2],
+        Kl=solution[6],
         mm=round(solution[5], 2),
         MHW=MHW,
         Cbb=0.7,
@@ -98,10 +99,10 @@ def storm_fitness(solution, topo_start_obs, topo_end_obs, Rhigh, dur, OW_Mask, s
         beach_substeps=1,
         x_s=x_s,
         cellsize=cellsize,
-        herbaceous_cover=spec1,
-        woody_cover=spec2,
-        H_flow_reduction_max=0.002,  # Grass
-        W_flow_reduction_max=0.02,  # Shrub
+        herbaceous_cover=grass_cover,
+        woody_cover=shrub_cover,
+        H_flow_reduction_max=0.001,  # Grass
+        W_flow_reduction_max=0.01,  # Shrub
     )
 
     topo_end_sim = routine.enforceslopes(sim_topo_final, veg, sh=0.02, anglesand=20, angleveg=30, th=0.3, MHW=MHW, cellsize=cellsize, RNG=RNG)
@@ -160,11 +161,26 @@ def multi_fitness(solution):
             spec1 = Init[1, ymin[x]: ymax[x], :]
             spec2 = Init[2, ymin[x]: ymax[x], :]
 
+            veg_fraction = np.zeros([topo_start.shape[0], topo_start.shape[1], 8], dtype=np.float32)  # Vector of initial states [Bare, H1_seed, H1_adult, H2_seed, H2_adult, W_seed, W_adult, W_dead]
+            veg_fraction[:, :, 1] = spec1 * 0.2 * H1_a_proportion  # Set initial H1 Juvenile
+            veg_fraction[:, :, 2] = spec1 * 0.8 * H1_a_proportion  # Set initial H1 Adult
+            veg_fraction[:, :, 3] = spec1 * 0.2 * (1 - H1_a_proportion)  # Set initial H2 Juvenile
+            veg_fraction[:, :, 4] = spec1 * 0.8 * (1 - H1_a_proportion)  # Set initial H2 Adult
+            veg_fraction[:, :, 5] = spec2 * 0.1  # Set initial W Juvenile
+            veg_fraction[:, :, 6] = spec2 * 0.85  # Set initial W Adult
+            veg_fraction[:, :, 7] = spec2 * 0.05  # Set initial W Dead
+            veg_fraction[:, :, 0] = 1 - (np.sum(veg_fraction[:, :, 1:], axis=2))  # Set initial Bare
+            veg_fraction[:, :, 1:5][spec1 < 0] = 0
+            veg_fraction[:, :, 5:][spec2 < 0] = 0
+
+            grass_adult = veg_fraction[:, :, 2] + veg_fraction[:, :, 4]
+            shrub_adult_dead = veg_fraction[:, :, 6] + veg_fraction[:, :, 7]
+
             # Initialize storm stats
             Rhigh = storm_Rhigh[s] * np.ones(topo_final.shape[0])
             dur = storm_dur[s]
 
-            score = storm_fitness(solution, topo_start, topo_final, Rhigh, dur, OW_Mask, spec1, spec2)
+            score = storm_fitness(solution, topo_start, topo_final, Rhigh, dur, OW_Mask, grass_adult, shrub_adult_dead)
             score_list.append(score)
 
     # Take mean of scores from all locations
@@ -199,10 +215,11 @@ RNG = np.random.default_rng(seed=13)  # Seeded random numbers for reproducibilit
 # Define Variables
 MHW = 0.39  # [m NAVD88]
 cellsize = 2  # [m]
+H1_a_proportion = 0.5
 
 # Observed Overwash Mask
 overwash_mask_file = np.load("Input/Mask_NCB-NewDrum-Ocracoke_2018_Florence_2m.npy")  # Load observed overwash mask
-name = 'Multi-Location Storm (Florence), NON-Weighted BSS PSO, Nswarm 18, Iterations 50, USACE Post-Florence 2m, 1Apr25'
+name = 'Multi-Location Storm (Florence), NON-Weighted BSS PSO, Nswarm 18, Iterations 50, USACE Post-Florence 2m, 31March26'
 
 BestScore = -1e10
 BestScores = []
@@ -239,7 +256,7 @@ n_cores = 18
 
 iterations = 50
 swarm_size = 18
-dimensions = 6  # Number of free paramters
+dimensions = 7  # Number of free paramters
 options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
 """
 w: Inertia weight constant. [0-1] Determines how much the particle keeps on with its previous velocity (i.e., speed and direction of the search). 
@@ -250,18 +267,20 @@ particle itself and recognizing the search result of the swarm; Control the trad
 bounds = (
     # Minimum
     np.array([50,  # Rin
-              0.010,  # Cs
-              0.00005,  # Kr
+              0.003,  # Cs
+              0.00001,  # Kr
               0.01,  # beach_equilibrium_slope
-              1.0,  # Swash erosive timescale
-              1.01]),  # mm
+              0.2,  # Swash erosive timescale
+              1.01,  # mm
+              0.2]),  # Kl
     # Maximum
-    np.array([280,  # Rin
-              0.040,  # Cs
+    np.array([350,  # Rin
+              0.050,  # Cs
               0.01,  # Kr
-              0.04,  # beach_equilibrium_slope
+              0.05,  # beach_equilibrium_slope
               3.0,  # Swash erosive timescale
-              1.12])  # mm
+              1.10,  # mm
+              0.8])  # Kl
 )
 
 
@@ -295,8 +314,9 @@ print(tabulate({
     "Beq": [best_solution[3]],
     "Te": [best_solution[4]],
     "mm": [best_solution[5]],
+    "Kl": [best_solution[6]],
     "Score": [solution_fitness * -1]
-}, headers="keys", floatfmt=(None, ".0f", ".4f", ".7f", ".3f", ".2f", ".2f", ".4f"))
+}, headers="keys", floatfmt=(None, ".0f", ".4f", ".7f", ".3f", ".2f", ".2f", ".2f", ".4f"))
 )
 
 # _____________________________________________

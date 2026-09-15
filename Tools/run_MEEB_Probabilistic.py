@@ -1,7 +1,7 @@
 """
 Probabilistic framework for running MEEB simulations. Generates probabilistic projections of future change.
 
-IRBR 22 July 2025
+IRBR 29 January 2026
 """
 
 import os
@@ -15,6 +15,7 @@ import scipy
 from tqdm import tqdm
 from matplotlib import colors
 from joblib import Parallel, delayed
+from netCDF4 import Dataset
 sys.path.append(os.getcwd())
 
 import routines_meeb as routine
@@ -954,8 +955,9 @@ def class_frequency_animation(class_probabilities, orientation='vertical'):
 # VARIABLES AND INITIALIZATIONS
 
 # 2018 North Core Banks
-start = "Init_NCB-2200-34200_2018_PostFlorence_2m.npy"
+start = "Init_NCB-2200-34200_2018_PostFlorence_2m.nc"
 startdate = '20181015'
+data_filetype_NetCDF = True  # True if using NetCDF .nc input file, False if using default .npy file
 
 # _____________________
 # EXTERNAL STOCHASTIC ELEMENTS (ExSE)
@@ -1030,7 +1032,11 @@ plot_xmin = int(plot_xmin / cellsize)  # Cross-shore plotting
 plot_xmax = int(plot_xmax / cellsize)  # Cross-shore plotting
 
 # Load Initial Domains
-Init = np.load("Input/" + start)
+if data_filetype_NetCDF:
+    init_nc = Dataset(("Input/" + start), 'r')
+    Init = init_nc.variables['init_values'][:].data
+else:
+    Init = np.load("Input/" + start)
 topo_start = Init[0, ymin: ymax, xmin: xmax].copy()
 spec1_start = Init[1, ymin: ymax, xmin: xmax].copy()
 spec2_start = Init[2, ymin: ymax, xmin: xmax].copy()
